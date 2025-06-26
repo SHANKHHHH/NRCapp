@@ -7,9 +7,6 @@ import '../../../data/models/job_details.dart';
 import '../../../data/models/purchase_order.dart';
 
 class JobInputPage extends StatefulWidget {
-  final PurchaseOrder order;
-
-  JobInputPage({required this.order});
 
   @override
   _JobInputPageState createState() => _JobInputPageState();
@@ -196,36 +193,6 @@ class _JobInputPageState extends State<JobInputPage> {
   void initState() {
     super.initState();
     // Populate fields with existing purchase order details if available
-    if (widget.order != null) {
-      _nrcJobNoController.text = widget.order.jobDetails?.nrcJobNo ?? '';
-      _styleItemSKUController.text = widget.order.jobDetails?.styleItemSKU ?? '';
-      _customerNameController.text = widget.order.jobDetails?.customerName ?? '';
-      _fluteTypeController.text = widget.order.jobDetails?.fluteType ?? '';
-      _jobStatusController.text = widget.order.jobDetails?.jobStatus ?? '';
-      _latestRateController.text = widget.order.jobDetails?.latestRate ?? '';
-      _preRateController.text = widget.order.jobDetails?.preRate ?? '';
-      _lengthController.text = widget.order.jobDetails?.length ?? '';
-      _widthController.text = widget.order.jobDetails?.width ?? '';
-      _heightController.text = widget.order.jobDetails?.height ?? '';
-      _boxDimensionsController.text = widget.order.jobDetails?.boxDimensions ?? '';
-      _diePunchCodeController.text = widget.order.jobDetails?.diePunchCode ?? '';
-      _boardCategoryController.text = widget.order.jobDetails?.boardCategory ?? '';
-      _noOfColorController.text = widget.order.jobDetails?.noOfColor ?? '';
-      _processColorsController.text = widget.order.jobDetails?.processColors ?? '';
-      _specialColor1Controller.text = widget.order.jobDetails?.specialColor1 ?? '';
-      _specialColor2Controller.text = widget.order.jobDetails?.specialColor2 ?? '';
-      _specialColor3Controller.text = widget.order.jobDetails?.specialColor3 ?? '';
-      _specialColor4Controller.text = widget.order.jobDetails?.specialColor4 ?? '';
-      _overPrintFinishingController.text = widget.order.jobDetails?.overPrintFinishing ?? '';
-      _topFaceGSMController.text = widget.order.jobDetails?.topFaceGSM ?? '';
-      _flutingGSMController.text = widget.order.jobDetails?.flutingGSM ?? '';
-      _bottomLinerGSMController.text = widget.order.jobDetails?.bottomLinerGSM ?? '';
-      _decalBoardXController.text = widget.order.jobDetails?.decalBoardX ?? '';
-      _lengthBoardYController.text = widget.order.jobDetails?.lengthBoardY ?? '';
-      _boardSizeController.text = widget.order.jobDetails?.boardSize ?? '';
-      _noUpsController.text = widget.order.jobDetails?.noUps ?? '';
-      _srNoController.text = widget.order.jobDetails?.srNo ?? '';
-    }
   }
 
   @override
@@ -296,7 +263,6 @@ class _JobInputPageState extends State<JobInputPage> {
       );
 
       // Assign job details to the PurchaseOrder
-      widget.order.jobDetails = jobDetails;
 
       // Show success message
       ScaffoldMessenger.of(context).showSnackBar(

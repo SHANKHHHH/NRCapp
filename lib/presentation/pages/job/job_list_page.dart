@@ -2,32 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:nrc/constants/colors.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../routes/UserRoleManager.dart';
-
+import '../../../data/models/Job.dart';
+import 'JobDetailScreen.dart';
+import 'JobCard.dart';
 import 'JobStep.dart';
-
-class Job {
-  final String nrcJobNo;
-  final String styleItemSKU;
-  final String customerName;
-  final String boxDimensions;
-  final int noUps;
-  final String status;
-  final String priority;
-  final DateTime createdDate;
-  final DateTime? dueDate;
-
-  Job({
-    required this.nrcJobNo,
-    required this.styleItemSKU,
-    required this.customerName,
-    required this.boxDimensions,
-    required this.noUps,
-    required this.status,
-    required this.priority,
-    required this.createdDate,
-    this.dueDate,
-  });
-}
 
 class JobListPage extends StatefulWidget {
   const JobListPage({super.key, String? userRole});
@@ -38,54 +16,140 @@ class JobListPage extends StatefulWidget {
 
 class _JobListPageState extends State<JobListPage> {
   late String _userRole;
+  List<Job> _jobs = [];
+  List<Job> _filteredJobs = [];
+  Set<JobStatus> _selectedFilters = {};
 
   @override
   void initState() {
     super.initState();
     _loadUserRole();
+    _initializeJobs();
   }
 
   void _loadUserRole() async {
-    _userRole = UserRoleManager().userRole ?? 'Guest'; // Retrieve user role from UserRoleManager
+    _userRole = UserRoleManager().userRole ?? 'Guest';
     print('User Role in JobDetails: $_userRole');
     setState(() {});
   }
 
-  List<Job> get jobs => [
-    Job(
-      nrcJobNo: 'NRC001',
-      styleItemSKU: 'SKU-TEE-001',
-      customerName: 'Fashion Hub Ltd.',
-      boxDimensions: '30x20x15 cm',
-      noUps: 24,
-      status: 'Confirmed',
-      priority: 'High',
-      createdDate: DateTime.now().subtract(const Duration(days: 2)),
-      dueDate: DateTime.now().add(const Duration(days: 3)),
-    ),
-    Job(
-      nrcJobNo: 'NRC002',
-      styleItemSKU: 'SKU-JEAN-002',
-      customerName: 'Denim World',
-      boxDimensions: '40x25x20 cm',
-      noUps: 18,
-      status: 'Hold',
-      priority: 'Medium',
-      createdDate: DateTime.now().subtract(const Duration(days: 1)),
-      dueDate: DateTime.now().add(const Duration(days: 5)),
-    ),
-    Job(
-      nrcJobNo: 'NRC003',
-      styleItemSKU: 'SKU-SHIRT-003',
-      customerName: 'Corporate Wear Co.',
-      boxDimensions: '35x22x18 cm',
-      noUps: 30,
-      status: 'Rejected',
-      priority: 'Low',
-      createdDate: DateTime.now().subtract(const Duration(days: 5)),
-      dueDate: DateTime.now().subtract(const Duration(days: 1)),
-    ),
-  ];
+  void _initializeJobs() {
+    _jobs = [
+      Job(
+        jobNumber: 'NRC001',
+        customer: 'Fashion Hub Ltd.',
+        plant: 'Plant A',
+        jobDate: '2024-01-15',
+        deliveryDate: '2024-01-25',
+        createdDate: '2024-01-11',
+        createdBy: 'Jane Smith',
+        style: 'Style B',
+        dieCode: 'DIE002',
+        boardSize: '40x25',
+        fluteType: 'C Flute',
+        jobMonth: 'January',
+        noOfUps: '18',
+        noOfSheets: '150',
+        totalQuantity: 2700,
+        unit: 'PCS',
+        dispatchQuantity: 500,
+        pendingQuantity: 2200,
+        shadeCardApprovalDate: '2024-01-13',
+        nrcDeliveryDate: '2024-01-27',
+        dispatchDate: '2024-01-20',
+        pendingValidity: '2024-02-18',
+        status: JobStatus.inactive,
+      ),
+      Job(
+        jobNumber: 'NRC002',
+        customer: 'Denim World',
+        plant: 'Plant B',
+        jobDate: '2024-01-16',
+        deliveryDate: '2024-01-28',
+        createdDate: '2024-01-10',
+        createdBy: 'John Doe',
+        style: 'Style A',
+        dieCode: 'DIE001',
+        boardSize: '30x20',
+        fluteType: 'B Flute',
+        jobMonth: 'January',
+        noOfUps: '24',
+        noOfSheets: '100',
+        totalQuantity: 2400,
+        unit: 'PCS',
+        dispatchQuantity: 0,
+        pendingQuantity: 2400,
+        shadeCardApprovalDate: '2024-01-12',
+        nrcDeliveryDate: '2024-01-24',
+        dispatchDate: 'TBD',
+        pendingValidity: '2024-02-15',
+        status: JobStatus.inactive,
+      ),
+      Job(
+        jobNumber: 'NRC003',
+        customer: 'Corporate Wear Co.',
+        plant: 'Plant C',
+        jobDate: '2024-01-17',
+        deliveryDate: '2024-01-30',
+        createdDate: '2024-01-12',
+        createdBy: 'Mike Johnson',
+        style: 'Style C',
+        dieCode: 'DIE003',
+        boardSize: '35x22',
+        fluteType: 'E Flute',
+        jobMonth: 'January',
+        noOfUps: '30',
+        noOfSheets: '120',
+        totalQuantity: 3600,
+        unit: 'PCS',
+        dispatchQuantity: 0,
+        pendingQuantity: 3600,
+        shadeCardApprovalDate: '2024-01-14',
+        nrcDeliveryDate: '2024-01-29',
+        dispatchDate: 'TBD',
+        pendingValidity: '2024-02-20',
+        status: JobStatus.inactive,
+      ),
+      Job(
+        jobNumber: 'NRC004',
+        customer: 'Tech Solutions Inc.',
+        plant: 'Plant D',
+        jobDate: '2024-01-18',
+        deliveryDate: '2024-02-01',
+        createdDate: '2024-01-13',
+        createdBy: 'Sarah Wilson',
+        style: 'Style D',
+        dieCode: 'DIE004',
+        boardSize: '45x30',
+        fluteType: 'BC Flute',
+        jobMonth: 'January',
+        noOfUps: '20',
+        noOfSheets: '200',
+        totalQuantity: 4000,
+        unit: 'PCS',
+        dispatchQuantity: 0,
+        pendingQuantity: 4000,
+        shadeCardApprovalDate: '2024-01-15',
+        nrcDeliveryDate: '2024-01-31',
+        dispatchDate: 'TBD',
+        pendingValidity: '2024-02-25',
+        status: JobStatus.active,
+        jobDemand: JobDemand.high,
+        isApprovalPending: true,
+      ),
+    ];
+    _filteredJobs = List.from(_jobs);
+  }
+
+  void _applyFilters() {
+    setState(() {
+      if (_selectedFilters.isEmpty) {
+        _filteredJobs = List.from(_jobs);
+      } else {
+        _filteredJobs = _jobs.where((job) => _selectedFilters.contains(job.status)).toList();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -96,201 +160,154 @@ class _JobListPageState extends State<JobListPage> {
         backgroundColor: AppColors.maincolor,
         foregroundColor: AppColors.white,
         elevation: 0,
-      ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: jobs.length,
-        itemBuilder: (context, index) {
-          final job = jobs[index];
-          return Card(
-            margin: const EdgeInsets.only(bottom: 8),
-            elevation: 1,
-            color: AppColors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.filter_list),
+            onPressed: () => _showFilterDialog(context),
+          ),
+          if (_userRole == 'Admin' || _userRole == 'Planner')
+            IconButton(
+              icon: const Icon(Icons.add),
+              onPressed: () => _showAddJobDialog(context),
             ),
-            child: Container(
-              decoration: BoxDecoration(
-                color: AppColors.white,
-                borderRadius: BorderRadius.circular(8),
-                border: Border(
-                  left: BorderSide(
-                    color: _getStatusColor(job.status),
-                    width: 4,
+        ],
+      ),
+      body: _filteredJobs.isEmpty
+          ? const Center(
+        child: Text(
+          'No jobs found',
+          style: TextStyle(fontSize: 16, color: Colors.grey),
+        ),
+      )
+          : ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: _filteredJobs.length,
+        itemBuilder: (context, index) {
+          final job = _filteredJobs[index];
+          return JobCard(
+            job: job,
+            onTap: () {
+              if (job.status == JobStatus.active ||
+                  job.status == JobStatus.hold ||
+                  job.status == JobStatus.workingStarted) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => JobTimelinePage(jobNumber: job.jobNumber, job: job),
                   ),
-                ),
-              ),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => JobTimelinePage(),
-                    ),
-                  );
-                },
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Job Number and Priority Row
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            job.nrcJobNo,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade200,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              job.priority,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ],
+                );
+              } else if (job.status == JobStatus.inactive) {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('The Item is Inactive'),
+                    content: const Text('To proceed, activate this job.'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Cancel'),
                       ),
-
-                      const SizedBox(height: 8),
-
-                      // All Information in Single Container
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Customer Name
-                            Text(
-                              'Customer: ${job.customerName}',
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
+                      ElevatedButton(
+                        onPressed: () {
+                          // Update job status to active
+                          setState(() {
+                            final index = _jobs.indexWhere((j) => j.jobNumber == job.jobNumber);
+                            if (index != -1) {
+                              _jobs[index] = job.copyWith(status: JobStatus.active);
+                              _applyFilters();
+                            }
+                          });
+                          Navigator.pop(context); // Close dialog
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => JobDetailScreen(
+                                job: job.copyWith(status: JobStatus.active),
+                                onJobUpdate: _updateJob,
                               ),
                             ),
-
-                            const SizedBox(height: 6),
-
-                            // SKU
-                            Text(
-                              'SKU: ${job.styleItemSKU}',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-
-                            const SizedBox(height: 4),
-
-                            // Box Dimensions
-                            Text(
-                              'Box Size: ${job.boxDimensions}',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-
-                            const SizedBox(height: 4),
-
-                            // UPS
-                            Text(
-                              'UPS: ${job.noUps}',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-
-                            const SizedBox(height: 4),
-
-                            // Due Date
-                            Text(
-                              'Due Date: ${job.dueDate != null ? _formatDate(job.dueDate!) : 'Not set'}',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
+                          );
+                        },
+                        child: const Text('Activate & View Details'),
                       ),
-
-                      // Action Buttons (if user has permissions)
-                      if (_userRole == 'Admin' || _userRole == 'Planner') ...[
-                        const SizedBox(height: 10),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            if (_userRole == 'Admin' || _userRole == 'Planner')
-                              IconButton(
-                                icon: const Icon(Icons.edit, size: 20),
-                                onPressed: () {
-                                  // Implement edit
-                                },
-                              ),
-                            if (_userRole == 'Admin')
-                              IconButton(
-                                icon: const Icon(Icons.delete, size: 20),
-                                onPressed: () {
-                                  // Implement delete
-                                },
-                              ),
-                          ],
-                        ),
-                      ],
                     ],
                   ),
-                ),
-              ),
-            ),
+                );
+              }
+            },
+            onStatusUpdate: _updateJobStatus,
           );
         },
       ),
     );
   }
 
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'confirmed':
+  void _navigateToJobDetail(Job job) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => JobDetailScreen(
+          job: job,
+          onJobUpdate: _updateJob,
+        ),
+      ),
+    );
+  }
+
+  void _updateJob(Job updatedJob) {
+    setState(() {
+      final index = _jobs.indexWhere((j) => j.jobNumber == updatedJob.jobNumber);
+      if (index != -1) {
+        _jobs[index] = updatedJob;
+      }
+    });
+    _applyFilters(); // Reapply filters after update
+  }
+
+  void _updateJobStatus(Job job, JobStatus newStatus) {
+    setState(() {
+      final index = _jobs.indexWhere((j) => j.jobNumber == job.jobNumber);
+      if (index != -1) {
+        _jobs[index] = job.copyWith(
+          status: newStatus,
+          isApprovalPending: false,
+        );
+      }
+    });
+
+    _applyFilters(); // Reapply filters after status update
+
+    // Show success message
+    final statusText = newStatus == JobStatus.workingStarted ? 'approved and work started' : 'rejected';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Job ${job.jobNumber} has been $statusText'),
+        backgroundColor: newStatus == JobStatus.workingStarted ? Colors.green : Colors.red,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Color _getStatusColor(JobStatus status) {
+    switch (status) {
+      case JobStatus.active:
         return AppColors.green;
-      case 'rejected':
+      case JobStatus.inactive:
         return AppColors.red;
-      case 'hold':
+      case JobStatus.hold:
         return AppColors.grey;
-      default:
-        return AppColors.black;
+      case JobStatus.workingStarted:
+        return Colors.blue;
     }
   }
 
   String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year}';
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
-
 
   bool _isOverdue(DateTime dueDate) {
     return dueDate.isBefore(DateTime.now());
   }
-
 
   void _showJobDetails(BuildContext context, Job job) {
     showModalBottomSheet(
@@ -323,17 +340,25 @@ class _JobListPageState extends State<JobListPage> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                _buildDetailRow('NRC Job No.', job.nrcJobNo),
-                _buildDetailRow('Style Item SKU', job.styleItemSKU),
-                _buildDetailRow('Customer Name', job.customerName),
-                _buildDetailRow('Box Dimensions', job.boxDimensions),
-                _buildDetailRow('No. UPS', '${job.noUps}'),
-                _buildDetailRow('Status', job.status,
+                _buildDetailRow('Job Number', job.jobNumber),
+                _buildDetailRow('Customer', job.customer),
+                _buildDetailRow('Plant', job.plant),
+                _buildDetailRow('Job Date', job.jobDate),
+                _buildDetailRow('Delivery Date', job.deliveryDate),
+                _buildDetailRow('Status', job.status.name.toUpperCase(),
                     valueColor: _getStatusColor(job.status)),
-                _buildDetailRow('Priority', job.priority),
-                _buildDetailRow('Created Date', _formatDate(job.createdDate)),
-                if (job.dueDate != null)
-                  _buildDetailRow('Due Date', _formatDate(job.dueDate!)),
+                if (job.jobDemand != null)
+                  _buildDetailRow('Job Demand', job.jobDemand!.name.toUpperCase()),
+                _buildDetailRow('Total Quantity', '${job.totalQuantity} ${job.unit}'),
+                _buildDetailRow('Created By', job.createdBy),
+                _buildDetailRow('Style', job.style),
+                _buildDetailRow('Die Code', job.dieCode),
+                _buildDetailRow('Board Size', job.boardSize),
+                _buildDetailRow('Flute Type', job.fluteType),
+                _buildDetailRow('No. of Ups', job.noOfUps),
+                _buildDetailRow('No. of Sheets', job.noOfSheets),
+                _buildDetailRow('Dispatch Quantity', '${job.dispatchQuantity} ${job.unit}'),
+                _buildDetailRow('Pending Quantity', '${job.pendingQuantity} ${job.unit}'),
                 const SizedBox(height: 30),
               ],
             ),
@@ -356,7 +381,7 @@ class _JobListPageState extends State<JobListPage> {
               style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: Colors.black,
+                color: Colors.black87,
               ),
             ),
           ),
@@ -379,36 +404,123 @@ class _JobListPageState extends State<JobListPage> {
   void _showFilterDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Filter Jobs'),
-        content: const Text('Filter options will go here.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Filter Jobs'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Filter by Status:'),
+              const SizedBox(height: 16),
+              ...JobStatus.values.map((status) => CheckboxListTile(
+                title: Text(status.name.toUpperCase()),
+                value: _selectedFilters.contains(status),
+                onChanged: (value) {
+                  setDialogState(() {
+                    if (value == true) {
+                      _selectedFilters.add(status);
+                    } else {
+                      _selectedFilters.remove(status);
+                    }
+                  });
+                },
+              )),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Apply'),
-          ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _selectedFilters.clear();
+                });
+                Navigator.pop(context);
+                _applyFilters();
+              },
+              child: const Text('Clear'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _applyFilters();
+              },
+              child: const Text('Apply'),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   void _showAddJobDialog(BuildContext context) {
+    final TextEditingController jobNumberController = TextEditingController();
+    final TextEditingController customerController = TextEditingController();
+    final TextEditingController plantController = TextEditingController();
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Add New Job'),
-        content: const Text('Form UI coming soon.'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: jobNumberController,
+                decoration: const InputDecoration(
+                  labelText: 'Job Number',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: customerController,
+                decoration: const InputDecoration(
+                  labelText: 'Customer',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: plantController,
+                decoration: const InputDecoration(
+                  labelText: 'Plant',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              if (jobNumberController.text.isNotEmpty &&
+                  customerController.text.isNotEmpty &&
+                  plantController.text.isNotEmpty) {
+                // Add the job logic here
+                _addNewJob(
+                  jobNumberController.text,
+                  customerController.text,
+                  plantController.text,
+                );
+                Navigator.pop(context);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please fill all required fields'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
             child: const Text('Add'),
           ),
         ],
@@ -416,17 +528,91 @@ class _JobListPageState extends State<JobListPage> {
     );
   }
 
+  void _addNewJob(String jobNumber, String customer, String plant) {
+    final newJob = Job(
+      jobNumber: jobNumber,
+      customer: customer,
+      plant: plant,
+      jobDate: DateTime.now().toString().substring(0, 10),
+      deliveryDate: DateTime.now().add(const Duration(days: 14)).toString().substring(0, 10),
+      createdDate: DateTime.now().toString().substring(0, 10),
+      createdBy: _userRole,
+      style: 'TBD',
+      dieCode: 'TBD',
+      boardSize: 'TBD',
+      fluteType: 'TBD',
+      jobMonth: _getMonthName(DateTime.now().month),
+      noOfUps: '0',
+      noOfSheets: '0',
+      totalQuantity: 0,
+      unit: 'PCS',
+      dispatchQuantity: 0,
+      pendingQuantity: 0,
+      shadeCardApprovalDate: 'TBD',
+      nrcDeliveryDate: 'TBD',
+      dispatchDate: 'TBD',
+      pendingValidity: 'TBD',
+      status: JobStatus.hold,
+    );
+
+    setState(() {
+      _jobs.add(newJob);
+    });
+    _applyFilters();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Job $jobNumber added successfully'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return months[month - 1];
+  }
+
   void _editJob(Job job) {
-    // Implement the edit functionality here
-    // You can navigate to an edit page or show a dialog to edit the job details
-    print('Editing job: ${job.nrcJobNo}');
-    // Example: Navigate to an edit page
-    // context.push('/edit-job', extra: job);
+    print('Editing job: ${job.jobNumber}');
+    // Navigate to edit screen or show edit dialog
+    _navigateToJobDetail(job);
   }
 
   void _deleteJob(Job job) {
-    // Implement the delete functionality here
-    print('Deleting job: ${job.nrcJobNo}');
-    // Example: Show a confirmation dialog before deleting
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Job'),
+        content: Text('Are you sure you want to delete job ${job.jobNumber}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                _jobs.removeWhere((j) => j.jobNumber == job.jobNumber);
+              });
+              _applyFilters();
+              Navigator.pop(context);
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Job ${job.jobNumber} deleted'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
   }
 }

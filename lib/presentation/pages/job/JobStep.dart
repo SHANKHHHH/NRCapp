@@ -1,32 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:nrc/constants/colors.dart';
+import '../../../data/models/Job.dart'; // Make sure this import is correct
 
-enum StepStatus { pending, inProgress, waitingApproval, accepted, rejected, onHold, completed }
+enum StepStatus { pending, started, inProgress, completed }
 
 enum StepType { jobAssigned, paperStore, printing, corrugation, fluteLamination, punching, flapPasting, qc, dispatch }
 
 class StepData {
   final StepType type;
   final String title;
+  final String description;
   StepStatus status;
   Map<String, dynamic> formData;
-  String? rejectionReason;
-  String? holdReason;
 
   StepData({
     required this.type,
     required this.title,
+    required this.description,
     this.status = StepStatus.pending,
     this.formData = const {},
-    this.rejectionReason,
-    this.holdReason,
   });
 }
 
 class JobTimelinePage extends StatefulWidget {
   final String? jobNumber;
+  final Job? job; // Pass the complete job object for details
 
-  const JobTimelinePage({super.key, this.jobNumber});
+  const JobTimelinePage({super.key, this.jobNumber, this.job});
 
   @override
   State<JobTimelinePage> createState() => _JobTimelinePageState();
@@ -44,100 +44,299 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
   void _initializeSteps() {
     steps = [
-      StepData(type: StepType.jobAssigned, title: 'Job Assigned', status: StepStatus.completed),
-      StepData(type: StepType.paperStore, title: 'Paper Store'),
-      StepData(type: StepType.printing, title: 'Printing Details'),
-      StepData(type: StepType.corrugation, title: 'Corrugation'),
-      StepData(type: StepType.fluteLamination, title: 'Flute Lamination'),
-      StepData(type: StepType.punching, title: 'Punching'),
-      StepData(type: StepType.flapPasting, title: 'Flap Pasting'),
-      StepData(type: StepType.qc, title: 'QC'),
-      StepData(type: StepType.dispatch, title: 'Dispatch'),
+      StepData(
+        type: StepType.jobAssigned,
+        title: 'Job Assigned',
+        description: 'Job has been assigned and ready to start',
+        status: StepStatus.completed,
+      ),
+      StepData(
+        type: StepType.paperStore,
+        title: 'Paper Store',
+        description: 'Check and prepare paper materials',
+      ),
+      StepData(
+        type: StepType.printing,
+        title: 'Printing',
+        description: 'Print the materials as per specifications',
+      ),
+      StepData(
+        type: StepType.corrugation,
+        title: 'Corrugation',
+        description: 'Apply corrugation process',
+      ),
+      StepData(
+        type: StepType.fluteLamination,
+        title: 'Flute Lamination',
+        description: 'Apply flute lamination',
+      ),
+      StepData(
+        type: StepType.punching,
+        title: 'Punching',
+        description: 'Punch holes as required',
+      ),
+      StepData(
+        type: StepType.flapPasting,
+        title: 'Flap Pasting',
+        description: 'Paste flaps and complete assembly',
+      ),
+      StepData(
+        type: StepType.qc,
+        title: 'Quality Check',
+        description: 'Final quality inspection',
+      ),
+      StepData(
+        type: StepType.dispatch,
+        title: 'Dispatch',
+        description: 'Package and dispatch the order',
+      ),
     ];
 
-    // Set first step as completed and second as in progress
+    // Set first step as completed and second as ready to start
     steps[0].status = StepStatus.completed;
-    steps[1].status = StepStatus.inProgress;
+    steps[1].status = StepStatus.pending;
     currentActiveStep = 1;
   }
 
   String _getStepStatusText(StepData step) {
     switch (step.status) {
       case StepStatus.pending:
-        return 'Pending';
-      case StepStatus.inProgress:
         if (step.type == StepType.jobAssigned) {
-          return 'Job Number: ${widget.jobNumber ?? 'JOB001'}';
+          return 'Job Number: ${widget.jobNumber ?? widget.job?.jobNumber ?? 'JOB001'}';
         }
-        return 'Click to fill details';
-      case StepStatus.waitingApproval:
-        return 'Waiting for Admin Approval';
-      case StepStatus.accepted:
-        return 'Accepted';
-      case StepStatus.rejected:
-        return 'Rejected - ${step.rejectionReason ?? 'See details'}';
-      case StepStatus.onHold:
-        return 'On Hold - ${step.holdReason ?? 'See details'}';
+        return 'Ready to start - Click to begin work';
+      case StepStatus.started:
+        return 'Work started - Click to add/edit details';
+      case StepStatus.inProgress:
+        return 'In progress - Details saved - Click to edit or complete';
       case StepStatus.completed:
         if (step.type == StepType.jobAssigned) {
-          return 'Job Number: ${widget.jobNumber ?? 'JOB001'}';
+          return 'Job Number: ${widget.jobNumber ?? widget.job?.jobNumber ?? 'JOB001'}';
         }
-        return 'Completed';
+        return 'Work completed ✓';
     }
   }
 
   void _handleStepTap(StepData step) {
-    if (step.status == StepStatus.inProgress) {
-      if (step.type == StepType.jobAssigned) {
-        _showJobDetails();
-      } else {
-        _showFormDialog(step);
-      }
-    } else if (step.status == StepStatus.waitingApproval) {
-      _showApprovalDialog(step);
-    } else if (step.status == StepStatus.rejected || step.status == StepStatus.onHold) {
-      _showFormDialog(step); // Allow re-filling for rejected/hold items
+    if (step.type == StepType.jobAssigned) {
+      _showCompleteJobDetails();
+    } else if (step.status == StepStatus.pending && _isStepActive(step)) {
+      _startWork(step);
+    } else if (step.status == StepStatus.started || step.status == StepStatus.inProgress) {
+      _showWorkForm(step);
+    } else if (step.status == StepStatus.completed && step.formData.isNotEmpty) {
+      _showCompletedStepDetails(step);
     }
   }
 
-  void _showJobDetails() {
+  bool _isStepActive(StepData step) {
+    int stepIndex = steps.indexOf(step);
+    return stepIndex == currentActiveStep;
+  }
+
+  void _startWork(StepData step) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Current Job Details'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.play_circle_filled, color: AppColors.maincolor),
+            const SizedBox(width: 8),
+            const Text('Start Work'),
+          ],
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Job Number: ${widget.jobNumber ?? 'JOB001'}'),
+            Text('Are you ready to start work on:'),
             const SizedBox(height: 8),
-            const Text('Status: Assigned'),
-            const SizedBox(height: 8),
-            const Text('Ready to proceed with next step'),
+            Text(
+              step.title,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: AppColors.maincolor,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              step.description,
+              style: TextStyle(color: Colors.grey[600]),
+            ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
+            child: Text('Cancel', style: TextStyle(color: Colors.grey[600])),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.maincolor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () {
+              setState(() {
+                step.status = StepStatus.started;
+              });
+              Navigator.pop(context);
+              _showSuccessMessage('${step.title} work started!');
+            },
+            child: const Text('Start Work'),
           ),
         ],
       ),
     );
   }
 
-  void _showFormDialog(StepData step) {
+  void _showCompleteJobDetails() {
+    final job = widget.job;
+    print("object");
+    print(job);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.work, color: AppColors.maincolor),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Job Details: ${widget.jobNumber ?? job?.jobNumber ?? 'JOB001'}',
+                style: const TextStyle(fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: Container(
+          width: double.maxFinite,
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _detailRow('Job Number', widget.jobNumber ?? job?.jobNumber ?? 'JOB001'),
+                _detailRow('Status', job?.status.name ?? 'In Progress'),
+                _detailRow('Current Step', steps[currentActiveStep].title),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue[200]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info, color: Colors.blue[600], size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          job == null
+                            ? 'Complete job details are not available. Please ensure the job object is passed to this page to view all details.'
+                            : 'Full job details are shown below.',
+                          style: const TextStyle(fontSize: 12, color: Colors.blue),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (job != null) ...[
+                  const SizedBox(height: 16),
+                  _detailRow('Customer', job.customer),
+                  _detailRow('Plant', job.plant),
+                  _detailRow('Job Date', job.jobDate),
+                  _detailRow('Delivery Date', job.deliveryDate),
+                  _detailRow('Created Date', job.createdDate),
+                  _detailRow('Created By', job.createdBy),
+                  _detailRow('Style', job.style),
+                  _detailRow('Die Code', job.dieCode),
+                  _detailRow('Board Size', job.boardSize),
+                  _detailRow('Flute Type', job.fluteType),
+                  _detailRow('Job Month', job.jobMonth),
+                  _detailRow('No. of Ups', job.noOfUps.toString()),
+                  _detailRow('No. of Sheets', job.noOfSheets.toString()),
+                  _detailRow('Total Quantity', job.totalQuantity.toString()),
+                  _detailRow('Unit', job.unit),
+                  _detailRow('Dispatch Quantity', job.dispatchQuantity.toString()),
+                  _detailRow('Pending Quantity', job.pendingQuantity.toString()),
+                  _detailRow('Shade Card Approval', job.shadeCardApprovalDate),
+                  _detailRow('NRC Delivery Date', job.nrcDeliveryDate),
+                  _detailRow('Dispatch Date', job.dispatchDate),
+                  _detailRow('Pending Validity', job.pendingValidity),
+                  _detailRow('Status', job.status.name),
+                  if (job.jobDemand != null)
+                    _detailRow('Job Demand', job.jobDemand!.name),
+                  _detailRow('Approval Pending', job.isApprovalPending ? 'Yes' : 'No'),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Close', style: TextStyle(color: AppColors.maincolor)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 140,
+            child: Text(
+              '$label:',
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                color: Colors.grey,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showWorkForm(StepData step) {
     final fieldNames = _getFieldNamesForStep(step.type);
     final initialValues = step.formData.map((key, value) => MapEntry(key, value.toString()));
 
     showDialog(
       context: context,
-      builder: (context) => GenericForm(
-        title: '${step.title} Details',
+      builder: (context) => WorkForm(
+        title: step.title,
+        description: step.description,
         initialValues: initialValues,
         fieldNames: fieldNames,
+        hasData: step.formData.isNotEmpty,
         onSubmit: (formData) {
           _submitForm(step, formData);
+        },
+        onComplete: (formData) {
+          _completeWork(step, formData);
         },
       ),
     );
@@ -146,103 +345,21 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   List<String> _getFieldNamesForStep(StepType type) {
     switch (type) {
       case StepType.paperStore:
-        return ['sheetSize', 'required', 'available', 'issueDate', 'millExtraMargin', 'gsm', 'quantity'];
+        return ['Sheet Size', 'Required Qty', 'Available Qty', 'Issue Date', 'GSM', 'Remarks'];
       case StepType.printing:
-        return [
-          'date',
-          'shift',
-          'oprName',
-          'noOfColours',
-          'inksUsed',
-          'postPrintingFinishingOkQty',
-          'wastage',
-          'coatingType',
-          'separateSheets',
-          'extraSheets',
-          'machine',
-          'productionPlanning',
-        ];
+        return ['Date', 'Operator Name', 'Colors Used', 'Quantity OK', 'Wastage', 'Machine', 'Remarks'];
       case StepType.corrugation:
-        return [
-          'date',
-          'shift',
-          'oprName',
-          'machineNo',
-          'noOfSheets',
-          'size',
-          'gsm1',
-          'gsm2',
-          'flute',
-          'remarks',
-          'qcCheckSignBy',
-          'productionPlanning',
-        ]; // Example fields for corrugation
+        return ['Date', 'Operator Name', 'Machine No', 'Sheets Count', 'Size', 'GSM', 'Flute Type', 'Remarks'];
       case StepType.fluteLamination:
-        return [
-          'date',
-          'shift',
-          'operatorName',
-          'film',
-          'okQty',
-          'qcCheckSignBy',
-          'adhesive',
-          'wastage',
-          'productionPlanning',
-        ]; // Example fields for flute lamination
+        return ['Date', 'Operator Name', 'Film Type', 'OK Quantity', 'Adhesive', 'Wastage', 'Remarks'];
       case StepType.punching:
-        return [
-          'date',
-          'shift',
-          'operatorName',
-          'okQty',
-          'machine',
-          'qcCheckSignBy',
-          'die',
-          'wastage',
-          'remarks',
-          'productionPlanning',
-        ]; // Example fields for punching
+        return ['Date', 'Operator Name', 'Machine', 'OK Quantity', 'Die Used', 'Wastage', 'Remarks'];
       case StepType.flapPasting:
-        return [
-          'machineNo',
-          'date',
-          'shift',
-          'operatorName',
-          'adhesive',
-          'quantity',
-          'wastage',
-          'qcCheckSignBy',
-          'remarks',
-          'productionPlanning',
-        ]
-        ; // Example fields for flap pasting
+        return ['Date', 'Operator Name', 'Machine No', 'Adhesive', 'Quantity', 'Wastage', 'Remarks'];
       case StepType.qc:
-        return [
-          'date',
-          'shift',
-          'operatorName',
-          'checkedBy',
-          'rejectedQty',
-          'passQty',
-          'reasonForRejection',
-          'remarks',
-          'qcCheckSignBy',
-          'productionPlanning',
-        ]; // Example fields for quality control
+        return ['Date', 'Checked By', 'Pass Quantity', 'Reject Quantity', 'Reason for Rejection', 'Remarks'];
       case StepType.dispatch:
-        return [
-          'date',
-          'shift',
-          'operatorName',
-          'noOfBoxes',
-          'dispatchNo',
-          'dispatchDate',
-          'remarks',
-          'balanceQty',
-          'qcCheckSignBy',
-          'productionPlanning',
-        ]
-        ; // Example fields for dispatch
+        return ['Date', 'Operator Name', 'No of Boxes', 'Dispatch No', 'Dispatch Date', 'Balance Qty', 'Remarks'];
       default:
         return [];
     }
@@ -251,774 +368,342 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   void _submitForm(StepData step, Map<String, String> formData) {
     setState(() {
       step.formData = formData;
-      step.status = StepStatus.waitingApproval;
-      step.rejectionReason = null; // Clear rejection reason
-      step.holdReason = null; // Clear hold reason
+      step.status = StepStatus.inProgress;
     });
-
-    _showSuccessMessage('${step.title} Data Filled');
+    _showSuccessMessage('${step.title} details saved successfully!');
   }
 
-  void _showApprovalDialog(StepData step) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        backgroundColor: Colors.white,
-        titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
-        contentPadding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-        actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        title: Text(
-          'Review ${step.title}',
-          style: TextStyle(
-            color: AppColors.maincolor,
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        content: const Text(
-          'Please review the submitted data and choose an action:',
-          style: TextStyle(
-            color: Colors.black87,
-            fontSize: 16,
-          ),
-        ),
-        actions: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.end,
-            children: [
-              OutlinedButton.icon(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close, size: 18),
-                label: const Text('Cancel'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.yellow,
-                  side: BorderSide(color: AppColors.translucentBlack),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _showRejectDialog(step);
-                },
-                icon: const Icon(Icons.thumb_down_alt_outlined, size: 18),
-                label: const Text('Reject'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.red,
-                  side: BorderSide(color: AppColors.translucentBlack),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _showHoldDialog(step);
-                },
-                icon: const Icon(Icons.pause_circle_outline, size: 18),
-                label: const Text('Hold'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.grey,
-                  side: BorderSide(color: AppColors.translucentBlack),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  _acceptStep(step);
-                  Navigator.pop(context);
-                },
-                icon: const Icon(Icons.check_circle_outline, size: 18),
-                label: const Text('Accept'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.green,
-                  foregroundColor: Colors.white,
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showRejectDialog(StepData step) {
-    final reasonController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          'Reject ${step.title}',
-          style: TextStyle(
-            color: AppColors.red,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        backgroundColor: AppColors.white,
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Please provide a reason for rejection:'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: reasonController,
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: 'Rejection Reason',
-                labelStyle: TextStyle(color: AppColors.red),
-                border: const OutlineInputBorder(),
-                focusedBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: AppColors.red, width: 2),
-                ),
-                filled: true,
-                fillColor: Colors.white,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          OutlinedButton(
-            onPressed: () => Navigator.pop(context),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.red,
-              side: BorderSide(color: Colors.red.shade200),
-            ),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.trim().isNotEmpty) {
-                _rejectStep(step, reasonController.text.trim());
-                Navigator.pop(context);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Reject'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showHoldDialog(StepData step) {
-    final reasonController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          'Hold ${step.title}',
-          style: TextStyle(
-            color: AppColors.grey800,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        backgroundColor: Colors.white,
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Please provide a reason for putting this step on hold:'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: reasonController,
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: 'Hold Reason',
-                labelStyle: TextStyle(color: AppColors.grey800),
-                border: const OutlineInputBorder(),
-                focusedBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: AppColors.grey800, width: 2),
-                ),
-                filled: true,
-                fillColor: Colors.white,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          OutlinedButton(
-            onPressed: () => Navigator.pop(context),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.grey800,
-              side: BorderSide(color: Colors.grey.shade300),
-            ),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.trim().isNotEmpty) {
-                _holdStep(step, reasonController.text.trim());
-                Navigator.pop(context);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.grey800,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Hold'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _acceptStep(StepData step) {
+  void _completeWork(StepData step, Map<String, String> formData) {
     setState(() {
-      step.status = StepStatus.accepted;
+      step.formData = formData;
+      step.status = StepStatus.completed;
 
       // Move to next step if available
       if (currentActiveStep + 1 < steps.length) {
         currentActiveStep++;
-        steps[currentActiveStep].status = StepStatus.inProgress;
+        steps[currentActiveStep].status = StepStatus.pending;
       }
     });
 
-    _showSuccessMessage('${step.title} Accepted');
-  }
-
-  void _rejectStep(StepData step, String reason) {
-    setState(() {
-      step.status = StepStatus.rejected;
-      step.rejectionReason = reason;
-    });
-
-    _showSuccessMessage('${step.title} Rejected');
-  }
-
-  void _holdStep(StepData step, String reason) {
-    setState(() {
-      step.status = StepStatus.onHold;
-      step.holdReason = reason;
-    });
-
-    _showSuccessMessage('${step.title} Put on Hold');
+    Navigator.pop(context); // Close the form dialog
+    _showSuccessMessage('${step.title} completed! Moving to next step.');
   }
 
   void _showSuccessMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 2),
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        margin: EdgeInsets.only(
+          bottom: MediaQuery.of(context).size.height - 100,
+          left: 16,
+          right: 16,
+        ),
       ),
     );
   }
 
   Widget _buildProgressIndicator() {
+    int completedSteps = steps.where((step) => step.status == StepStatus.completed).length;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      child: Column(
-        children: [
-          Text(
-            'Step ${currentActiveStep + 1} of ${steps.length}',
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              color: Colors.grey,
-            ),
-          ),
-          const SizedBox(height: 12),
-          LinearProgressIndicator(
-            value: (currentActiveStep + 1) / steps.length,
-            backgroundColor: Colors.grey[300],
-            valueColor: const AlwaysStoppedAnimation<Color>(Colors.black54),
+      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildCurrentStep() {
-    final currentStep = steps[currentActiveStep];
-    final isClickable = currentStep.status == StepStatus.inProgress ||
-        currentStep.status == StepStatus.waitingApproval ||
-        currentStep.status == StepStatus.rejected ||
-        currentStep.status == StepStatus.onHold;
-
-    return Column(
-      children: [
-        Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey[300]!),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
-                spreadRadius: 1,
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: _getStepColor(currentStep.status),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Center(
-                      child: _getStepIcon(currentStep.status),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          currentStep.title,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _getStepStatusText(currentStep),
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              if (isClickable)
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => _handleStepTap(currentStep),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _getButtonColor(currentStep.status),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: Text(
-                      _getButtonText(currentStep),
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                  ),
-                ),
-              if (currentStep.status == StepStatus.waitingApproval)
-                Container(
-                  width: double.infinity,
-                  margin: const EdgeInsets.only(top: 12),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.orange[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange[200]!),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.pending, color: Colors.orange[700], size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Data Filled - Review details below and take action',
-                          style: TextStyle(
-                            color: Colors.orange[700],
-                            fontWeight: FontWeight.w500,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-        // Show filled data card when waiting for approval, accepted, rejected, or on hold
-        if ((currentStep.status == StepStatus.waitingApproval ||
-            currentStep.status == StepStatus.accepted ||
-            currentStep.status == StepStatus.rejected ||
-            currentStep.status == StepStatus.onHold) &&
-            currentStep.formData.isNotEmpty)
-          _buildFilledDataCard(currentStep),
-      ],
-    );
-  }
-
-  Color _getStepColor(StepStatus status) {
-    switch (status) {
-      case StepStatus.pending:
-        return Colors.grey[100]!;
-      case StepStatus.inProgress:
-        return Colors.blue[100]!;
-      case StepStatus.waitingApproval:
-        return Colors.orange[100]!;
-      case StepStatus.accepted:
-        return Colors.green[100]!;
-      case StepStatus.rejected:
-        return Colors.red[100]!;
-      case StepStatus.onHold:
-        return Colors.amber[100]!;
-      case StepStatus.completed:
-        return Colors.green[100]!;
-    }
-  }
-
-  Widget _getStepIcon(StepStatus status) {
-    switch (status) {
-      case StepStatus.pending:
-        return Text(
-          '${currentActiveStep + 1}',
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
-        );
-      case StepStatus.inProgress:
-        return Icon(Icons.play_arrow, color: Colors.blue[700], size: 20);
-      case StepStatus.waitingApproval:
-        return Icon(Icons.pending, color: Colors.orange[700], size: 20);
-      case StepStatus.accepted:
-        return Icon(Icons.check, color: Colors.green[700], size: 20);
-      case StepStatus.rejected:
-        return Icon(Icons.close, color: Colors.red[700], size: 20);
-      case StepStatus.onHold:
-        return Icon(Icons.pause, color: Colors.amber[700], size: 20);
-      case StepStatus.completed:
-        return Icon(Icons.check_circle, color: Colors.green[700], size: 20);
-    }
-  }
-
-  Color _getButtonColor(StepStatus status) {
-    switch (status) {
-      case StepStatus.inProgress:
-        return Colors.black87;
-      case StepStatus.waitingApproval:
-        return Colors.orange;
-      case StepStatus.rejected:
-        return Colors.red;
-      case StepStatus.onHold:
-        return Colors.amber;
-      default:
-        return Colors.black87;
-    }
-  }
-
-  String _getButtonText(StepData step) {
-    switch (step.status) {
-      case StepStatus.inProgress:
-        return step.type == StepType.jobAssigned ? 'View Details' : 'Fill Details';
-      case StepStatus.waitingApproval:
-        return 'Review & Take Action';
-      case StepStatus.rejected:
-        return 'Update Details';
-      case StepStatus.onHold:
-        return 'Update Details';
-      default:
-        return 'Action Required';
-    }
-  }
-
-  Widget _buildFilledDataCard(StepData step) {
-    Color cardColor;
-    Color borderColor;
-    Color iconColor;
-    IconData icon;
-    String title;
-
-    switch (step.status) {
-      case StepStatus.accepted:
-        cardColor = Colors.green[50]!;
-        borderColor = Colors.green[200]!;
-        iconColor = Colors.green[700]!;
-        icon = Icons.check_circle;
-        title = 'Accepted Data - ${step.title}';
-        break;
-      case StepStatus.rejected:
-        cardColor = Colors.red[50]!;
-        borderColor = Colors.red[200]!;
-        iconColor = Colors.red[700]!;
-        icon = Icons.error;
-        title = 'Rejected Data - ${step.title}';
-        break;
-      case StepStatus.onHold:
-        cardColor = Colors.amber[50]!;
-        borderColor = Colors.amber[200]!;
-        iconColor = Colors.amber[700]!;
-        icon = Icons.pause_circle;
-        title = 'On Hold Data - ${step.title}';
-        break;
-      default:
-        cardColor = Colors.blue[50]!;
-        borderColor = Colors.blue[200]!;
-        iconColor = Colors.blue[700]!;
-        icon = Icons.description;
-        title = 'Filled Data - ${step.title}';
-    }
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: borderColor),
-      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Icon(icon, color: iconColor, size: 20),
-              const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  title,
+                  'Job Progress',
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: iconColor,
+                    color: AppColors.maincolor,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.maincolor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '$completedSteps of ${steps.length}',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.maincolor,
                   ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          ...step.formData.entries.map((entry) => Container(
-            width: double.infinity,
-            margin: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 100,
-                  child: Text(
-                    _formatFieldName(entry.key),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-                const Text(': ', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                Expanded(
-                  child: Text(
-                    entry.value.toString(),
-                    style: const TextStyle(fontSize: 13),
-                    softWrap: true,
-                  ),
-                ),
-              ],
-            ),
-          )).toList(),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: _getStatusBackgroundColor(step.status),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: borderColor),
-            ),
-            child: Row(
-              children: [
-                Icon(icon, color: iconColor, size: 16),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _getStatusMessage(step),
-                    style: TextStyle(
-                      color: iconColor,
-                      fontWeight: FontWeight.w500,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          LinearProgressIndicator(
+            value: completedSteps / steps.length,
+            backgroundColor: Colors.grey[200],
+            valueColor: AlwaysStoppedAnimation<Color>(AppColors.maincolor),
+            minHeight: 8,
           ),
-        ],
-      ),
-    );
-  }
-
-  Color _getStatusBackgroundColor(StepStatus status) {
-    switch (status) {
-      case StepStatus.accepted:
-        return Colors.green[100]!;
-      case StepStatus.rejected:
-        return Colors.red[100]!;
-      case StepStatus.onHold:
-        return Colors.amber[100]!;
-      default:
-        return Colors.green[50]!;
-    }
-  }
-
-  String _getStatusMessage(StepData step) {
-    switch (step.status) {
-      case StepStatus.accepted:
-        return 'Data accepted and step completed';
-      case StepStatus.rejected:
-        return 'Data rejected: ${step.rejectionReason ?? 'Please update details'}';
-      case StepStatus.onHold:
-        return 'Step on hold: ${step.holdReason ?? 'Please update details'}';
-      default:
-        return 'Data successfully filled and ready for approval';
-    }
-  }
-
-  String _formatFieldName(String key) {
-    // Convert camelCase to readable format
-    switch (key) {
-      case 'sheetSize':
-        return 'Sheet Size';
-      case 'required':
-        return 'Required';
-      case 'available':
-        return 'Available';
-      case 'issueDate':
-        return 'Issue Date';
-      case 'millExtraMargin':
-        return 'Mill Extra Margin';
-      case 'gsm':
-        return 'GSM';
-      case 'quantity':
-        return 'Quantity';
-      default:
-        return key;
-    }
-  }
-
-  Widget _buildCompletedSteps() {
-    final completedSteps = steps.take(currentActiveStep).where((step) =>
-    step.status == StepStatus.completed || step.status == StepStatus.accepted).toList();
-
-    if (completedSteps.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Completed Steps',
+          const SizedBox(height: 8),
+          Text(
+            '${((completedSteps / steps.length) * 100).toInt()}% Complete',
             style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey,
+              fontSize: 14,
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(height: 12),
-          ...completedSteps.asMap().entries.map((entry) {
-            final index = entry.key;
-            final step = entry.value;
-            return Container(
-              width: double.infinity,
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.grey[50],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey[200]!),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.green, size: 20),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      step.title,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                  if (step.formData.isNotEmpty)
-                    GestureDetector(
-                      onTap: () => _showCompletedStepDetails(step),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.blue[100],
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          'View Details',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.maincolor,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            );
-          }).toList(),
         ],
       ),
     );
+  }
+
+  Widget _buildStepsList() {
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: steps.length,
+      itemBuilder: (context, index) {
+        final step = steps[index];
+        final isClickable = step.type == StepType.jobAssigned ||
+            (step.status == StepStatus.pending && _isStepActive(step)) ||
+            step.status == StepStatus.started ||
+            step.status == StepStatus.inProgress ||
+            (step.status == StepStatus.completed && step.formData.isNotEmpty);
+
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: Card(
+            elevation: _isStepActive(step) ? 4 : 1,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: _isStepActive(step) && step.status != StepStatus.completed
+                  ? BorderSide(color: AppColors.maincolor, width: 2)
+                  : BorderSide.none,
+            ),
+            child: InkWell(
+              onTap: isClickable ? () => _handleStepTap(step) : null,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: _getStepColor(step.status),
+                        borderRadius: BorderRadius.circular(25),
+                      ),
+                      child: Center(
+                        child: _getStepIcon(step.status, index + 1),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            step.title,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: _isStepActive(step) && step.status != StepStatus.completed
+                                  ? AppColors.maincolor
+                                  : Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            step.description,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            _getStepStatusText(step),
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: _getStatusTextColor(step.status),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (isClickable)
+                      Icon(
+                        _getActionIcon(step),
+                        color: _getActionIconColor(step),
+                        size: 16,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  IconData _getActionIcon(StepData step) {
+    if (step.status == StepStatus.pending && _isStepActive(step)) {
+      return Icons.play_arrow;
+    } else if (step.status == StepStatus.started || step.status == StepStatus.inProgress) {
+      return Icons.edit;
+    } else if (step.status == StepStatus.completed && step.formData.isNotEmpty) {
+      return Icons.visibility;
+    } else if (step.type == StepType.jobAssigned) {
+      return Icons.info_outline;
+    }
+    return Icons.arrow_forward_ios;
+  }
+
+  Color _getActionIconColor(StepData step) {
+    if (step.status == StepStatus.pending && _isStepActive(step)) {
+      return AppColors.maincolor;
+    } else if (step.status == StepStatus.started || step.status == StepStatus.inProgress) {
+      return AppColors.maincolor;
+    } else if (step.status == StepStatus.completed && step.formData.isNotEmpty) {
+      return Colors.grey[600]!;
+    }
+    return AppColors.maincolor;
+  }
+
+  Color _getStepColor(StepStatus status) {
+    switch (status) {
+      case StepStatus.pending:
+        return Colors.grey[200]!;
+      case StepStatus.started:
+        return Colors.orange[200]!;
+      case StepStatus.inProgress:
+        return AppColors.maincolor.withOpacity(0.2);
+      case StepStatus.completed:
+        return Colors.green[200]!;
+    }
+  }
+
+  Widget _getStepIcon(StepStatus status, int stepNumber) {
+    switch (status) {
+      case StepStatus.pending:
+        return Text(
+          '$stepNumber',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey[600],
+          ),
+        );
+      case StepStatus.started:
+        return Icon(
+          Icons.play_circle_filled,
+          color: Colors.orange[700],
+          size: 24,
+        );
+      case StepStatus.inProgress:
+        return Icon(
+          Icons.sync,
+          color: AppColors.maincolor,
+          size: 24,
+        );
+      case StepStatus.completed:
+        return const Icon(
+          Icons.check_circle,
+          color: Colors.green,
+          size: 24,
+        );
+    }
+  }
+
+  Color _getStatusTextColor(StepStatus status) {
+    switch (status) {
+      case StepStatus.pending:
+        return Colors.grey[600]!;
+      case StepStatus.started:
+        return Colors.orange[700]!;
+      case StepStatus.inProgress:
+        return AppColors.maincolor;
+      case StepStatus.completed:
+        return Colors.green[700]!;
+    }
   }
 
   void _showCompletedStepDetails(StepData step) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppColors.white,
+        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          '${step.title} - Details',
-          style: TextStyle(
-            color: AppColors.maincolor,
-            fontWeight: FontWeight.bold,
-            fontSize: 18,
-          ),
+        title: Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '${step.title} - Completed',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
+            ),
+          ],
         ),
         content: Container(
           width: double.maxFinite,
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.6,
+          ),
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: step.formData.entries.map((entry) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       SizedBox(
-                        width: 130,
+                        width: 100,
                         child: Text(
-                          _formatFieldName(entry.key),
-                          style: TextStyle(
+                          entry.key,
+                          style: const TextStyle(
                             fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                            color: AppColors.black,
+                            fontSize: 13,
                           ),
                         ),
                       ),
@@ -1026,10 +711,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                       Expanded(
                         child: Text(
                           entry.value.toString(),
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.black87,
-                          ),
+                          style: const TextStyle(fontSize: 13),
                         ),
                       ),
                     ],
@@ -1042,10 +724,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            style: TextButton.styleFrom(
-              foregroundColor: AppColors.maincolor,
-            ),
-            child: const Text('Close'),
+            child: Text('Close', style: TextStyle(color: AppColors.maincolor)),
           ),
         ],
       ),
@@ -1057,20 +736,35 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: Text('Job ${widget.jobNumber ?? 'JOB001'}'),
+        title: Row(
+          children: [
+            Icon(Icons.assignment, color: AppColors.maincolor),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Job ${widget.jobNumber ?? widget.job?.jobNumber ?? 'JOB001'}',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
         elevation: 0,
-        centerTitle: true,
+        centerTitle: false,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline, color: Colors.blue),
+            tooltip: 'View Job Details',
+            onPressed: _showCompleteJobDetails,
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildProgressIndicator(),
-            _buildCurrentStep(),
-            const SizedBox(height: 20),
-            _buildCompletedSteps(),
+            _buildStepsList(),
             const SizedBox(height: 40),
           ],
         ),
@@ -1079,75 +773,187 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   }
 }
 
-class GenericForm extends StatelessWidget {
+class WorkForm extends StatefulWidget {
   final String title;
+  final String description;
   final Map<String, String> initialValues;
   final List<String> fieldNames;
+  final bool hasData;
   final Function(Map<String, String>) onSubmit;
+  final Function(Map<String, String>) onComplete;
 
-  const GenericForm({
+  const WorkForm({
     Key? key,
     required this.title,
+    required this.description,
     required this.initialValues,
     required this.fieldNames,
+    required this.hasData,
     required this.onSubmit,
+    required this.onComplete,
   }) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
-    final formKey = GlobalKey<FormState>();
-    final controllers = fieldNames
-        .map((field) => TextEditingController(text: initialValues[field]))
-        .toList();
+  State<WorkForm> createState() => _WorkFormState();
+}
 
+class _WorkFormState extends State<WorkForm> {
+  final _formKey = GlobalKey<FormState>();
+  late List<TextEditingController> _controllers;
+
+  @override
+  void initState() {
+    super.initState();
+    _controllers = widget.fieldNames
+        .map((field) => TextEditingController(text: widget.initialValues[field]))
+        .toList();
+  }
+
+  @override
+  void dispose() {
+    for (var controller in _controllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: Text(
-        title,
-        style: TextStyle(
-          color: AppColors.maincolor,
-          fontWeight: FontWeight.bold,
-        ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.work_outline, color: AppColors.maincolor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  widget.title,
+                  style: TextStyle(
+                    color: AppColors.maincolor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            widget.description,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[600],
+              fontWeight: FontWeight.normal,
+            ),
+          ),
+        ],
       ),
       backgroundColor: Colors.white,
       content: Container(
         width: double.maxFinite,
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.5,
+        ),
         child: Form(
-          key: formKey,
+          key: _formKey,
           child: SingleChildScrollView(
             child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(fieldNames.length, (index) {
-                return _buildFormField(fieldNames[index], controllers[index]);
+              children: List.generate(widget.fieldNames.length, (index) {
+                return _buildFormField(widget.fieldNames[index], _controllers[index]);
               }),
             ),
           ),
         ),
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(
-            'Cancel',
-            style: TextStyle(color: AppColors.maincolor),
+        Container(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // First row with Cancel and Save
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.grey[600],
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: BorderSide(color: Colors.grey[300]!),
+                        ),
+                      ),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.maincolor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: () {
+                        if (_formKey.currentState!.validate()) {
+                          final formData = <String, String>{};
+                          for (int i = 0; i < _controllers.length; i++) {
+                            formData[widget.fieldNames[i]] = _controllers[i].text;
+                          }
+                          widget.onSubmit(formData);
+                          Navigator.pop(context);
+                        }
+                      },
+                      child: const Text('Save Details'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // Second row with Complete Work button (full width)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    elevation: 2,
+                  ),
+                  onPressed: () {
+                    if (_formKey.currentState!.validate()) {
+                      final formData = <String, String>{};
+                      for (int i = 0; i < _controllers.length; i++) {
+                        formData[widget.fieldNames[i]] = _controllers[i].text;
+                      }
+                      widget.onComplete(formData);
+                    }
+                  },
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.check_circle, size: 20),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Complete Work',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-        ),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.maincolor,
-            foregroundColor: Colors.white,
-          ),
-          onPressed: () {
-            if (formKey.currentState!.validate()) {
-              final formData = <String, String>{};
-              for (int i = 0; i < controllers.length; i++) {
-                formData[fieldNames[i]] = controllers[i].text;
-              }
-              onSubmit(formData);
-              Navigator.pop(context);
-            }
-          },
-          child: const Text('Submit'),
         ),
       ],
     );
@@ -1162,13 +968,16 @@ class GenericForm extends StatelessWidget {
           labelText: label,
           labelStyle: TextStyle(color: AppColors.maincolor),
           border: OutlineInputBorder(
-            borderSide: BorderSide(color: Colors.blue.shade200),
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: Colors.grey[300]!),
           ),
           focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide(color: AppColors.maincolor, width: 2),
           ),
           filled: true,
-          fillColor: Colors.white, // Changed from Colors.blue[50] to white
+          fillColor: Colors.grey[50],
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
         ),
         validator: (value) {
           if (value == null || value.isEmpty) {
