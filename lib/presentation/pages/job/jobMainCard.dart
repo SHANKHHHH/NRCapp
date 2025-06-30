@@ -31,13 +31,35 @@ class JobMainCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                job.jobNumber,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue,
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      job.jobNumber,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(job.status).withOpacity(0.15),
+                      border: Border.all(color: _getStatusColor(job.status)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      _getStatusText(job.status),
+                      style: TextStyle(
+                        color: _getStatusColor(job.status),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               _buildInfoRow(Icons.business, 'Customer', job.customer),
@@ -79,5 +101,35 @@ class JobMainCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Color _getStatusColor(JobStatus status) {
+    switch (status) {
+      case JobStatus.active:
+        return Colors.green;
+      case JobStatus.inactive:
+        return Colors.orange;
+      case JobStatus.hold:
+        return Colors.red;
+      case JobStatus.workingStarted:
+        return Colors.blue;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _getStatusText(JobStatus status) {
+    switch (status) {
+      case JobStatus.active:
+        return 'Active';
+      case JobStatus.inactive:
+        return 'Inactive';
+      case JobStatus.hold:
+        return 'Hold';
+      case JobStatus.workingStarted:
+        return 'Working';
+      default:
+        return 'Unknown';
+    }
   }
 }

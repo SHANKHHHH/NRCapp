@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 import '../../../data/models/Job.dart';
+import 'ArtworkWorkflowWidget.dart';
+import 'package:go_router/go_router.dart';
 
-class JobCard extends StatelessWidget {
+class EnhancedJobCard extends StatelessWidget {
   final Job job;
-  final VoidCallback onTap;
   final Function(Job, JobStatus)? onStatusUpdate;
+  final Function(Job)? onJobUpdate;
 
-  const JobCard({
+  const EnhancedJobCard({
     Key? key,
     required this.job,
-    required this.onTap,
     this.onStatusUpdate,
+    this.onJobUpdate,
   }) : super(key: key);
 
   @override
@@ -18,312 +20,128 @@ class JobCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Column(
         children: [
-          InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        job.jobNumber,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue,
-                        ),
-                      ),
-                      _buildJobDemandChip(),
-                      IconButton(
-                        icon: const Icon(Icons.info_outline, color: Colors.grey),
-                        tooltip: 'View Details',
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: Text('Job Details: ${job.jobNumber}'),
-                              content: SingleChildScrollView(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _detailRow('Job Number', job.jobNumber),
-                                    _detailRow('Status', job.status.name),
-                                    if (job.jobDemand != null)
-                                      _detailRow('Job Demand', job.jobDemand!.name),
-                                    const SizedBox(height: 16),
-                                    Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: Colors.blue[50],
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: Colors.blue[200]!),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.info, color: Colors.blue[600], size: 20),
-                                          const SizedBox(width: 8),
-                                          const Expanded(
-                                            child: Text(
-                                              'Full job details are shown below.',
-                                              style: TextStyle(fontSize: 12, color: Colors.blue),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    _detailRow('Customer', job.customer),
-                                    _detailRow('Plant', job.plant),
-                                    _detailRow('Job Date', job.jobDate),
-                                    _detailRow('Delivery Date', job.deliveryDate),
-                                    _detailRow('Created Date', job.createdDate),
-                                    _detailRow('Created By', job.createdBy),
-                                    _detailRow('Style', job.style),
-                                    _detailRow('Die Code', job.dieCode),
-                                    _detailRow('Board Size', job.boardSize),
-                                    _detailRow('Flute Type', job.fluteType),
-                                    _detailRow('Job Month', job.jobMonth),
-                                    _detailRow('No. of Ups', job.noOfUps.toString()),
-                                    _detailRow('No. of Sheets', job.noOfSheets.toString()),
-                                    _detailRow('Total Quantity', job.totalQuantity.toString()),
-                                    _detailRow('Unit', job.unit),
-                                    _detailRow('Dispatch Quantity', job.dispatchQuantity.toString()),
-                                    _detailRow('Pending Quantity', job.pendingQuantity.toString()),
-                                    _detailRow('Shade Card Approval', job.shadeCardApprovalDate),
-                                    _detailRow('NRC Delivery Date', job.nrcDeliveryDate),
-                                    _detailRow('Dispatch Date', job.dispatchDate),
-                                    _detailRow('Pending Validity', job.pendingValidity),
-                                    _detailRow('Status', job.status.name),
-                                    if (job.jobDemand != null)
-                                      _detailRow('Job Demand', job.jobDemand!.name),
-                                    _detailRow('Approval Pending', job.isApprovalPending ? 'Yes' : 'No'),
-                                  ],
-                                ),
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: const Text('Close'),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  _buildInfoRow(Icons.business, 'Customer', job.customer),
-                  _buildInfoRow(Icons.factory, 'Plant', job.plant),
-                  _buildInfoRow(Icons.calendar_today, 'Job Date', job.jobDate),
-                  _buildInfoRow(Icons.delivery_dining, 'Delivery Date', job.deliveryDate),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildStatusChip(),
-                      Text(
-                        'Qty: ${job.totalQuantity} ${job.unit}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+          // Main Job Information (No onClick anymore)
+          Container(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildJobHeader(),
+                const SizedBox(height: 12),
+                _buildJobInfo(),
+                const SizedBox(height: 12),
+                _buildJobMetrics(),
+              ],
             ),
           ),
 
-          // Approval Section
-          if (job.isApprovalPending && onStatusUpdate != null)
-            _buildApprovalSection(context),
+          // Artwork Workflow Section
+          if (job.status == JobStatus.active)
+            ArtworkWorkflowWidget(
+              job: job,
+              onJobUpdate: onJobUpdate ?? (job) {},
+              isActive: true,
+            ),
 
-          // Hold Section if working started
-          if (job.status == JobStatus.workingStarted && onStatusUpdate != null)
-            _buildHoldSection(context),
-
-          // Resume Section if on hold
-          if (job.status == JobStatus.hold && onStatusUpdate != null)
-            _buildResumeSection(context),
+          // Status Control Section
+          if (_shouldShowStatusControls())
+            _buildStatusControlSection(context),
         ],
       ),
     );
   }
 
-  Widget _buildApprovalSection(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(12),
-          bottomRight: Radius.circular(12),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Approval Required',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: Colors.orange,
-            ),
-          ),
-          const SizedBox(height: 8),
-          if (job.jobDemand != null)
-            Text(
-              'Job Demand: ${job.jobDemand!.name.toUpperCase()}',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          const SizedBox(height: 12),
-          Row(
+  Widget _buildJobHeader() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => _showApprovalDialog(context, true),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text('Approve'),
+              Text(
+                job.jobNumber,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue,
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => _showApprovalDialog(context, false),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text('Reject'),
+              const SizedBox(height: 4),
+              Text(
+                job.customer,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
           ),
+        ),
+        Row(
+          children: [
+            _buildJobDemandChip(),
+            const SizedBox(width: 8),
+            _buildStatusChip(),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildJobInfo() {
+    return Column(
+      children: [
+        _buildInfoRow(Icons.factory, 'Plant', job.plant),
+        _buildInfoRow(Icons.calendar_today, 'Job Date', job.jobDate),
+        _buildInfoRow(Icons.delivery_dining, 'Delivery', job.deliveryDate),
+        if (job.artworkReceivedDate != null && job.artworkReceivedDate!.isNotEmpty)
+          _buildInfoRow(Icons.palette, 'Artwork Received', job.artworkReceivedDate!),
+      ],
+    );
+  }
+
+  Widget _buildJobMetrics() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildMetric('Total Qty', '${job.totalQuantity}'),
+          _buildMetric('Dispatched', '${job.dispatchQuantity}'),
+          _buildMetric('Pending', '${job.pendingQuantity}'),
         ],
       ),
     );
   }
 
-  Widget _buildHoldSection(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(12),
-          bottomRight: Radius.circular(12),
+  Widget _buildMetric(String label, String value) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Job In Progress',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: Colors.blueAccent,
-            ),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Colors.grey,
           ),
-          const SizedBox(height: 12),
-          ElevatedButton.icon(
-            onPressed: () => _showHoldConfirmationDialog(context),
-            icon: const Icon(Icons.pause_circle_filled),
-            label: const Text('Hold This Job'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.grey[800],
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildResumeSection(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(12),
-          bottomRight: Radius.circular(12),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Job is On Hold',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: Colors.deepOrange,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => _showResumeDialog(context, JobStatus.active),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green[600],
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text('Mark as Active'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => _showResumeDialog(context, JobStatus.workingStarted),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text('Start Working'),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+      ],
     );
   }
 
@@ -370,44 +188,15 @@ class JobCard extends StatelessWidget {
         break;
       case JobStatus.workingStarted:
         chipColor = Colors.blue;
-        statusText = 'WORKING STARTED';
+        statusText = 'Working';
         break;
       case JobStatus.hold:
         chipColor = Colors.grey;
         statusText = 'Hold';
         break;
-    }
-
-    return Chip(
-      label: Text(
-        statusText,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-      backgroundColor: chipColor,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    );
-  }
-
-  Widget _buildJobDemandChip() {
-    if (job.jobDemand == null) {
-      return const SizedBox.shrink();
-    }
-
-    Color chipColor;
-    switch (job.jobDemand!) {
-      case JobDemand.high:
-        chipColor = Colors.red[100]!;
-        break;
-      case JobDemand.medium:
-        chipColor = Colors.yellow[100]!;
-        break;
-      case JobDemand.low:
-        chipColor = Colors.green[100]!;
+      case JobStatus.completed:
+        chipColor = Colors.purple;
+        statusText = 'Completed';
         break;
     }
 
@@ -418,8 +207,9 @@ class JobCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
-        job.jobDemand!.name.toUpperCase(),
+        statusText,
         style: const TextStyle(
+          color: Colors.white,
           fontSize: 10,
           fontWeight: FontWeight.bold,
         ),
@@ -427,116 +217,293 @@ class JobCard extends StatelessWidget {
     );
   }
 
-  void _showApprovalDialog(BuildContext context, bool isApprove) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isApprove ? 'Approve Job' : 'Reject Job'),
-        content: Text(
-          isApprove
-              ? 'Are you sure you want to approve job ${job.jobNumber}? This will start the working process.'
-              : 'Are you sure you want to reject job ${job.jobNumber}?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              if (onStatusUpdate != null) {
-                onStatusUpdate!(
-                  job,
-                  isApprove ? JobStatus.workingStarted : JobStatus.hold,
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isApprove ? Colors.green : Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: Text(isApprove ? 'Approve' : 'Reject'),
-          ),
-        ],
+  Widget _buildJobDemandChip() {
+    if (job.jobDemand == null) {
+      return const SizedBox.shrink();
+    }
+
+    Color chipColor;
+    IconData icon;
+
+    switch (job.jobDemand!) {
+      case JobDemand.high:
+        chipColor = Colors.red[100]!;
+        icon = Icons.priority_high;
+        break;
+      case JobDemand.medium:
+        chipColor = Colors.yellow[100]!;
+        icon = Icons.remove;
+        break;
+      case JobDemand.low:
+        chipColor = Colors.green[100]!;
+        icon = Icons.trending_down;
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: chipColor,
+        borderRadius: BorderRadius.circular(12),
       ),
-    );
-  }
-
-  void _showHoldConfirmationDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Hold Job'),
-        content: Text('Do you want to hold the job ${job.jobNumber}? This will pause the working process.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              if (onStatusUpdate != null) {
-                onStatusUpdate!(job, JobStatus.hold);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.grey,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Hold Job'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showResumeDialog(BuildContext context, JobStatus newStatus) {
-    final isStartWorking = newStatus == JobStatus.workingStarted;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isStartWorking ? 'Resume and Start Working' : 'Resume Job'),
-        content: Text(
-          isStartWorking
-              ? 'Do you want to resume and start working on job ${job.jobNumber}?'
-              : 'Do you want to resume and mark job ${job.jobNumber} as active?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              if (onStatusUpdate != null) {
-                onStatusUpdate!(job, newStatus);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isStartWorking ? Colors.blue : Colors.green,
-              foregroundColor: Colors.white,
-            ),
-            child: Text(isStartWorking ? 'Start Working' : 'Mark Active'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _detailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12),
+          const SizedBox(width: 4),
+          Text(
+            job.jobDemand!.name.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusControlSection(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(12),
+          bottomRight: Radius.circular(12),
+        ),
+      ),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 120, child: Text('$label:', style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.grey))),
-          Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500))),
+          Text(
+            _getStatusControlTitle(),
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildStatusActionButtons(context),
         ],
       ),
     );
+  }
+
+  String _getStatusControlTitle() {
+    switch (job.status) {
+      case JobStatus.workingStarted:
+        return 'Job In Progress';
+      case JobStatus.hold:
+        return 'Job is On Hold';
+      case JobStatus.active:
+        return 'Job is Active';
+      default:
+        return 'Job Status';
+    }
+  }
+
+  Widget _buildStatusActionButtons(BuildContext context) {
+    switch (job.status) {
+      case JobStatus.workingStarted:
+        return Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => _showStatusChangeDialog(context, JobStatus.hold),
+                icon: const Icon(Icons.pause_circle_filled),
+                label: const Text('Hold Job'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange[600],
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => _showStatusChangeDialog(context, JobStatus.completed),
+                icon: const Icon(Icons.check_circle),
+                label: const Text('Complete'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.purple[600],
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        );
+
+      case JobStatus.hold:
+        return Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => _showStatusChangeDialog(context, JobStatus.active),
+                icon: const Icon(Icons.play_circle_filled),
+                label: const Text('Activate'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green[600],
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => _showStatusChangeDialog(context, JobStatus.workingStarted),
+                icon: const Icon(Icons.work),
+                label: const Text('Start Work'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue[600],
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        );
+
+      case JobStatus.active:
+        final allArtworkDatesFilled =
+            (job.artworkReceivedDate?.isNotEmpty ?? false) &&
+                (job.artworkApprovalDate?.isNotEmpty ?? false) &&
+                (job.shadeCardDate?.isNotEmpty ?? false);
+
+        if (!allArtworkDatesFilled) {
+          return const SizedBox.shrink();
+        }
+
+        if (!job.hasPoAdded) {
+          // Navigate to PurchaseOrderInput page
+          return SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                GoRouter.of(context).push('/add-po', extra: job);
+              },
+              icon: const Icon(Icons.add_business),
+              label: const Text('Add PO'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange[600],
+                foregroundColor: Colors.white,
+              ),
+            ),
+          );
+        }
+
+        // If PO is already added, show confirmation
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.green[100],
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.green[700]),
+              const SizedBox(width: 8),
+              Text(
+                'PO added for this job',
+                style: TextStyle(
+                  color: Colors.green[700],
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        );
+
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  bool _shouldShowStatusControls() {
+    return job.status == JobStatus.active ||
+        job.status == JobStatus.workingStarted ||
+        job.status == JobStatus.hold;
+  }
+
+  void _showStatusChangeDialog(BuildContext context, JobStatus newStatus) {
+    String statusName = _getStatusDisplayName(newStatus);
+    String actionVerb = _getStatusActionVerb(newStatus);
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('$actionVerb Job'),
+          content: Text(
+            'Are you sure you want to change the status of job ${job.jobNumber} to $statusName?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                if (onStatusUpdate != null) {
+                  onStatusUpdate!(job, newStatus);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _getStatusColor(newStatus),
+                foregroundColor: Colors.white,
+              ),
+              child: Text(actionVerb),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _getStatusDisplayName(JobStatus status) {
+    switch (status) {
+      case JobStatus.active:
+        return 'Active';
+      case JobStatus.inactive:
+        return 'Inactive';
+      case JobStatus.workingStarted:
+        return 'Working Started';
+      case JobStatus.hold:
+        return 'Hold';
+      case JobStatus.completed:
+        return 'Completed';
+    }
+  }
+
+  String _getStatusActionVerb(JobStatus status) {
+    switch (status) {
+      case JobStatus.active:
+        return 'Activate';
+      case JobStatus.inactive:
+        return 'Deactivate';
+      case JobStatus.workingStarted:
+        return 'Start Working';
+      case JobStatus.hold:
+        return 'Hold';
+      case JobStatus.completed:
+        return 'Complete';
+    }
+  }
+
+  Color _getStatusColor(JobStatus status) {
+    switch (status) {
+      case JobStatus.active:
+        return Colors.green;
+      case JobStatus.inactive:
+        return Colors.orange;
+      case JobStatus.workingStarted:
+        return Colors.blue;
+      case JobStatus.hold:
+        return Colors.grey;
+      case JobStatus.completed:
+        return Colors.purple;
+    }
   }
 }

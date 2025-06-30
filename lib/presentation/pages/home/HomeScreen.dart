@@ -67,7 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
             if (_userRole == 'Planner' || _userRole == 'Admin') ...[
               ElevatedButton.icon(
                 onPressed: () {
-                  context.push('/purchase-order-input');
+                  context.push('/all-Jobs');
                 },
                 icon: const Icon(Icons.add),
                 label: const Text('Create New Job'),
@@ -179,7 +179,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: () => context.push('/purchase-order-input'),
+                      onPressed: () => context.push('/all-Jobs'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.white,
                         shape: RoundedRectangleBorder(

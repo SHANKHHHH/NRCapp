@@ -19,40 +19,6 @@ class JobDetailScreen extends StatelessWidget {
         title: Text(job.jobNumber),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
-        actions: [
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            onSelected: (value) {
-              if (value == 'edit') {
-                _showEditDialog(context);
-              } else if (value == 'add_po') {
-                _showAddPODialog(context);
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'edit',
-                child: Row(
-                  children: [
-                    Icon(Icons.edit, size: 20),
-                    SizedBox(width: 8),
-                    Text('Edit'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'add_po',
-                child: Row(
-                  children: [
-                    Icon(Icons.add_shopping_cart, size: 20),
-                    SizedBox(width: 8),
-                    Text('Add PO'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -67,12 +33,23 @@ class JobDetailScreen extends StatelessWidget {
             const SizedBox(height: 16),
             _buildDeliveryDetailsCard(),
             const SizedBox(height: 24),
-            // Show different buttons based on job status
             if (job.status == JobStatus.inactive || job.status == JobStatus.active)
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () => _showJobDemandDialog(context),
+                  onPressed: () {
+                    final updatedJob = job.copyWith(status: JobStatus.workingStarted);
+                    if (onJobUpdate != null) {
+                      onJobUpdate!(updatedJob);
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Started working on job ${job.jobNumber}'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                    context.go('/job-list'); // Go directly to job list page
+                  },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
                     foregroundColor: Colors.white,

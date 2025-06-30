@@ -174,14 +174,14 @@ class SearchBarWidget extends StatelessWidget {
 
 
 
-class JobListScreen extends StatefulWidget {
-  const JobListScreen({Key? key}) : super(key: key);
+class AllJobsScreen extends StatefulWidget {
+  const AllJobsScreen({Key? key}) : super(key: key);
 
   @override
-  State<JobListScreen> createState() => _JobListScreenState();
+  State<AllJobsScreen> createState() => _JobListScreenState();
 }
 
-class _JobListScreenState extends State<JobListScreen> {
+class _JobListScreenState extends State<AllJobsScreen> {
   final TextEditingController _searchController = TextEditingController();
   String? _selectedCustomer;
   List<Job> _filteredJobs = [];

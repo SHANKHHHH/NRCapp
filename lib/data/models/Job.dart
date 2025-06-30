@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum JobStatus { active, inactive, hold, workingStarted}
+enum JobStatus { active, inactive, hold, workingStarted, completed }
 enum JobDemand { high, medium, low }
 
 class Job {
@@ -27,8 +27,14 @@ class Job {
   final String dispatchDate;
   final String pendingValidity;
   final JobStatus status;
-  final JobDemand? jobDemand; // This will be set after user starts working
-  final bool isApprovalPending; // This will show approve/reject buttons
+  final JobDemand? jobDemand;
+  final bool isApprovalPending;
+  
+  // New fields for artwork workflow
+  final String? artworkReceivedDate;
+  final String? artworkApprovalDate;
+  final String? shadeCardDate;
+  final bool hasPoAdded;
 
   Job({
     required this.jobNumber,
@@ -56,7 +62,28 @@ class Job {
     required this.status,
     this.jobDemand,
     this.isApprovalPending = false,
+    this.artworkReceivedDate,
+    this.artworkApprovalDate,
+    this.shadeCardDate,
+    this.hasPoAdded = false,
   });
+
+  // Check if all artwork workflow steps are completed
+  bool get isArtworkWorkflowComplete {
+    return artworkReceivedDate != null &&
+           artworkReceivedDate!.isNotEmpty &&
+           artworkApprovalDate != null &&
+           artworkApprovalDate!.isNotEmpty &&
+           shadeCardDate != null &&
+           shadeCardDate!.isNotEmpty;
+  }
+
+  // Check if any artwork field is missing
+  bool get hasIncompleteArtworkData {
+    return (artworkReceivedDate?.isEmpty ?? true) ||
+           (artworkApprovalDate?.isEmpty ?? true) ||
+           (shadeCardDate?.isEmpty ?? true);
+  }
 
   Job copyWith({
     String? jobNumber,
@@ -84,6 +111,10 @@ class Job {
     JobStatus? status,
     JobDemand? jobDemand,
     bool? isApprovalPending,
+    String? artworkReceivedDate,
+    String? artworkApprovalDate,
+    String? shadeCardDate,
+    bool? hasPoAdded,
   }) {
     return Job(
       jobNumber: jobNumber ?? this.jobNumber,
@@ -111,6 +142,10 @@ class Job {
       status: status ?? this.status,
       jobDemand: jobDemand ?? this.jobDemand,
       isApprovalPending: isApprovalPending ?? this.isApprovalPending,
+      artworkReceivedDate: artworkReceivedDate ?? this.artworkReceivedDate,
+      artworkApprovalDate: artworkApprovalDate ?? this.artworkApprovalDate,
+      shadeCardDate: shadeCardDate ?? this.shadeCardDate,
+      hasPoAdded: hasPoAdded ?? this.hasPoAdded,
     );
   }
 }

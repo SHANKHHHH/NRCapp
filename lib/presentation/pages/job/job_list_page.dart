@@ -184,57 +184,57 @@ class _JobListPageState extends State<JobListPage> {
         itemCount: _filteredJobs.length,
         itemBuilder: (context, index) {
           final job = _filteredJobs[index];
-          return JobCard(
+          return EnhancedJobCard(
             job: job,
-            onTap: () {
-              if (job.status == JobStatus.active ||
-                  job.status == JobStatus.hold ||
-                  job.status == JobStatus.workingStarted) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => JobTimelinePage(jobNumber: job.jobNumber, job: job),
-                  ),
-                );
-              } else if (job.status == JobStatus.inactive) {
-                showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('The Item is Inactive'),
-                    content: const Text('To proceed, activate this job.'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Cancel'),
-                      ),
-                      ElevatedButton(
-                        onPressed: () {
-                          // Update job status to active
-                          setState(() {
-                            final index = _jobs.indexWhere((j) => j.jobNumber == job.jobNumber);
-                            if (index != -1) {
-                              _jobs[index] = job.copyWith(status: JobStatus.active);
-                              _applyFilters();
-                            }
-                          });
-                          Navigator.pop(context); // Close dialog
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => JobDetailScreen(
-                                job: job.copyWith(status: JobStatus.active),
-                                onJobUpdate: _updateJob,
-                              ),
-                            ),
-                          );
-                        },
-                        child: const Text('Activate & View Details'),
-                      ),
-                    ],
-                  ),
-                );
-              }
-            },
+            // onTap: () {
+            //   if (job.status == JobStatus.active ||
+            //       job.status == JobStatus.hold ||
+            //       job.status == JobStatus.workingStarted) {
+            //     Navigator.push(
+            //       context,
+            //       MaterialPageRoute(
+            //         builder: (_) => JobTimelinePage(jobNumber: job.jobNumber, job: job),
+            //       ),
+            //     );
+            //   } else if (job.status == JobStatus.inactive) {
+            //     showDialog(
+            //       context: context,
+            //       builder: (context) => AlertDialog(
+            //         title: const Text('The Item is Inactive'),
+            //         content: const Text('To proceed, activate this job.'),
+            //         actions: [
+            //           TextButton(
+            //             onPressed: () => Navigator.pop(context),
+            //             child: const Text('Cancel'),
+            //           ),
+            //           ElevatedButton(
+            //             onPressed: () {
+            //               // Update job status to active
+            //               setState(() {
+            //                 final index = _jobs.indexWhere((j) => j.jobNumber == job.jobNumber);
+            //                 if (index != -1) {
+            //                   _jobs[index] = job.copyWith(status: JobStatus.active);
+            //                   _applyFilters();
+            //                 }
+            //               });
+            //               Navigator.pop(context); // Close dialog
+            //               Navigator.push(
+            //                 context,
+            //                 MaterialPageRoute(
+            //                   builder: (_) => JobDetailScreen(
+            //                     job: job.copyWith(status: JobStatus.active),
+            //                     onJobUpdate: _updateJob,
+            //                   ),
+            //                 ),
+            //               );
+            //             },
+            //             child: const Text('Activate & View Details'),
+            //           ),
+            //         ],
+            //       ),
+            //     );
+            //   }
+            // },
             onStatusUpdate: _updateJobStatus,
           );
         },
@@ -298,6 +298,9 @@ class _JobListPageState extends State<JobListPage> {
         return AppColors.grey;
       case JobStatus.workingStarted:
         return Colors.blue;
+      case JobStatus.completed:
+        // TODO: Handle this case.
+        throw UnimplementedError();
     }
   }
 
