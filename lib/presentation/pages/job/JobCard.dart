@@ -17,39 +17,54 @@ class EnhancedJobCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Column(
-        children: [
-          // Main Job Information (No onClick anymore)
-          Container(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildJobHeader(),
-                const SizedBox(height: 12),
-                _buildJobInfo(),
-                const SizedBox(height: 12),
-                _buildJobMetrics(),
-              ],
+    return InkWell(
+      onTap: () {
+        if (job.purchaseOrder != null) {
+          context.push(
+            '/job-details/${job.jobNumber}',
+            extra: {
+              'job': job,
+              'po': job.purchaseOrder,
+            },
+          );
+        } else {
+          // Optionally show a message: "No PO assigned for this job"
+        }
+      },
+      child: Card(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Column(
+          children: [
+            // Main Job Information (No onClick anymore)
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildJobHeader(),
+                  const SizedBox(height: 12),
+                  _buildJobInfo(),
+                  const SizedBox(height: 12),
+                  _buildJobMetrics(),
+                ],
+              ),
             ),
-          ),
 
-          // Artwork Workflow Section
-          if (job.status == JobStatus.active)
-            ArtworkWorkflowWidget(
-              job: job,
-              onJobUpdate: onJobUpdate ?? (job) {},
-              isActive: true,
-            ),
+            // Artwork Workflow Section
+            if (job.status == JobStatus.active)
+              ArtworkWorkflowWidget(
+                job: job,
+                onJobUpdate: onJobUpdate ?? (job) {},
+                isActive: true,
+              ),
 
-          // Status Control Section
-          if (_shouldShowStatusControls())
-            _buildStatusControlSection(context),
-        ],
+            // Status Control Section
+            if (_shouldShowStatusControls())
+              _buildStatusControlSection(context),
+          ],
+        ),
       ),
     );
   }

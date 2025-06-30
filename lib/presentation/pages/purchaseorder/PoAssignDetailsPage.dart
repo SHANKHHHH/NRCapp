@@ -49,8 +49,6 @@ class PoAssignDetailsPage extends StatelessWidget {
           Text('PO Date: ${purchaseOrder.purchaseOrderDate}'),
           Text('Deliver Date: ${purchaseOrder.deliverDate}'),
           Text('Total PO: ${purchaseOrder.totalPo}'),
-          Text('Dispatched: ${purchaseOrder.dispatchPo}'),
-          Text('Pending: ${purchaseOrder.pending}'),
           Text('Dispatch Date: ${purchaseOrder.dispatchDate}'),
         ],
       ),

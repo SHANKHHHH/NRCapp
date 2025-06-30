@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nrc/data/models/purchase_order.dart';
 
 enum JobStatus { active, inactive, hold, workingStarted, completed }
 enum JobDemand { high, medium, low }
@@ -35,6 +36,7 @@ class Job {
   final String? artworkApprovalDate;
   final String? shadeCardDate;
   final bool hasPoAdded;
+  final PurchaseOrder? purchaseOrder;
 
   Job({
     required this.jobNumber,
@@ -66,6 +68,7 @@ class Job {
     this.artworkApprovalDate,
     this.shadeCardDate,
     this.hasPoAdded = false,
+    this.purchaseOrder,
   });
 
   // Check if all artwork workflow steps are completed
@@ -115,6 +118,7 @@ class Job {
     String? artworkApprovalDate,
     String? shadeCardDate,
     bool? hasPoAdded,
+    PurchaseOrder? purchaseOrder,
   }) {
     return Job(
       jobNumber: jobNumber ?? this.jobNumber,
@@ -146,6 +150,7 @@ class Job {
       artworkApprovalDate: artworkApprovalDate ?? this.artworkApprovalDate,
       shadeCardDate: shadeCardDate ?? this.shadeCardDate,
       hasPoAdded: hasPoAdded ?? this.hasPoAdded,
+      purchaseOrder: purchaseOrder ?? this.purchaseOrder,
     );
   }
 }

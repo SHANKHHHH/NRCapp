@@ -40,7 +40,6 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
       _purchaseOrderDateController.text = widget.existingPo!.purchaseOrderDate;
       _deliverDateController.text = widget.existingPo!.deliverDate;
       _totalPoController.text = widget.existingPo!.totalPo.toString();
-      _dispatchPoController.text = widget.existingPo!.dispatchPo.toString();
       _dispatchDateController.text = widget.existingPo!.dispatchDate;
     }
 
@@ -541,15 +540,16 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
         purchaseOrderDate: _purchaseOrderDateController.text,
         deliverDate: _deliverDateController.text,
         totalPo: int.parse(_totalPoController.text),
-        dispatchPo: int.parse(_dispatchPoController.text),
         dispatchDate: _dispatchDateController.text,
       );
+
+      final updatedJob = widget.job.copyWith(purchaseOrder: purchaseOrder, hasPoAdded: true);
 
       // Navigate to Job Details Page
       context.push(
         '/job-details/${widget.job.jobNumber}',
         extra: {
-          'job': widget.job,
+          'job': updatedJob,
           'po': purchaseOrder,
         },
       );
