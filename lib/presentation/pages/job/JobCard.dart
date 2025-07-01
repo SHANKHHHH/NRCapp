@@ -37,7 +37,7 @@ class EnhancedJobCard extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Column(
           children: [
-            // Main Job Information (No onClick anymore)
+            // Main Job Information
             Container(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -56,7 +56,12 @@ class EnhancedJobCard extends StatelessWidget {
             if (job.status == JobStatus.active)
               ArtworkWorkflowWidget(
                 job: job,
-                onJobUpdate: onJobUpdate ?? (job) {},
+                onJobUpdate: (updatedJob) {
+                  // This callback will be called when PO is added
+                  if (onJobUpdate != null) {
+                    onJobUpdate!(updatedJob);
+                  }
+                },
                 isActive: true,
               ),
 
@@ -380,6 +385,7 @@ class EnhancedJobCard extends StatelessWidget {
         );
 
       case JobStatus.active:
+      // Check if all artwork dates are filled
         final allArtworkDatesFilled =
             (job.artworkReceivedDate?.isNotEmpty ?? false) &&
                 (job.artworkApprovalDate?.isNotEmpty ?? false) &&
@@ -389,49 +395,91 @@ class EnhancedJobCard extends StatelessWidget {
           return const SizedBox.shrink();
         }
 
-        if (!job.hasPoAdded) {
-          // Navigate to PurchaseOrderInput page
-          return SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                GoRouter.of(context).push('/add-po', extra: job);
-              },
-              icon: const Icon(Icons.add_business),
-              label: const Text('Add PO'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange[600],
-                foregroundColor: Colors.white,
-              ),
-            ),
-          );
-        }
-
-        // If PO is already added, show confirmation
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.green[100],
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.green[700]),
-              const SizedBox(width: 8),
-              Text(
-                'PO added for this job',
-                style: TextStyle(
-                  color: Colors.green[700],
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        );
+        // Show PO button based on current state
+        return _buildPurchaseOrderButton(context);
 
       default:
         return const SizedBox.shrink();
+    }
+  }
+
+  Widget _buildPurchaseOrderButton(BuildContext context) {
+    if (!job.hasPoAdded) {
+      // Show Add PO button
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: () async {
+            // Navigate to PurchaseOrderInput page and wait for result
+            final result = await GoRouter.of(context).push('/add-po', extra: job);
+
+            // If PO was successfully added, the result will contain the updated job
+            if (result != null && result is Job && onJobUpdate != null) {
+              onJobUpdate!(result);
+            }
+          },
+          icon: const Icon(Icons.add_business),
+          label: const Text('Add PO'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.orange[600],
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+        ),
+      );
+    } else {
+      // Show View Details button with PO confirmation
+      return Column(
+        children: [
+          // Confirmation that PO is added
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.green[100],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green[700], size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'Purchase Order Added Successfully',
+                  style: TextStyle(
+                    color: Colors.green[700],
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // View Details button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                context.push(
+                  '/job-details/${job.jobNumber}',
+                  extra: {
+                    'job': job,
+                    'po': job.purchaseOrder,
+                  },
+                );
+              },
+              icon: const Icon(Icons.visibility),
+              label: const Text('View PO Details'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[600],
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ],
+      );
     }
   }
 

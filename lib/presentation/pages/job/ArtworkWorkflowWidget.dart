@@ -250,52 +250,6 @@ class _ArtworkWorkflowWidgetState extends State<ArtworkWorkflowWidget> {
       );
     }
 
-    if (allDatesFilled && !hasPoAdded) {
-      return SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: () {
-            // Navigate to PurchaseOrderInput page
-            GoRouter.of(context).push('/add-po', extra: widget.job);
-          },
-          icon: const Icon(Icons.add_business),
-          label: const Text('Add PO'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.orange[600],
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (allDatesFilled && hasPoAdded) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.green[100],
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.green[700]),
-            const SizedBox(width: 8),
-            Text(
-              'Artwork workflow completed & PO added',
-              style: TextStyle(
-                color: Colors.green[700],
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
     return const SizedBox.shrink();
   }
 

@@ -26,7 +26,6 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
   late TextEditingController _purchaseOrderDateController;
   late TextEditingController _deliverDateController;
   late TextEditingController _totalPoController;
-  late TextEditingController _dispatchPoController;
   late TextEditingController _dispatchDateController;
 
   // Calculated field
@@ -35,23 +34,19 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
   @override
   void initState() {
     super.initState();
+    // Initialize controllers first
+    _purchaseOrderDateController = TextEditingController();
+    _deliverDateController = TextEditingController();
+    _totalPoController = TextEditingController();
+    _dispatchDateController = TextEditingController();
 
+    // Then set their values if editing
     if (widget.existingPo != null) {
       _purchaseOrderDateController.text = widget.existingPo!.purchaseOrderDate;
       _deliverDateController.text = widget.existingPo!.deliverDate;
       _totalPoController.text = widget.existingPo!.totalPo.toString();
       _dispatchDateController.text = widget.existingPo!.dispatchDate;
     }
-
-    _purchaseOrderDateController = TextEditingController();
-    _deliverDateController = TextEditingController();
-    _totalPoController = TextEditingController();
-    _dispatchPoController = TextEditingController();
-    _dispatchDateController = TextEditingController();
-
-    // Add listeners to calculate pending quantity
-    _totalPoController.addListener(_calculatePendingQuantity);
-    _dispatchPoController.addListener(_calculatePendingQuantity);
   }
 
   @override
@@ -59,18 +54,10 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
     _purchaseOrderDateController.dispose();
     _deliverDateController.dispose();
     _totalPoController.dispose();
-    _dispatchPoController.dispose();
     _dispatchDateController.dispose();
     super.dispose();
   }
 
-  void _calculatePendingQuantity() {
-    final totalPo = int.tryParse(_totalPoController.text) ?? 0;
-    final dispatchPo = int.tryParse(_dispatchPoController.text) ?? 0;
-    setState(() {
-      _pendingQuantity = totalPo - dispatchPo;
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -108,6 +95,7 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
   }
 
   Widget _buildJobDetailsCard() {
+    final job = widget.job;
     return Card(
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -139,75 +127,29 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
               ],
             ),
             const SizedBox(height: 16),
-
-            // Job Information (all fields)
-            _buildJobDetailRow(Icons.confirmation_number, 'Job Number', widget.job.jobNumber),
-            _buildJobDetailRow(Icons.person, 'Customer', widget.job.customer),
-            _buildJobDetailRow(Icons.factory, 'Plant', widget.job.plant),
-            _buildJobDetailRow(Icons.calendar_today, 'Job Date', widget.job.jobDate),
-            _buildJobDetailRow(Icons.delivery_dining, 'Delivery Date', widget.job.deliveryDate),
-            _buildJobDetailRow(Icons.style, 'Style', widget.job.style ?? ''),
-            _buildJobDetailRow(Icons.code, 'Die Code', widget.job.dieCode ?? ''),
-            _buildJobDetailRow(Icons.aspect_ratio, 'Board Size', widget.job.boardSize ?? ''),
-            _buildJobDetailRow(Icons.layers, 'Flute Type', widget.job.fluteType ?? ''),
-            _buildJobDetailRow(Icons.format_list_numbered, 'No. of Ups', widget.job.noOfUps ?? ''),
-            _buildJobDetailRow(Icons.format_list_numbered, 'No. of Sheets', widget.job.noOfSheets ?? ''),
-            _buildJobDetailRow(Icons.straighten, 'Unit', widget.job.unit ?? ''),
-            _buildJobDetailRow(Icons.calendar_month, 'Job Month', widget.job.jobMonth ?? ''),
-            _buildJobDetailRow(Icons.person_outline, 'Created By', widget.job.createdBy ?? ''),
-            _buildJobDetailRow(Icons.date_range, 'Created Date', widget.job.createdDate ?? ''),
+            // Show all job fields
+            _buildJobDetailRow(Icons.confirmation_number, 'Job Number', job.jobNumber),
+            _buildJobDetailRow(Icons.person, 'Customer', job.customer),
+            _buildJobDetailRow(Icons.factory, 'Plant', job.plant),
+            _buildJobDetailRow(Icons.calendar_today, 'Job Date', job.jobDate),
+            _buildJobDetailRow(Icons.delivery_dining, 'Delivery Date', job.deliveryDate),
+            _buildJobDetailRow(Icons.style, 'Style', job.style ?? ''),
+            _buildJobDetailRow(Icons.code, 'Die Code', job.dieCode ?? ''),
+            _buildJobDetailRow(Icons.aspect_ratio, 'Board Size', job.boardSize ?? ''),
+            _buildJobDetailRow(Icons.layers, 'Flute Type', job.fluteType ?? ''),
+            _buildJobDetailRow(Icons.format_list_numbered, 'No. of Ups', job.noOfUps ?? ''),
+            _buildJobDetailRow(Icons.format_list_numbered, 'No. of Sheets', job.noOfSheets ?? ''),
+            _buildJobDetailRow(Icons.straighten, 'Unit', job.unit ?? ''),
+            _buildJobDetailRow(Icons.calendar_month, 'Job Month', job.jobMonth ?? ''),
+            _buildJobDetailRow(Icons.person_outline, 'Created By', job.createdBy ?? ''),
+            _buildJobDetailRow(Icons.date_range, 'Created Date', job.createdDate ?? ''),
+            _buildJobDetailRow(Icons.check, 'Artwork Received Date', job.artworkReceivedDate ?? ''),
+            _buildJobDetailRow(Icons.check, 'Artwork Approval Date', job.artworkApprovalDate ?? ''),
+            _buildJobDetailRow(Icons.check, 'Shade Card Date', job.shadeCardDate ?? ''),
+            _buildJobDetailRow(Icons.numbers, 'Total Quantity', job.totalQuantity.toString()),
+            _buildJobDetailRow(Icons.local_shipping, 'Dispatch Quantity', job.dispatchQuantity.toString()),
+            _buildJobDetailRow(Icons.pending, 'Pending Quantity', job.pendingQuantity.toString()),
             // Add more fields as needed
-
-            const SizedBox(height: 12),
-
-            // Artwork Status
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.green[50],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.green[200]!),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Artwork Status',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green[700],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  if (widget.job.artworkReceivedDate != null)
-                    _buildArtworkStatusRow('Artwork Received', widget.job.artworkReceivedDate!),
-                  if (widget.job.artworkApprovalDate != null)
-                    _buildArtworkStatusRow('Artwork Approved', widget.job.artworkApprovalDate!),
-                  if (widget.job.shadeCardDate != null)
-                    _buildArtworkStatusRow('Shade Card Approved', widget.job.shadeCardDate!),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // Job Quantities
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey[50],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildQuantityInfo('Total Qty', widget.job.totalQuantity.toString()),
-                  _buildQuantityInfo('Dispatched', widget.job.dispatchQuantity.toString()),
-                  _buildQuantityInfo('Pending', widget.job.pendingQuantity.toString()),
-                ],
-              ),
-            ),
           ],
         ),
       ),
@@ -241,48 +183,6 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildArtworkStatusRow(String label, String date) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          Icon(Icons.check_circle, size: 16, color: Colors.green[600]),
-          const SizedBox(width: 8),
-          Text(
-            '$label: ',
-            style: const TextStyle(fontSize: 12, color: Colors.black87),
-          ),
-          Text(
-            date,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuantityInfo(String label, String value) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
-          ),
-        ),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 12,
-            color: Colors.grey,
-          ),
-        ),
-      ],
     );
   }
 
@@ -545,14 +445,8 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
 
       final updatedJob = widget.job.copyWith(purchaseOrder: purchaseOrder, hasPoAdded: true);
 
-      // Navigate to Job Details Page
-      context.push(
-        '/job-details/${widget.job.jobNumber}',
-        extra: {
-          'job': updatedJob,
-          'po': purchaseOrder,
-        },
-      );
+      // Pop and return the updated job
+      context.pop(updatedJob);
     }
   }
 

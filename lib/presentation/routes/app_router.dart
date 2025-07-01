@@ -7,6 +7,7 @@ import '../pages/home/HomeScreen.dart';
 import '../pages/job/JobInputPage.dart';
 import '../pages/job/job_list_page.dart';
 import '../pages/login/login_page.dart';
+import '../pages/main/MainHomePage.dart';
 import '../pages/members/AddMembers.dart';
 import '../pages/members/UserListPage.dart';
 import '../pages/purchaseorder/PoAssignDetailsPage.dart';
@@ -53,7 +54,7 @@ final GoRouter router = GoRouter(
     ),
     GoRoute(
       path: '/home',
-      builder: (context, state) => HomeScreen()
+      builder: (context, state) => MainScaffold()
     ),
   ],
 );
