@@ -66,8 +66,10 @@ class EnhancedJobCard extends StatelessWidget {
               ),
 
             // Status Control Section
-            if (_shouldShowStatusControls())
-              _buildStatusControlSection(context),
+            if (_shouldShowStatusControls()) ...[
+              if (_buildStatusControlSection(context) != null)
+                _buildStatusControlSection(context),
+            ],
           ],
         ),
       ),
@@ -104,7 +106,6 @@ class EnhancedJobCard extends StatelessWidget {
         ),
         Row(
           children: [
-            _buildJobDemandChip(),
             const SizedBox(width: 8),
             _buildStatusChip(),
           ],
@@ -237,53 +238,12 @@ class EnhancedJobCard extends StatelessWidget {
     );
   }
 
-  Widget _buildJobDemandChip() {
-    if (job.jobDemand == null) {
+  Widget _buildStatusControlSection(BuildContext context) {
+    final Widget statusAction = _buildStatusActionButtons(context);
+    // If statusAction is a SizedBox.shrink (no button), collapse the space
+    if (statusAction is SizedBox && statusAction.height == 0 && statusAction.width == 0) {
       return const SizedBox.shrink();
     }
-
-    Color chipColor;
-    IconData icon;
-
-    switch (job.jobDemand!) {
-      case JobDemand.high:
-        chipColor = Colors.red[100]!;
-        icon = Icons.priority_high;
-        break;
-      case JobDemand.medium:
-        chipColor = Colors.yellow[100]!;
-        icon = Icons.remove;
-        break;
-      case JobDemand.low:
-        chipColor = Colors.green[100]!;
-        icon = Icons.trending_down;
-        break;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: chipColor,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12),
-          const SizedBox(width: 4),
-          Text(
-            job.jobDemand!.name.toUpperCase(),
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusControlSection(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -296,32 +256,11 @@ class EnhancedJobCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            _getStatusControlTitle(),
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
-          ),
           const SizedBox(height: 12),
-          _buildStatusActionButtons(context),
+          statusAction,
         ],
       ),
     );
-  }
-
-  String _getStatusControlTitle() {
-    switch (job.status) {
-      case JobStatus.workingStarted:
-        return 'Job In Progress';
-      case JobStatus.hold:
-        return 'Job is On Hold';
-      case JobStatus.active:
-        return 'Job is Active';
-      default:
-        return 'Job Status';
-    }
   }
 
   Widget _buildStatusActionButtons(BuildContext context) {

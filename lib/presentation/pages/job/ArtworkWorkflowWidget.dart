@@ -36,6 +36,13 @@ class _ArtworkWorkflowWidgetState extends State<ArtworkWorkflowWidget> {
     _shadeCardController = TextEditingController(
       text: widget.job.shadeCardDate ?? '',
     );
+
+    // If all fields are empty, allow editing immediately
+    if ((widget.job.artworkReceivedDate == null || widget.job.artworkReceivedDate!.isEmpty) &&
+        (widget.job.artworkApprovalDate == null || widget.job.artworkApprovalDate!.isEmpty) &&
+        (widget.job.shadeCardDate == null || widget.job.shadeCardDate!.isEmpty)) {
+      _isEditing = true;
+    }
   }
 
   @override
@@ -74,7 +81,12 @@ class _ArtworkWorkflowWidgetState extends State<ArtworkWorkflowWidget> {
                 ),
               ),
               const Spacer(),
-              if (!_isEditing && widget.isActive)
+              // Only show edit button if not editing and at least one field is filled
+              if (!_isEditing && widget.isActive && (
+                (widget.job.artworkReceivedDate?.isNotEmpty ?? false) ||
+                (widget.job.artworkApprovalDate?.isNotEmpty ?? false) ||
+                (widget.job.shadeCardDate?.isNotEmpty ?? false)
+              ))
                 ElevatedButton.icon(
                   onPressed: () {
                     setState(() {
