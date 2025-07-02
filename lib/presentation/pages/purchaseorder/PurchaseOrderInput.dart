@@ -4,6 +4,9 @@ import '../../../data/models/Job.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../data/models/purchase_order.dart';
+import '../work/AssignWorkSteps.dart';
+import '../../../constants/colors.dart';
+
 
 class PurchaseOrderInput extends StatefulWidget {
   final Job job;
@@ -64,7 +67,7 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Add Purchase Order'),
-        backgroundColor: Colors.blue[600],
+        backgroundColor: AppColors.maincolor,
         foregroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
@@ -447,6 +450,29 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
 
       // Pop and return the updated job
       context.pop(updatedJob);
+
+      // Show popup after saving
+      Future.delayed(Duration.zero, () {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Next Step'),
+            content: Text('Fill the Job Demand and Machine Details to work with.'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => AssignWorkSteps(job: updatedJob)),
+                  );
+                },
+                child: Text('Add Details'),
+              ),
+            ],
+          ),
+        );
+      });
     }
   }
 
