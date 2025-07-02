@@ -7,9 +7,9 @@ import '../../../data/models/WorkStepAssignment.dart';
 import '../../../data/models/WorkStepData.dart';
 import 'DemandStepWidget.dart';
 import 'MachineSelectionWidget.dart';
+import '../work/WorkScreen.dart';
 import 'ReviewStepWidget.dart';
 import 'WorkStepSelectionWidget.dart';
-import 'WorkScreen.dart';
 
 class AssignWorkSteps extends StatefulWidget {
   final Job? job;

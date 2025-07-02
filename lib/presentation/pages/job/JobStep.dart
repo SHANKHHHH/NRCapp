@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:nrc/constants/colors.dart';
-import '../../../data/models/Job.dart'; // Make sure this import is correct
+import '../../../data/models/Job.dart';
+import '../../../data/models/WorkStepAssignment.dart'; // Make sure this import is correct
 
 enum StepStatus { pending, started, inProgress, completed }
 
@@ -25,8 +26,9 @@ class StepData {
 class JobTimelinePage extends StatefulWidget {
   final String? jobNumber;
   final Job? job; // Pass the complete job object for details
+  final List<WorkStepAssignment>? assignedSteps;
 
-  const JobTimelinePage({super.key, this.jobNumber, this.job});
+  const JobTimelinePage({super.key, this.jobNumber, this.job, this.assignedSteps});
 
   @override
   State<JobTimelinePage> createState() => _JobTimelinePageState();
@@ -50,52 +52,77 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         description: 'Job has been assigned and ready to start',
         status: StepStatus.completed,
       ),
-      StepData(
-        type: StepType.paperStore,
-        title: 'Paper Store',
-        description: 'Check and prepare paper materials',
-      ),
-      StepData(
-        type: StepType.printing,
-        title: 'Printing',
-        description: 'Print the materials as per specifications',
-      ),
-      StepData(
-        type: StepType.corrugation,
-        title: 'Corrugation',
-        description: 'Apply corrugation process',
-      ),
-      StepData(
-        type: StepType.fluteLamination,
-        title: 'Flute Lamination',
-        description: 'Apply flute lamination',
-      ),
-      StepData(
-        type: StepType.punching,
-        title: 'Punching',
-        description: 'Punch holes as required',
-      ),
-      StepData(
-        type: StepType.flapPasting,
-        title: 'Flap Pasting',
-        description: 'Paste flaps and complete assembly',
-      ),
-      StepData(
-        type: StepType.qc,
-        title: 'Quality Check',
-        description: 'Final quality inspection',
-      ),
-      StepData(
-        type: StepType.dispatch,
-        title: 'Dispatch',
-        description: 'Package and dispatch the order',
-      ),
     ];
 
+    // Dynamically add steps from assignedSteps
+    if (widget.assignedSteps != null && widget.assignedSteps!.isNotEmpty) {
+      for (final assignment in widget.assignedSteps!) {
+        steps.add(
+          StepData(
+            type: _getStepTypeFromString(assignment.workStep.step),
+            title: assignment.workStep.displayName,
+            description: _getStepDescription(assignment.workStep.displayName),
+          ),
+        );
+      }
+    }
+
     // Set first step as completed and second as ready to start
-    steps[0].status = StepStatus.completed;
-    steps[1].status = StepStatus.pending;
-    currentActiveStep = 1;
+    if (steps.length > 1) {
+      steps[1].status = StepStatus.pending;
+      currentActiveStep = 1;
+    } else {
+      currentActiveStep = 0;
+    }
+  }
+
+  // Helper to map string to StepType
+  StepType _getStepTypeFromString(String step) {
+    switch (step.toLowerCase()) {
+      case 'paperstore':
+        return StepType.paperStore;
+      case 'printing':
+        return StepType.printing;
+      case 'corrugation':
+        return StepType.corrugation;
+      case 'flutelamination':
+        return StepType.fluteLamination;
+      case 'punching':
+        return StepType.punching;
+      case 'flappasting':
+        return StepType.flapPasting;
+      case 'qc':
+        return StepType.qc;
+      case 'dispatch':
+        return StepType.dispatch;
+      default:
+        return StepType.jobAssigned;
+    }
+  }
+
+  // Helper to get a description for each step
+  String _getStepDescription(String displayName) {
+    switch (displayName.toLowerCase()) {
+      case 'paper store':
+        return 'Check and prepare paper materials';
+      case 'printing':
+        return 'Print the materials as per specifications';
+      case 'corrugation':
+        return 'Apply corrugation process';
+      case 'flute lamination':
+        return 'Apply flute lamination';
+      case 'punching':
+        return 'Punch holes as required';
+      case 'flap pasting':
+        return 'Paste flaps and complete assembly';
+      case 'quality control':
+      case 'qc':
+        return 'Final quality inspection';
+      case 'dispatch':
+        return 'Package and dispatch the order';
+      default:
+        return '';
+    }
   }
 
   String _getStepStatusText(StepData step) {
