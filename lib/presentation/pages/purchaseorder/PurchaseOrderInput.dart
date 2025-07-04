@@ -450,29 +450,6 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
 
       // Pop and return the updated job
       context.pop(updatedJob);
-
-      // Show popup after saving
-      Future.delayed(Duration.zero, () {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text('Next Step'),
-            content: Text('Fill the Job Demand and Machine Details to work with.'),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => AssignWorkSteps(job: updatedJob)),
-                  );
-                },
-                child: Text('Add Details'),
-              ),
-            ],
-          ),
-        );
-      });
     }
   }
 

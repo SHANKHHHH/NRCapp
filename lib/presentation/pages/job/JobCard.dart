@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../data/models/Job.dart';
+import '../stepsselections/AssignWorkSteps.dart';
 import 'ArtworkWorkflowWidget.dart';
 import 'package:go_router/go_router.dart';
 
@@ -412,6 +413,29 @@ class EnhancedJobCard extends StatelessWidget {
               label: const Text('View PO Details'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue[600],
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Add Machine Details button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                // Navigate to AssignWorkSteps page
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => AssignWorkSteps(job: job),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.build),
+              label: const Text('Add Machine Details'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange[700],
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
