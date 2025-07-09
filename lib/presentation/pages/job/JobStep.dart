@@ -1,27 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:nrc/constants/colors.dart';
+import 'package:nrc/presentation/pages/job/work_action_form.dart';
+import 'package:nrc/presentation/pages/job/work_form.dart';
 import '../../../data/models/Job.dart';
-import '../../../data/models/WorkStepAssignment.dart'; // Make sure this import is correct
-
-enum StepStatus { pending, started, inProgress, completed }
-
-enum StepType { jobAssigned, paperStore, printing, corrugation, fluteLamination, punching, flapPasting, qc, dispatch }
-
-class StepData {
-  final StepType type;
-  final String title;
-  final String description;
-  StepStatus status;
-  Map<String, dynamic> formData;
-
-  StepData({
-    required this.type,
-    required this.title,
-    required this.description,
-    this.status = StepStatus.pending,
-    this.formData = const {},
-  });
-}
+import '../../../data/models/WorkStepAssignment.dart';
+import '../../../data/models/job_step_models.dart'; // Make sure this import is correct
 
 class JobTimelinePage extends StatefulWidget {
   final String? jobNumber;
@@ -141,6 +124,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           return 'Job Number: ${widget.jobNumber ?? widget.job?.jobNumber ?? 'JOB001'}';
         }
         return 'Work completed ✓';
+      case StepStatus.paused:
+        return 'Work paused - Click to resume or edit';
     }
   }
 
@@ -348,25 +333,64 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   }
 
   void _showWorkForm(StepData step) {
-    final fieldNames = _getFieldNamesForStep(step.type);
-    final initialValues = step.formData.map((key, value) => MapEntry(key, value.toString()));
+    if (step.type == StepType.paperStore) {
+      final fieldNames = _getFieldNamesForStep(step.type);
+      final initialValues = step.formData.map((key, value) => MapEntry(key, value.toString()));
 
-    showDialog(
-      context: context,
-      builder: (context) => WorkForm(
-        title: step.title,
-        description: step.description,
-        initialValues: initialValues,
-        fieldNames: fieldNames,
-        hasData: step.formData.isNotEmpty,
-        onSubmit: (formData) {
-          _submitForm(step, formData);
-        },
-        onComplete: (formData) {
-          _completeWork(step, formData);
-        },
-      ),
-    );
+      showDialog(
+        context: context,
+        builder: (context) => WorkForm(
+          title: step.title,
+          description: step.description,
+          initialValues: initialValues,
+          fieldNames: fieldNames,
+          hasData: step.formData.isNotEmpty,
+          onSubmit: (formData) {
+            _submitForm(step, formData);
+          },
+          onComplete: (formData) {
+            _completeWork(step, formData);
+          },
+        ),
+      );
+    } else {
+      showDialog(
+        context: context,
+        builder: (context) => WorkActionForm(
+          title: step.title,
+          description: step.description,
+          initialQty: step.formData['Qty Sheet']?.toString(),
+          hasData: step.formData.isNotEmpty,
+          onStart: () {
+            setState(() {
+              step.status = StepStatus.started;
+            });
+          },
+          onPause: () {
+            setState(() {
+              step.status = StepStatus.paused;
+            });
+          },
+          onStop: () {
+            setState(() {
+              step.status = StepStatus.completed;
+            });
+          },
+          onComplete: (formData) {
+            setState(() {
+              step.formData = formData;
+              step.status = StepStatus.completed;
+              if (currentActiveStep + 1 < steps.length) {
+                currentActiveStep++;
+                steps[currentActiveStep].status = StepStatus.pending;
+              }
+            });
+            Navigator.pop(context);
+            _showSuccessMessage('${step.title} completed! Moving to next step.');
+          },
+        ),
+      );
+    }
   }
 
   List<String> _getFieldNamesForStep(StepType type) {
@@ -636,6 +660,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         return AppColors.maincolor.withOpacity(0.2);
       case StepStatus.completed:
         return Colors.green[200]!;
+      case StepStatus.paused:
+        return Colors.blue[200]!;
     }
   }
 
@@ -668,6 +694,12 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           color: Colors.green,
           size: 24,
         );
+      case StepStatus.paused:
+        return Icon(
+          Icons.pause_circle_filled,
+          color: Colors.blue,
+          size: 24,
+        );
     }
   }
 
@@ -681,6 +713,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         return AppColors.maincolor;
       case StepStatus.completed:
         return Colors.green[700]!;
+      case StepStatus.paused:
+        return Colors.blue;
     }
   }
 
@@ -795,223 +829,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
             const SizedBox(height: 40),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class WorkForm extends StatefulWidget {
-  final String title;
-  final String description;
-  final Map<String, String> initialValues;
-  final List<String> fieldNames;
-  final bool hasData;
-  final Function(Map<String, String>) onSubmit;
-  final Function(Map<String, String>) onComplete;
-
-  const WorkForm({
-    Key? key,
-    required this.title,
-    required this.description,
-    required this.initialValues,
-    required this.fieldNames,
-    required this.hasData,
-    required this.onSubmit,
-    required this.onComplete,
-  }) : super(key: key);
-
-  @override
-  State<WorkForm> createState() => _WorkFormState();
-}
-
-class _WorkFormState extends State<WorkForm> {
-  final _formKey = GlobalKey<FormState>();
-  late List<TextEditingController> _controllers;
-
-  @override
-  void initState() {
-    super.initState();
-    _controllers = widget.fieldNames
-        .map((field) => TextEditingController(text: widget.initialValues[field]))
-        .toList();
-  }
-
-  @override
-  void dispose() {
-    for (var controller in _controllers) {
-      controller.dispose();
-    }
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.work_outline, color: AppColors.maincolor),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  widget.title,
-                  style: TextStyle(
-                    color: AppColors.maincolor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            widget.description,
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[600],
-              fontWeight: FontWeight.normal,
-            ),
-          ),
-        ],
-      ),
-      backgroundColor: Colors.white,
-      content: Container(
-        width: double.maxFinite,
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.5,
-        ),
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              children: List.generate(widget.fieldNames.length, (index) {
-                return _buildFormField(widget.fieldNames[index], _controllers[index]);
-              }),
-            ),
-          ),
-        ),
-      ),
-      actions: [
-        Container(
-          width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // First row with Cancel and Save
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.grey[600],
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          side: BorderSide(color: Colors.grey[300]!),
-                        ),
-                      ),
-                      child: const Text('Cancel'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.maincolor,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      onPressed: () {
-                        if (_formKey.currentState!.validate()) {
-                          final formData = <String, String>{};
-                          for (int i = 0; i < _controllers.length; i++) {
-                            formData[widget.fieldNames[i]] = _controllers[i].text;
-                          }
-                          widget.onSubmit(formData);
-                          Navigator.pop(context);
-                        }
-                      },
-                      child: const Text('Save Details'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              // Second row with Complete Work button (full width)
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    elevation: 2,
-                  ),
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      final formData = <String, String>{};
-                      for (int i = 0; i < _controllers.length; i++) {
-                        formData[widget.fieldNames[i]] = _controllers[i].text;
-                      }
-                      widget.onComplete(formData);
-                    }
-                  },
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.check_circle, size: 20),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Complete Work',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFormField(String label, TextEditingController controller) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: TextFormField(
-        controller: controller,
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: TextStyle(color: AppColors.maincolor),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: Colors.grey[300]!),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: AppColors.maincolor, width: 2),
-          ),
-          filled: true,
-          fillColor: Colors.grey[50],
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-        ),
-        validator: (value) {
-          if (value == null || value.isEmpty) {
-            return 'Please enter $label';
-          }
-          return null;
-        },
       ),
     );
   }

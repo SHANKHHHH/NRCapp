@@ -78,6 +78,22 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
   }
 
   void _onWorkStepSelectionChanged(List<WorkStepAssignment> assignments) {
+    // Define the desired order
+    final orderedTypes = [
+      'paperstore',
+      'printing',
+      'corrugation',
+      'flutelamination',
+      'punching',
+      'flappasting',
+      'qc',
+      'dispatch',
+    ];
+    assignments.sort((a, b) {
+      int aIndex = orderedTypes.indexOf(a.workStep.step.toLowerCase());
+      int bIndex = orderedTypes.indexOf(b.workStep.step.toLowerCase());
+      return aIndex.compareTo(bIndex);
+    });
     setState(() {
       selectedWorkStepAssignments = assignments;
     });
