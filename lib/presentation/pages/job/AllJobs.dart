@@ -1,118 +1,17 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import '../../../data/models/Job.dart';
+import 'package:dio/dio.dart';
+import '../../../data/models/job_model.dart';
+import '../../../data/datasources/job_api.dart';
+import '../../../data/repositories/job_repository.dart';
 import 'JobDetailScreen.dart';
 import 'jobMainCard.dart';
 
-class JobService {
-  static List<Job> getAllJobs() {
-    return [
-      Job(
-        jobNumber: 'JOB001',
-        jobDate: '2024-01-15',
-        customer: 'ABC Corp',
-        plant: 'Plant A',
-        style: 'Regular',
-        dieCode: 'DIE001',
-        boardSize: '12x18',
-        fluteType: 'B',
-        noOfUps: '2',
-        noOfSheets: '1000',
-        totalQuantity: 2000,
-        unit: 'Pieces',
-        deliveryDate: '2024-02-15',
-        nrcDeliveryDate: '2024-02-10',
-        dispatchDate: '2024-02-14',
-        dispatchQuantity: 1500,
-        pendingQuantity: 500,
-        pendingValidity: '2024-03-01',
-        jobMonth: 'February',
-        shadeCardApprovalDate: '2024-01-20',
-        createdBy: 'Admin',
-        createdDate: '2024-01-15',
-        status: JobStatus.inactive,
-      ),
-      Job(
-        jobNumber: 'JOB002',
-        jobDate: '2024-01-20',
-        customer: 'XYZ Ltd',
-        plant: 'Plant B',
-        style: 'Premium',
-        dieCode: 'DIE002',
-        boardSize: '15x20',
-        fluteType: 'C',
-        noOfUps: '4',
-        noOfSheets: '800',
-        totalQuantity: 3200,
-        unit: 'Pieces',
-        deliveryDate: '2024-02-20',
-        nrcDeliveryDate: '2024-02-15',
-        dispatchDate: '2024-02-18',
-        dispatchQuantity: 3200,
-        pendingQuantity: 0,
-        pendingValidity: '2024-03-01',
-        jobMonth: 'February',
-        shadeCardApprovalDate: '2024-01-25',
-        createdBy: 'Manager',
-        createdDate: '2024-01-20',
-        status: JobStatus.inactive,
-      ),
-      Job(
-        jobNumber: 'JOB003',
-        jobDate: '2024-01-25',
-        customer: 'PQR Industries',
-        plant: 'Plant C',
-        style: 'Standard',
-        dieCode: 'DIE003',
-        boardSize: '10x15',
-        fluteType: 'A',
-        noOfUps: '1',
-        noOfSheets: '1200',
-        totalQuantity: 1200,
-        unit: 'Pieces',
-        deliveryDate: '2024-02-25',
-        nrcDeliveryDate: '2024-02-20',
-        dispatchDate: '2024-02-23',
-        dispatchQuantity: 1200,
-        pendingQuantity: 0,
-        pendingValidity: '2024-03-01',
-        jobMonth: 'February',
-        shadeCardApprovalDate: '2024-01-30',
-        createdBy: 'Supervisor',
-        createdDate: '2024-01-25',
-        status: JobStatus.inactive,
-      ),
-    ];
-  }
-
-  static List<String> getUniqueCustomers() {
-    return getAllJobs().map((job) => job.customer).toSet().toList();
-  }
-
-  static List<Job> searchJobs(String query, String? selectedCustomer) {
-    List<Job> jobs = getAllJobs();
-
-    if (selectedCustomer != null && selectedCustomer.isNotEmpty) {
-      jobs = jobs.where((job) => job.customer == selectedCustomer).toList();
-    }
-
-    if (query.isNotEmpty) {
-      jobs = jobs.where((job) =>
-      job.jobNumber.toLowerCase().contains(query.toLowerCase()) ||
-          job.customer.toLowerCase().contains(query.toLowerCase())
-      ).toList();
-    }
-
-    return jobs;
-  }
-}
-
-
+/// Search bar and customer filter widget
 class SearchBarWidget extends StatelessWidget {
   final TextEditingController searchController;
   final String? selectedCustomer;
   final List<String> customers;
-  final Function(String?) onCustomerChanged;
+  final ValueChanged<String?> onCustomerChanged;
   final VoidCallback onSearchChanged;
 
   const SearchBarWidget({
@@ -130,10 +29,9 @@ class SearchBarWidget extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // Search Field
           TextField(
             controller: searchController,
-            onChanged: (value) => onSearchChanged(),
+            onChanged: (_) => onSearchChanged(),
             decoration: InputDecoration(
               hintText: 'Search by Job Number or Customer',
               prefixIcon: const Icon(Icons.search),
@@ -144,7 +42,6 @@ class SearchBarWidget extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          // Customer Dropdown
           DropdownButtonFormField<String>(
             value: selectedCustomer,
             onChanged: onCustomerChanged,
@@ -172,35 +69,67 @@ class SearchBarWidget extends StatelessWidget {
   }
 }
 
-
-
+/// Main screen for displaying and searching jobs
 class AllJobsScreen extends StatefulWidget {
   const AllJobsScreen({Key? key}) : super(key: key);
 
   @override
-  State<AllJobsScreen> createState() => _JobListScreenState();
+  State<AllJobsScreen> createState() => _AllJobsScreenState();
 }
 
-class _JobListScreenState extends State<AllJobsScreen> {
+class _AllJobsScreenState extends State<AllJobsScreen> {
   final TextEditingController _searchController = TextEditingController();
   String? _selectedCustomer;
-  List<Job> _filteredJobs = [];
+  List<JobModel> _allJobs = [];
+  List<JobModel> _filteredJobs = [];
   List<String> _customers = [];
+  bool _isLoading = true;
+  String? _error;
+
+  // Use repository for fetching jobs
+  final JobRepository _jobRepository = JobRepository(
+    JobApi(Dio(BaseOptions(baseUrl: 'http://51.20.4.108:3000/api'))),
+  );
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _fetchJobs();
   }
 
-  void _loadData() {
-    _customers = JobService.getUniqueCustomers();
-    _filteredJobs = JobService.getAllJobs();
+  /// Fetch jobs from the repository and update state
+  Future<void> _fetchJobs() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final jobs = await _jobRepository.fetchJobs();
+      final customers = jobs.map((job) => job.customerName).toSet().toList();
+      setState(() {
+        _allJobs = jobs;
+        _filteredJobs = jobs;
+        _customers = customers;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = 'Failed to load jobs: $e';
+        _isLoading = false;
+      });
+    }
   }
 
+  /// Filter jobs based on search query and selected customer
   void _performSearch() {
     setState(() {
-      _filteredJobs = JobService.searchJobs(_searchController.text, _selectedCustomer);
+      _filteredJobs = _allJobs.where((job) {
+        final matchesCustomer = _selectedCustomer == null || _selectedCustomer!.isEmpty || job.customerName == _selectedCustomer;
+        final matchesQuery = _searchController.text.isEmpty ||
+            job.nrcJobNo.toLowerCase().contains(_searchController.text.toLowerCase()) ||
+            job.customerName.toLowerCase().contains(_searchController.text.toLowerCase());
+        return matchesCustomer && matchesQuery;
+      }).toList();
     });
   }
 
@@ -211,7 +140,7 @@ class _JobListScreenState extends State<AllJobsScreen> {
     });
   }
 
-  void _navigateToJobDetail(Job job) {
+  void _navigateToJobDetail(JobModel job) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -229,36 +158,40 @@ class _JobListScreenState extends State<AllJobsScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: Column(
-        children: [
-          SearchBarWidget(
-            searchController: _searchController,
-            selectedCustomer: _selectedCustomer,
-            customers: _customers,
-            onCustomerChanged: _onCustomerChanged,
-            onSearchChanged: _performSearch,
-          ),
-          Expanded(
-            child: _filteredJobs.isEmpty
-                ? const Center(
-              child: Text(
-                'No jobs found',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-            )
-                : ListView.builder(
-              itemCount: _filteredJobs.length,
-              itemBuilder: (context, index) {
-                final job = _filteredJobs[index];
-                return JobMainCard(
-                  job: job,
-                  onTap: () => _navigateToJobDetail(job),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(child: Text(_error!))
+              : Column(
+                  children: [
+                    SearchBarWidget(
+                      searchController: _searchController,
+                      selectedCustomer: _selectedCustomer,
+                      customers: _customers,
+                      onCustomerChanged: _onCustomerChanged,
+                      onSearchChanged: _performSearch,
+                    ),
+                    Expanded(
+                      child: _filteredJobs.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'No jobs found',
+                                style: TextStyle(fontSize: 16, color: Colors.grey),
+                              ),
+                            )
+                          : ListView.builder(
+                              itemCount: _filteredJobs.length,
+                              itemBuilder: (context, index) {
+                                final job = _filteredJobs[index];
+                                return JobMainCard(
+                                  job: job,
+                                  onTap: () => _navigateToJobDetail(job),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
     );
   }
 

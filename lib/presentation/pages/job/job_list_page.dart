@@ -194,15 +194,7 @@ class _JobListPageState extends State<JobListPage> {
   }
 
   void _navigateToJobDetail(Job job) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => JobDetailScreen(
-          job: job,
-          onJobUpdate: _updateJob,
-        ),
-      ),
-    );
+
   }
 
   void _updateJob(Job updatedJob) {

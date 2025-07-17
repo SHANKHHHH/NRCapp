@@ -1,22 +1,117 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
-import '../../../data/models/Job.dart';
+import 'package:dio/dio.dart';
+import '../../../data/models/job_model.dart';
+import '../../../data/datasources/job_api.dart';
+import 'job_list_page.dart';
 
 class JobDetailScreen extends StatelessWidget {
-  final Job job;
-  final Function(Job)? onJobUpdate;
+  final JobModel job;
 
-  const JobDetailScreen({
-    Key? key,
-    required this.job,
-    this.onJobUpdate,
-  }) : super(key: key);
+  const JobDetailScreen({Key? key, required this.job}) : super(key: key);
+
+  Future<void> _startWork(BuildContext context) async {
+    // Show custom loader dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              CircularProgressIndicator(),
+              SizedBox(height: 24),
+              Text(
+                'Updating job status...',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    try {
+      await JobApi(Dio(BaseOptions(baseUrl: 'http://51.20.4.108:3000/api')))
+          .updateJobStatus(job.nrcJobNo, 'ACTIVE');
+      // Remove loader
+      Navigator.of(context, rootNavigator: true).pop();
+      // Show success dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.check_circle, color: Colors.green, size: 48),
+                const SizedBox(height: 16),
+                const Text(
+                  'Job Is Active Now',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: () {
+                      Navigator.of(context, rootNavigator: true).pop();
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (_) => const JobListPage()),
+                        (route) => false,
+                      );
+                    },
+                    child: const Text(
+                      'OK',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      Navigator.of(context, rootNavigator: true).pop();
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Error'),
+          content: Text('Failed to update job: $e'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(job.jobNumber),
+        title: Text(job.nrcJobNo),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
       ),
@@ -33,23 +128,11 @@ class JobDetailScreen extends StatelessWidget {
             const SizedBox(height: 16),
             _buildDeliveryDetailsCard(),
             const SizedBox(height: 24),
-            if (job.status == JobStatus.inactive || job.status == JobStatus.active)
+            if (job.status.toUpperCase() == 'INACTIVE')
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () {
-                    final updatedJob = job.copyWith(status: JobStatus.workingStarted);
-                    if (onJobUpdate != null) {
-                      onJobUpdate!(updatedJob);
-                    }
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Started working on job ${job.jobNumber}'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
-                    context.go('/job-list'); // Go directly to job list page
-                  },
+                  onPressed: () => _startWork(context),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
                     foregroundColor: Colors.white,
@@ -59,12 +142,12 @@ class JobDetailScreen extends StatelessWidget {
                     ),
                   ),
                   child: const Text(
-                    'Start Working with this Job',
+                    'Start work with this job',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
-              ),
-            if (job.status == JobStatus.workingStarted)
+              )
+            else
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -74,31 +157,12 @@ class JobDetailScreen extends StatelessWidget {
                   border: Border.all(color: Colors.blue),
                 ),
                 child: const Text(
-                  'Work Started',
+                  'Work is Going on',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: Colors.blue,
-                  ),
-                ),
-              ),
-            if (job.status == JobStatus.hold)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: BoxDecoration(
-                  color: Colors.red[50],
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.red),
-                ),
-                child: const Text(
-                  'Hold',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.red,
                   ),
                 ),
               ),
@@ -115,22 +179,17 @@ class JobDetailScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  job.jobNumber,
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue,
-                  ),
-                ),
-              ],
+            Text(
+              job.nrcJobNo,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.blue,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
-              job.customer,
+              job.customerName,
               style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w500,
@@ -138,13 +197,12 @@ class JobDetailScreen extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Created: ${job.createdDate} by ${job.createdBy}',
+              'Created: ${job.createdAt ?? '-'}',
               style: const TextStyle(
                 fontSize: 12,
                 color: Colors.grey,
               ),
             ),
-            // Show job demand if available
             if (job.jobDemand != null) ...[
               const SizedBox(height: 8),
               Row(
@@ -182,13 +240,12 @@ class JobDetailScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            _buildDetailRow('Job Date', job.jobDate),
-            _buildDetailRow('Plant', job.plant),
-            _buildDetailRow('Style', job.style),
-            _buildDetailRow('Die Code', job.dieCode),
-            _buildDetailRow('Board Size', job.boardSize),
+            _buildDetailRow('Style', job.styleItemSKU),
             _buildDetailRow('Flute Type', job.fluteType),
-            _buildDetailRow('Job Month', job.jobMonth),
+            _buildDetailRow('Box Dimensions', job.boxDimensions ?? '-'),
+            _buildDetailRow('Die Punch Code', job.diePunchCode?.toString() ?? '-'),
+            _buildDetailRow('Board Size', job.boardSize ?? '-'),
+            _buildDetailRow('No. of Colors', job.noOfColor ?? '-'),
           ],
         ),
       ),
@@ -210,12 +267,12 @@ class JobDetailScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            _buildDetailRow('No. of Ups', job.noOfUps),
-            _buildDetailRow('No. of Sheets', job.noOfSheets),
-            _buildDetailRow('Total Quantity', '${job.totalQuantity} ${job.unit}'),
-            _buildDetailRow('Dispatch Quantity', '${job.dispatchQuantity} ${job.unit}'),
-            _buildDetailRow('Pending Quantity', '${job.pendingQuantity} ${job.unit}'),
-            _buildDetailRow('Shade Card Approval', job.shadeCardApprovalDate),
+            _buildDetailRow('Length', job.length?.toString() ?? '-'),
+            _buildDetailRow('Width', job.width?.toString() ?? '-'),
+            _buildDetailRow('Height', job.height?.toString() ?? '-'),
+            _buildDetailRow('Top Face GSM', job.topFaceGSM ?? '-'),
+            _buildDetailRow('Fluting GSM', job.flutingGSM ?? '-'),
+            _buildDetailRow('Bottom Liner GSM', job.bottomLinerGSM ?? '-'),
           ],
         ),
       ),
@@ -237,10 +294,8 @@ class JobDetailScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            _buildDetailRow('Delivery Date', job.deliveryDate),
-            _buildDetailRow('NRC Delivery Date', job.nrcDeliveryDate),
-            _buildDetailRow('Dispatch Date', job.dispatchDate),
-            _buildDetailRow('Pending Validity', job.pendingValidity),
+            _buildDetailRow('Created At', job.createdAt ?? '-'),
+            _buildDetailRow('Updated At', job.updatedAt ?? '-'),
           ],
         ),
       ),
@@ -276,23 +331,22 @@ class JobDetailScreen extends StatelessWidget {
     );
   }
 
-
   Widget _buildJobDemandChip() {
     if (job.jobDemand == null) return const SizedBox.shrink();
-
     Color chipColor;
-    switch (job.jobDemand!) {
-      case JobDemand.high:
+    switch (job.jobDemand!.toLowerCase()) {
+      case 'high':
         chipColor = Colors.red[100]!;
         break;
-      case JobDemand.medium:
+      case 'medium':
         chipColor = Colors.yellow[100]!;
         break;
-      case JobDemand.low:
+      case 'low':
         chipColor = Colors.green[100]!;
         break;
+      default:
+        chipColor = Colors.grey[200]!;
     }
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -300,108 +354,11 @@ class JobDetailScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
-        job.jobDemand!.name.toUpperCase(),
+        job.jobDemand!.toUpperCase(),
         style: const TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.bold,
         ),
-      ),
-    );
-  }
-
-  void _showJobDemandDialog(BuildContext context) {
-    JobDemand? selectedDemand;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('Select Job Demand'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Please select the demand level for job ${job.jobNumber}:'),
-              const SizedBox(height: 16),
-              ...JobDemand.values.map((demand) => RadioListTile<JobDemand>(
-                title: Text(demand.name.toUpperCase()),
-                value: demand,
-                groupValue: selectedDemand,
-                onChanged: (value) {
-                  setState(() {
-                    selectedDemand = value;
-                  });
-                },
-              )),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: selectedDemand == null ? null : () {
-                Navigator.pop(context);
-                _submitJobDemand(context, selectedDemand!);
-              },
-              child: const Text('Submit'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _submitJobDemand(BuildContext context, JobDemand demand) {
-    // Update the job with the selected demand and set it to approval pending
-    final updatedJob = job.copyWith(
-      jobDemand: demand,
-      isApprovalPending: true,
-    );
-
-    if (onJobUpdate != null) {
-      onJobUpdate!(updatedJob);
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Job ${job.jobNumber} submitted for approval with ${demand.name.toUpperCase()} demand'),
-        backgroundColor: Colors.green,
-      ),
-    );
-
-    // Pop all routes until the job list (JobCard) page is reached
-    context.push('/job-list');
-  }
-
-  void _showEditDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit Job'),
-        content: Text('Edit functionality for job ${job.jobNumber} will be implemented here.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showAddPODialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Purchase Order'),
-        content: Text('Add PO functionality for job ${job.jobNumber} will be implemented here.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
       ),
     );
   }

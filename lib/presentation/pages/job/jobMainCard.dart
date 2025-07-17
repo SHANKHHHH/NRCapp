@@ -1,135 +1,212 @@
+import '../../../data/models/job_model.dart';
 import 'package:flutter/material.dart';
-import '../../../data/models/Job.dart';
-import 'JobDetailScreen.dart';
 
 class JobMainCard extends StatelessWidget {
-  final Job job;
-  final VoidCallback onTap;
+  final JobModel job;
+  final VoidCallback? onTap;
 
-  const JobMainCard({
-    Key? key,
-    required this.job, required this.onTap,
-  }) : super(key: key);
+  const JobMainCard({Key? key, required this.job, this.onTap}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      elevation: 2,
-      child: InkWell(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => JobDetailScreen(job: job),
-            ),
-          );
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      job.jobNumber,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(
+          color: Colors.blue.withOpacity(0.1),
+          width: 1,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          splashColor: Colors.blue.withOpacity(0.1),
+          highlightColor: Colors.blue.withOpacity(0.05),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header Row
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
                         color: Colors.blue,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        job.nrcJobNo,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
                       ),
                     ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(job.status).withOpacity(0.15),
-                      border: Border.all(color: _getStatusColor(job.status)),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      _getStatusText(job.status),
-                      style: TextStyle(
-                        color: _getStatusColor(job.status),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
+                    const Spacer(),
+                    _buildStatusBadge(job.status),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+
+                // Job Details
+                _buildDetailRow(
+                  icon: Icons.person_outline,
+                  label: 'Customer',
+                  value: job.customerName,
+                ),
+
+                const SizedBox(height: 12),
+
+                _buildDetailRow(
+                  icon: Icons.style_outlined,
+                  label: 'Style',
+                  value: job.styleItemSKU,
+                ),
+
+                const SizedBox(height: 12),
+
+                _buildDetailRow(
+                  icon: Icons.layers_outlined,
+                  label: 'Flute',
+                  value: job.fluteType,
+                ),
+
+                const SizedBox(height: 16),
+
+                // Action Row
+                Row(
+                  children: [
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.arrow_forward_ios,
+                        color: Colors.blue,
+                        size: 16,
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              _buildInfoRow(Icons.business, 'Customer', job.customer),
-              _buildInfoRow(Icons.factory, 'Plant', job.plant),
-              _buildInfoRow(Icons.calendar_today, 'Job Date', job.jobDate),
-              _buildInfoRow(Icons.delivery_dining, 'Delivery Date', job.deliveryDate),
-              const SizedBox(height: 8),
-              Text(
-                'Qty: ${job.totalQuantity} ${job.unit}',
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildInfoRow(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: Colors.grey[600]),
-          const SizedBox(width: 8),
-          Text(
-            '$label: ',
-            style: const TextStyle(fontSize: 12, color: Colors.grey),
+  Widget _buildDetailRow({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.blue.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+          child: Icon(
+            icon,
+            color: Colors.blue,
+            size: 18,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: Colors.black.withOpacity(0.6),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-            ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Color _getStatusColor(JobStatus status) {
-    switch (status) {
-      case JobStatus.active:
-        return Colors.green;
-      case JobStatus.inactive:
-        return Colors.orange;
-      case JobStatus.hold:
-        return Colors.red;
-      case JobStatus.workingStarted:
-        return Colors.blue;
-      default:
-        return Colors.grey;
-    }
-  }
+  Widget _buildStatusBadge(String status) {
+    Color statusColor;
+    Color textColor;
 
-  String _getStatusText(JobStatus status) {
-    switch (status) {
-      case JobStatus.active:
-        return 'Active';
-      case JobStatus.inactive:
-        return 'Inactive';
-      case JobStatus.hold:
-        return 'Hold';
-      case JobStatus.workingStarted:
-        return 'Working';
+    // You can customize these colors based on different status values
+    switch (status.toLowerCase()) {
+      case 'completed':
+      case 'done':
+        statusColor = Colors.blue.withOpacity(0.2);
+        textColor = Colors.blue;
+        break;
+      case 'pending':
+      case 'in progress':
+        statusColor = Colors.black.withOpacity(0.1);
+        textColor = Colors.black;
+        break;
+      case 'cancelled':
+      case 'failed':
+        statusColor = Colors.black.withOpacity(0.2);
+        textColor = Colors.black;
+        break;
       default:
-        return 'Unknown';
+        statusColor = Colors.blue.withOpacity(0.1);
+        textColor = Colors.blue;
     }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: statusColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: textColor.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Text(
+        status.toUpperCase(),
+        style: TextStyle(
+          color: textColor,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
   }
 }
