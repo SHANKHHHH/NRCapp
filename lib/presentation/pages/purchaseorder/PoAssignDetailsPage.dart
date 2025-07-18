@@ -81,10 +81,14 @@ class _PoAssignDetailsPageState extends State<PoAssignDetailsPage> {
 
           const SizedBox(height: 24),
           _buildSectionHeader('Purchase Order Info'),
-          Text('PO Date: ${purchaseOrder.purchaseOrderDate}'),
-          Text('Deliver Date: ${purchaseOrder.deliverDate}'),
-          Text('Total PO: ${purchaseOrder.totalPo}'),
-          Text('Dispatch Date: ${purchaseOrder.dispatchDate}'),
+          Text('PO Date: ${_formatDate(purchaseOrder.poDate)}'),
+          Text('Deliver Date: ${_formatDate(purchaseOrder.deliveryDate)}'),
+          Text('Dispatch Date: ${_formatDate(purchaseOrder.dispatchDate)}'),
+          Text('NRC Delivery Date: ${_formatDate(purchaseOrder.nrcDeliveryDate)}'),
+          Text('Total PO Quantity: ${purchaseOrder.totalPOQuantity}'),
+          Text('Unit: ${purchaseOrder.unit}'),
+          Text('Pending Validity: ${purchaseOrder.pendingValidity} days'),
+          Text('No. of Sheets: ${purchaseOrder.noOfSheets}'),
         ],
       ),
     );
@@ -98,5 +102,9 @@ class _PoAssignDetailsPageState extends State<PoAssignDetailsPage> {
         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
       ),
     );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
 }

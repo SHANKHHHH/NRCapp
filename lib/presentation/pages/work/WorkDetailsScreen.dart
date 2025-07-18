@@ -96,10 +96,14 @@ class WorkDetailsScreen extends StatelessWidget {
               color: Colors.orange,
             ),
             if (po != null) ...[
-              _buildKeyValueRow('PO Number', 'N/A'),
-              _buildKeyValueRow('PO Date', po!.purchaseOrderDate),
-              _buildKeyValueRow('Deliver Date', po!.deliverDate),
-              _buildKeyValueRow('Total PO', po!.totalPo.toString()),
+              _buildKeyValueRow('PO Date', _formatDate(po!.poDate)),
+              _buildKeyValueRow('Deliver Date', _formatDate(po!.deliveryDate)),
+              _buildKeyValueRow('Dispatch Date', _formatDate(po!.dispatchDate)),
+              _buildKeyValueRow('NRC Delivery Date', _formatDate(po!.nrcDeliveryDate)),
+              _buildKeyValueRow('Total PO Quantity', po!.totalPOQuantity.toString()),
+              _buildKeyValueRow('Unit', po!.unit),
+              _buildKeyValueRow('Pending Validity', '${po!.pendingValidity} days'),
+              _buildKeyValueRow('No. of Sheets', po!.noOfSheets.toString()),
               const SizedBox(height: 16),
             ],
 
@@ -255,5 +259,9 @@ class WorkDetailsScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
 }

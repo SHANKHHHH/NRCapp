@@ -31,6 +31,9 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
   late TextEditingController _deliverDateController;
   late TextEditingController _totalPoController;
   late TextEditingController _dispatchDateController;
+  late TextEditingController _nrcDeliveryDateController;
+  late TextEditingController _unitController;
+  late TextEditingController _noOfSheetsController;
 
   // Calculated field
   int _pendingQuantity = 0;
@@ -43,13 +46,19 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
     _deliverDateController = TextEditingController();
     _totalPoController = TextEditingController();
     _dispatchDateController = TextEditingController();
+    _nrcDeliveryDateController = TextEditingController();
+    _unitController = TextEditingController(text: 'PCS');
+    _noOfSheetsController = TextEditingController();
 
     // Then set their values if editing
     if (widget.existingPo != null) {
-      _purchaseOrderDateController.text = widget.existingPo!.purchaseOrderDate;
-      _deliverDateController.text = widget.existingPo!.deliverDate;
-      _totalPoController.text = widget.existingPo!.totalPo.toString();
-      _dispatchDateController.text = widget.existingPo!.dispatchDate;
+      _purchaseOrderDateController.text = widget.existingPo!.poDate.toIso8601String();
+      _deliverDateController.text = widget.existingPo!.deliveryDate.toIso8601String();
+      _totalPoController.text = widget.existingPo!.totalPOQuantity.toString();
+      _dispatchDateController.text = widget.existingPo!.dispatchDate.toIso8601String();
+      _nrcDeliveryDateController.text = widget.existingPo!.nrcDeliveryDate.toIso8601String();
+      _unitController.text = widget.existingPo!.unit;
+      _noOfSheetsController.text = widget.existingPo!.noOfSheets.toString();
     }
   }
 
@@ -59,6 +68,9 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
     _deliverDateController.dispose();
     _totalPoController.dispose();
     _dispatchDateController.dispose();
+    _nrcDeliveryDateController.dispose();
+    _unitController.dispose();
+    _noOfSheetsController.dispose();
     super.dispose();
   }
 
@@ -100,6 +112,21 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
 
   Widget _buildJobDetailsCard() {
     final job = widget.job;
+    int pendingValidity = 0;
+    Color validityColor = Colors.grey;
+    if (job.shadeCardApprovalDate != null && job.shadeCardApprovalDate!.isNotEmpty) {
+      final shadeCardDate = DateTime.tryParse(job.shadeCardApprovalDate!);
+      if (shadeCardDate != null) {
+        pendingValidity = DateTime.now().difference(shadeCardDate).inDays;
+        if (pendingValidity <= 70) {
+          validityColor = Colors.green;
+        } else if (pendingValidity <= 140) {
+          validityColor = Colors.yellow[700]!;
+        } else {
+          validityColor = Colors.red;
+        }
+      }
+    }
     return Card(
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -131,7 +158,6 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
               ],
             ),
             const SizedBox(height: 16),
-            // Show all job fields
             _buildJobDetailRow(Icons.confirmation_number, 'Job Number', job.nrcJobNo),
             _buildJobDetailRow(Icons.person, 'Customer', job.customerName),
             _buildJobDetailRow(Icons.category, 'Style/SKU', job.styleItemSKU),
@@ -150,6 +176,18 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
               _buildJobDetailRow(Icons.assignment, 'Purchase Order', 'Available'),
             if (job.hasPoAdded)
               _buildJobDetailRow(Icons.assignment_turned_in, 'PO Status', 'Added'),
+            // Pending Validity Indicator
+            if (job.shadeCardApprovalDate != null && job.shadeCardApprovalDate!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Row(
+                  children: [
+                    Icon(Icons.circle, color: validityColor, size: 16),
+                    const SizedBox(width: 8),
+                    Text('$pendingValidity days since Shade Card Approval', style: TextStyle(color: validityColor, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
@@ -212,41 +250,52 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
                 ],
               ),
               const SizedBox(height: 20),
-
-              // Purchase Order Date
-              _buildDateFormField(
-                controller: _purchaseOrderDateController,
-                label: 'Purchase Order Date',
-                icon: Icons.calendar_today,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please select purchase order date';
-                  }
-                  return null;
-                },
-              ),
-
+              // PO Date (read-only)
+              _buildJobDetailRow(Icons.calendar_today, 'PO Date', DateTime.now().toIso8601String()),
               const SizedBox(height: 16),
-
-              // Deliver Date
+              // Delivery Date
               _buildDateFormField(
                 controller: _deliverDateController,
-                label: 'Deliver Date',
+                label: 'Delivery Date',
                 icon: Icons.local_shipping,
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Please select deliver date';
+                    return 'Please select delivery date';
                   }
                   return null;
                 },
               ),
-
               const SizedBox(height: 16),
-
-              // Total PO
+              // Dispatch Date
+              _buildDateFormField(
+                controller: _dispatchDateController,
+                label: 'Dispatch Date',
+                icon: Icons.schedule,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please select dispatch date';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              // NRC Delivery Date
+              _buildDateFormField(
+                controller: _nrcDeliveryDateController,
+                label: 'NRC Delivery Date',
+                icon: Icons.calendar_today,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please select NRC delivery date';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              // Total PO Quantity
               _buildNumberFormField(
                 controller: _totalPoController,
-                label: 'Total PO',
+                label: 'Total PO Quantity',
                 icon: Icons.inventory,
                 validator: (value) {
                   if (value == null || value.isEmpty) {
@@ -258,53 +307,69 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
                   return null;
                 },
               ),
-
               const SizedBox(height: 16),
-
-              // Pending Quantity (Read-only)
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue[200]!),
+              // Unit
+              TextFormField(
+                controller: _unitController,
+                decoration: InputDecoration(
+                  labelText: 'Unit',
+                  prefixIcon: Icon(Icons.straighten),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey[50],
                 ),
-                child: Row(
-                  children: [
-                    Icon(Icons.pending, color: Colors.blue[700]),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Pending Quantity: ',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.blue[700],
-                      ),
-                    ),
-                    Text(
-                      _pendingQuantity.toString(),
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue[700],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Dispatch Date
-              _buildDateFormField(
-                controller: _dispatchDateController,
-                label: 'Dispatch Date',
-                icon: Icons.schedule,
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Please select dispatch date';
+                    return 'Please enter unit';
                   }
                   return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              // No of Sheets
+              _buildNumberFormField(
+                controller: _noOfSheetsController,
+                label: 'No. of Sheets',
+                icon: Icons.format_list_numbered,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter number of sheets';
+                  }
+                  if (int.tryParse(value) == null) {
+                    return 'Please enter a valid number';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              // Pending Validity (read-only)
+              Builder(
+                builder: (context) {
+                  int pendingValidity = 0;
+                  Color validityColor = Colors.grey;
+                  final job = widget.job;
+                  if (job.shadeCardApprovalDate != null && job.shadeCardApprovalDate!.isNotEmpty) {
+                    final shadeCardDate = DateTime.tryParse(job.shadeCardApprovalDate!);
+                    if (shadeCardDate != null) {
+                      pendingValidity = DateTime.now().difference(shadeCardDate).inDays;
+                      if (pendingValidity <= 70) {
+                        validityColor = Colors.green;
+                      } else if (pendingValidity <= 140) {
+                        validityColor = Colors.yellow[700]!;
+                      } else {
+                        validityColor = Colors.red;
+                      }
+                    }
+                  }
+                  return Row(
+                    children: [
+                      Icon(Icons.circle, color: validityColor, size: 16),
+                      const SizedBox(width: 8),
+                      Text('$pendingValidity days since Shade Card Approval', style: TextStyle(color: validityColor, fontWeight: FontWeight.bold)),
+                    ],
+                  );
                 },
               ),
             ],
@@ -436,16 +501,24 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
 
   void _savePurchaseOrder() {
     if (_formKey.currentState!.validate()) {
+      final poDate = DateTime.now();
+      final shadeCardDate = widget.job.shadeCardApprovalDate != null && widget.job.shadeCardApprovalDate!.isNotEmpty
+          ? DateTime.tryParse(widget.job.shadeCardApprovalDate!)
+          : null;
+      final pendingValidity = shadeCardDate != null
+          ? DateTime.now().difference(shadeCardDate).inDays
+          : 0;
       final purchaseOrder = PurchaseOrder(
-        purchaseOrderDate: _purchaseOrderDateController.text,
-        deliverDate: _deliverDateController.text,
-        totalPo: int.parse(_totalPoController.text),
-        dispatchDate: _dispatchDateController.text,
+        poDate: poDate,
+        deliveryDate: DateTime.parse(_deliverDateController.text),
+        dispatchDate: DateTime.parse(_dispatchDateController.text),
+        nrcDeliveryDate: DateTime.parse(_nrcDeliveryDateController.text),
+        totalPOQuantity: int.parse(_totalPoController.text),
+        unit: _unitController.text,
+        pendingValidity: pendingValidity,
+        noOfSheets: int.parse(_noOfSheetsController.text),
       );
-
       final updatedJob = widget.job.copyWith(purchaseOrder: purchaseOrder);
-
-      // Pop and return the updated job
       context.pop(updatedJob);
     }
   }
