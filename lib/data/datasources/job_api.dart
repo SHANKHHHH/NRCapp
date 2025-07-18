@@ -52,4 +52,19 @@ class JobApi {
       ),
     );
   }
+
+  Future<Response> createPurchaseOrder(Map<String, dynamic> purchaseOrderData) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    final response = await dio.post(
+      'http://51.20.4.108:3000/api/purchase-orders/create',
+      data: purchaseOrderData,
+      options: Options(
+        headers: {
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+    return response;
+  }
 }

@@ -374,7 +374,8 @@ class EnhancedJobCard extends StatelessWidget {
   }
 
   Widget _buildPurchaseOrderButton(BuildContext context) {
-    if (!job.hasPoAdded) {
+    final hasUpdatedAt = job.updatedAt != null && job.updatedAt!.isNotEmpty;
+    if (!hasUpdatedAt) {
       // Show Add PO button
       return SizedBox(
         width: double.infinity,
@@ -383,9 +384,9 @@ class EnhancedJobCard extends StatelessWidget {
             // Navigate to PurchaseOrderInput page and wait for result
             final result = await GoRouter.of(context).push('/add-po', extra: job);
 
-            // If PO was successfully added, the result will contain the updated job
-            if (result != null && result is Job && onJobUpdate != null) {
-              onJobUpdate!(result);
+            // If PO was successfully added, refresh the job card
+            if (result == true && onJobUpdate != null) {
+              onJobUpdate!(job);
             }
           },
           icon: const Icon(Icons.add_business),
@@ -398,7 +399,7 @@ class EnhancedJobCard extends StatelessWidget {
         ),
       );
     } else {
-      // Show View Details button with PO confirmation
+      // Show View Details and Add Machine Details buttons
       return Column(
         children: [
           // Confirmation that PO is added

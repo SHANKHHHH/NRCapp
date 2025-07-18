@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import '../../../data/models/purchase_order.dart';
 import '../stepsselections/AssignWorkSteps.dart';
 import '../../../constants/colors.dart';
+import 'package:dio/dio.dart';
+import '../../../data/datasources/job_api.dart';
 
 
 class PurchaseOrderInput extends StatefulWidget {
@@ -37,6 +39,7 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
 
   // Calculated field
   int _pendingQuantity = 0;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -77,36 +80,47 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Add Purchase Order'),
-        backgroundColor: AppColors.maincolor,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => GoRouter.of(context).pop(),
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: AppBar(
+            title: const Text('Add Purchase Order'),
+            backgroundColor: AppColors.maincolor,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => GoRouter.of(context).pop(),
+            ),
+          ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Job Details Card
+                _buildJobDetailsCard(),
+                const SizedBox(height: 20),
+
+                // Purchase Order Form
+                _buildPurchaseOrderForm(),
+
+                const SizedBox(height: 30),
+
+                // Action Buttons
+                _buildActionButtons(),
+              ],
+            ),
+          ),
         ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Job Details Card
-            _buildJobDetailsCard(),
-            const SizedBox(height: 20),
-
-            // Purchase Order Form
-            _buildPurchaseOrderForm(),
-
-            const SizedBox(height: 30),
-
-            // Action Buttons
-            _buildActionButtons(),
-          ],
-        ),
-      ),
+        if (_isLoading)
+          Container(
+            color: Colors.black.withOpacity(0.3),
+            child: const Center(
+              child: CircularProgressIndicator(),
+            ),
+          ),
+      ],
     );
   }
 
@@ -496,11 +510,20 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
   }
 
   String _formatDate(DateTime date) {
-    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+    final year = date.year.toString().padLeft(4, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    final second = date.second.toString().padLeft(2, '0');
+    return '$year-$month-${day}T$hour:$minute:${second}z';
   }
 
-  void _savePurchaseOrder() {
+  void _savePurchaseOrder() async {
     if (_formKey.currentState!.validate()) {
+      setState(() {
+        _isLoading = true;
+      });
       final poDate = DateTime.now();
       final shadeCardDate = widget.job.shadeCardApprovalDate != null && widget.job.shadeCardApprovalDate!.isNotEmpty
           ? DateTime.tryParse(widget.job.shadeCardApprovalDate!)
@@ -508,19 +531,72 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
       final pendingValidity = shadeCardDate != null
           ? DateTime.now().difference(shadeCardDate).inDays
           : 0;
-      final purchaseOrder = PurchaseOrder(
-        poDate: poDate,
-        deliveryDate: DateTime.parse(_deliverDateController.text),
-        dispatchDate: DateTime.parse(_dispatchDateController.text),
-        nrcDeliveryDate: DateTime.parse(_nrcDeliveryDateController.text),
-        totalPOQuantity: int.parse(_totalPoController.text),
-        unit: _unitController.text,
-        pendingValidity: pendingValidity,
-        noOfSheets: int.parse(_noOfSheetsController.text),
-      );
-      final updatedJob = widget.job.copyWith(purchaseOrder: purchaseOrder);
-      context.pop(updatedJob);
+      final purchaseOrderData = {
+        'nrcJobNo': widget.job.nrcJobNo,
+        'customer': widget.job.customerName,
+        'poDate': _formatDate(poDate),
+        'deliveryDate': _formatDate(DateTime.parse(_deliverDateController.text)),
+        'dispatchDate': _formatDate(DateTime.parse(_dispatchDateController.text)),
+        'nrcDeliveryDate': _formatDate(DateTime.parse(_nrcDeliveryDateController.text)),
+        'totalPOQuantity': int.parse(_totalPoController.text),
+        'unit': _unitController.text,
+        'pendingValidity': pendingValidity,
+        'noOfSheets': int.parse(_noOfSheetsController.text),
+        'updatedAt': _formatDate(DateTime.now()),
+      };
+      try {
+        final jobApi = JobApi(Dio());
+        final response = await jobApi.createPurchaseOrder(purchaseOrderData);
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+            });
+            await showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => AlertDialog(
+                backgroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: Row(
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.blue, size: 32),
+                    SizedBox(width: 8),
+                    Text('PO Created', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                content: const Text('Purchase Order has been created successfully!'),
+                actions: [
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                    child: const Text('OK'),
+                  ),
+                ],
+              ),
+            );
+            context.pop(true);
+          }
+        } else {
+          throw Exception('Failed to create purchase order');
+        }
+      } catch (e) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error:  ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
-
 }
