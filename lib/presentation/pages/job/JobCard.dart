@@ -3,6 +3,7 @@ import '../../../data/models/Job.dart';
 import '../stepsselections/AssignWorkSteps.dart';
 import 'ArtworkWorkflowWidget.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nrc/data/models/purchase_order.dart';
 
 class EnhancedJobCard extends StatelessWidget {
   final Job job;
@@ -22,7 +23,7 @@ class EnhancedJobCard extends StatelessWidget {
       onTap: () {
         if (job.purchaseOrder != null) {
           context.push(
-            '/job-details/${job.jobNumber}',
+            '/job-details/${job.nrcJobNo}',
             extra: {
               'job': job,
               'po': job.purchaseOrder,
@@ -52,25 +53,39 @@ class EnhancedJobCard extends StatelessWidget {
                 ],
               ),
             ),
-
-            // Artwork Workflow Section
-            if (job.status == JobStatus.active)
-              ArtworkWorkflowWidget(
-                job: job,
-                onJobUpdate: (updatedJob) {
-                  // This callback will be called when PO is added
-                  if (onJobUpdate != null) {
-                    onJobUpdate!(updatedJob);
-                  }
-                },
-                isActive: true,
+            // Show Artwork Workflow as a dropdown/expansion
+            ExpansionTile(
+              title: Text(
+                'Artwork Workflow',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue[700],
+                ),
               ),
-
-            // Status Control Section
+              initiallyExpanded: false,
+              children: [
+                ArtworkWorkflowWidget(
+                  job: job,
+                  onJobUpdate: onJobUpdate ?? (job) {},
+                  isActive: true,
+                ),
+              ],
+            ),
+            // Status Control Section (other controls)
             if (_shouldShowStatusControls()) ...[
               if (_buildStatusControlSection(context) != null)
                 _buildStatusControlSection(context),
             ],
+            // Always show Add PO button at the bottom if all artwork dates are filled and PO not added
+            if ((job.artworkReceivedDate?.isNotEmpty ?? false) &&
+                (job.artworkApprovalDate?.isNotEmpty ?? false) &&
+                (job.shadeCardApprovalDate?.isNotEmpty ?? false) &&
+                !job.hasPoAdded)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(left: 16, right: 16, top: 8, bottom: 16),
+                child: _buildPurchaseOrderButton(context),
+              ),
           ],
         ),
       ),
@@ -86,7 +101,7 @@ class EnhancedJobCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                job.jobNumber,
+                job.nrcJobNo,
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -95,7 +110,7 @@ class EnhancedJobCard extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                job.customer,
+                job.customerName,
                 style: const TextStyle(
                   fontSize: 14,
                   color: Colors.grey,
@@ -118,11 +133,22 @@ class EnhancedJobCard extends StatelessWidget {
   Widget _buildJobInfo() {
     return Column(
       children: [
-        _buildInfoRow(Icons.factory, 'Plant', job.plant),
-        _buildInfoRow(Icons.calendar_today, 'Job Date', job.jobDate),
-        _buildInfoRow(Icons.delivery_dining, 'Delivery', job.deliveryDate),
+        _buildInfoRow(Icons.category, 'Style/SKU', job.styleItemSKU),
+        _buildInfoRow(Icons.settings, 'Flute Type', job.fluteType),
+        if (job.boardSize != null && job.boardSize!.isNotEmpty)
+          _buildInfoRow(Icons.straighten, 'Board Size', job.boardSize!),
+        if (job.noUps != null && job.noUps!.isNotEmpty)
+          _buildInfoRow(Icons.format_list_numbered, 'No. of Ups', job.noUps!),
         if (job.artworkReceivedDate != null && job.artworkReceivedDate!.isNotEmpty)
           _buildInfoRow(Icons.palette, 'Artwork Received', job.artworkReceivedDate!),
+        if (job.artworkApprovalDate != null && job.artworkApprovalDate!.isNotEmpty)
+          _buildInfoRow(Icons.check_circle, 'Artwork Approved', job.artworkApprovalDate!),
+        if (job.shadeCardApprovalDate != null && job.shadeCardApprovalDate!.isNotEmpty)
+          _buildInfoRow(Icons.color_lens, 'Shade Card Approval', job.shadeCardApprovalDate!),
+        if (job.createdAt != null && job.createdAt!.isNotEmpty)
+          _buildInfoRow(Icons.calendar_today, 'Created At', job.createdAt!),
+        if (job.updatedAt != null && job.updatedAt!.isNotEmpty)
+          _buildInfoRow(Icons.update, 'Updated At', job.updatedAt!),
       ],
     );
   }
@@ -137,9 +163,10 @@ class EnhancedJobCard extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildMetric('Total Qty', '${job.totalQuantity}'),
-          _buildMetric('Dispatched', '${job.dispatchQuantity}'),
-          _buildMetric('Pending', '${job.pendingQuantity}'),
+          if (job.latestRate != null)
+            _buildMetric('Latest Rate', '₹${job.latestRate!.toStringAsFixed(2)}'),
+          if (job.length != null && job.width != null && job.height != null)
+            _buildMetric('Dimensions', '${job.length} x ${job.width} x ${job.height}'),
         ],
       ),
     );
@@ -196,7 +223,7 @@ class EnhancedJobCard extends StatelessWidget {
   }
 
   Widget _buildStatusChip() {
-    Color chipColor;
+    Color chipColor = Colors.grey; // default value
     String statusText;
 
     switch (job.status) {
@@ -220,6 +247,9 @@ class EnhancedJobCard extends StatelessWidget {
         chipColor = Colors.purple;
         statusText = 'Completed';
         break;
+      default:
+        chipColor = Colors.grey;
+        statusText = job.status.toString();
     }
 
     return Container(
@@ -329,7 +359,7 @@ class EnhancedJobCard extends StatelessWidget {
         final allArtworkDatesFilled =
             (job.artworkReceivedDate?.isNotEmpty ?? false) &&
                 (job.artworkApprovalDate?.isNotEmpty ?? false) &&
-                (job.shadeCardDate?.isNotEmpty ?? false);
+                (job.shadeCardApprovalDate?.isNotEmpty ?? false);
 
         if (!allArtworkDatesFilled) {
           return const SizedBox.shrink();
@@ -402,7 +432,7 @@ class EnhancedJobCard extends StatelessWidget {
             child: ElevatedButton.icon(
               onPressed: () {
                 context.push(
-                  '/job-details/${job.jobNumber}',
+                  '/job-details/${job.nrcJobNo}',
                   extra: {
                     'job': job,
                     'po': job.purchaseOrder,
@@ -462,7 +492,7 @@ class EnhancedJobCard extends StatelessWidget {
         return AlertDialog(
           title: Text('$actionVerb Job'),
           content: Text(
-            'Are you sure you want to change the status of job ${job.jobNumber} to $statusName?',
+            'Are you sure you want to change the status of job ${job.nrcJobNo} to $statusName?',
           ),
           actions: [
             TextButton(

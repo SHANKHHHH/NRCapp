@@ -31,7 +31,7 @@ class WorkScreen extends StatelessWidget {
               context,
               MaterialPageRoute(
                 builder: (context) => JobTimelinePage(
-                  jobNumber: job?.jobNumber,
+                  jobNumber: job?.nrcJobNo,
                   job: job,
                   assignedSteps: assignmentSummary?['steps'],
                 ),
@@ -74,15 +74,15 @@ class WorkScreen extends StatelessWidget {
             if (job != null) _buildSummaryItem(
               icon: Icons.work,
               title: 'Job',
-              value: job!.jobNumber,
+              value: job!.nrcJobNo,
               color: Colors.blue,
             ),
 
             // PO Summary
-            if (po != null) _buildSummaryItem(
+            if (job != null && job!.hasPoAdded) _buildSummaryItem(
               icon: Icons.receipt_long,
               title: 'Purchase Order',
-              value: 'N/A',
+              value: job!.purchaseOrder.toString(),
               color: Colors.orange,
             ),
 

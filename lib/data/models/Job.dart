@@ -5,151 +5,187 @@ enum JobStatus { active, inactive, hold, workingStarted, completed }
 enum JobDemand { high, medium, low }
 
 class Job {
-  final String jobNumber;
-  final String customer;
-  final String plant;
-  final String jobDate;
-  final String deliveryDate;
-  final String createdDate;
-  final String createdBy;
-  final String style;
-  final String dieCode;
-  final String boardSize;
+  final int id;
+  final String nrcJobNo;
+  final String styleItemSKU;
+  final String customerName;
   final String fluteType;
-  final String jobMonth;
-  final String noOfUps;
-  final String noOfSheets;
-  final int totalQuantity;
-  final String unit;
-  final int dispatchQuantity;
-  final int pendingQuantity;
-  final String shadeCardApprovalDate;
-  final String nrcDeliveryDate;
-  final String dispatchDate;
-  final String pendingValidity;
-  final JobStatus status;
-  final JobDemand? jobDemand;
-  final bool isApprovalPending;
-  
-  // New fields for artwork workflow
+  final String status;
+  final double? latestRate;
+  final double? preRate;
+  final int? length;
+  final int? width;
+  final int? height;
+  final String? boxDimensions;
+  final int? diePunchCode;
+  final String? boardCategory;
+  final String? noOfColor;
+  final String? processColors;
+  final String? specialColor1;
+  final String? specialColor2;
+  final String? specialColor3;
+  final String? specialColor4;
+  final String? overPrintFinishing;
+  final String? topFaceGSM;
+  final String? flutingGSM;
+  final String? bottomLinerGSM;
+  final String? decalBoardX;
+  final String? lengthBoardY;
+  final String? boardSize;
+  final String? noUps;
   final String? artworkReceivedDate;
   final String? artworkApprovalDate;
-  final String? shadeCardDate;
-  final bool hasPoAdded;
+  final String? shadeCardApprovalDate;
+  final String? srNo;
+  final String? jobDemand;
+  final String? imageURL;
+  final String? createdAt;
+  final String? updatedAt;
+  final int? userId;
+  final int? machineId;
   final PurchaseOrder? purchaseOrder;
 
   Job({
-    required this.jobNumber,
-    required this.customer,
-    required this.plant,
-    required this.jobDate,
-    required this.deliveryDate,
-    required this.createdDate,
-    required this.createdBy,
-    required this.style,
-    required this.dieCode,
-    required this.boardSize,
+    required this.id,
+    required this.nrcJobNo,
+    required this.styleItemSKU,
+    required this.customerName,
     required this.fluteType,
-    required this.jobMonth,
-    required this.noOfUps,
-    required this.noOfSheets,
-    required this.totalQuantity,
-    required this.unit,
-    required this.dispatchQuantity,
-    required this.pendingQuantity,
-    required this.shadeCardApprovalDate,
-    required this.nrcDeliveryDate,
-    required this.dispatchDate,
-    required this.pendingValidity,
     required this.status,
-    this.jobDemand,
-    this.isApprovalPending = false,
+    this.latestRate,
+    this.preRate,
+    this.length,
+    this.width,
+    this.height,
+    this.boxDimensions,
+    this.diePunchCode,
+    this.boardCategory,
+    this.noOfColor,
+    this.processColors,
+    this.specialColor1,
+    this.specialColor2,
+    this.specialColor3,
+    this.specialColor4,
+    this.overPrintFinishing,
+    this.topFaceGSM,
+    this.flutingGSM,
+    this.bottomLinerGSM,
+    this.decalBoardX,
+    this.lengthBoardY,
+    this.boardSize,
+    this.noUps,
     this.artworkReceivedDate,
     this.artworkApprovalDate,
-    this.shadeCardDate,
-    this.hasPoAdded = false,
+    this.shadeCardApprovalDate,
+    this.srNo,
+    this.jobDemand,
+    this.imageURL,
+    this.createdAt,
+    this.updatedAt,
+    this.userId,
+    this.machineId,
     this.purchaseOrder,
   });
 
   // Check if all artwork workflow steps are completed
   bool get isArtworkWorkflowComplete {
     return artworkReceivedDate != null &&
-           artworkReceivedDate!.isNotEmpty &&
-           artworkApprovalDate != null &&
-           artworkApprovalDate!.isNotEmpty &&
-           shadeCardDate != null &&
-           shadeCardDate!.isNotEmpty;
+        artworkReceivedDate!.isNotEmpty &&
+        artworkApprovalDate != null &&
+        artworkApprovalDate!.isNotEmpty &&
+        shadeCardApprovalDate != null &&
+        shadeCardApprovalDate!.isNotEmpty;
   }
 
   // Check if any artwork field is missing
   bool get hasIncompleteArtworkData {
     return (artworkReceivedDate?.isEmpty ?? true) ||
-           (artworkApprovalDate?.isEmpty ?? true) ||
-           (shadeCardDate?.isEmpty ?? true);
+        (artworkApprovalDate?.isEmpty ?? true) ||
+        (shadeCardApprovalDate?.isEmpty ?? true);
   }
 
+  bool get hasPoAdded => purchaseOrder != null;
+
   Job copyWith({
-    String? jobNumber,
-    String? customer,
-    String? plant,
-    String? jobDate,
-    String? deliveryDate,
-    String? createdDate,
-    String? createdBy,
-    String? style,
-    String? dieCode,
-    String? boardSize,
+    int? id,
+    String? nrcJobNo,
+    String? styleItemSKU,
+    String? customerName,
     String? fluteType,
-    String? jobMonth,
-    String? noOfUps,
-    String? noOfSheets,
-    int? totalQuantity,
-    String? unit,
-    int? dispatchQuantity,
-    int? pendingQuantity,
-    String? shadeCardApprovalDate,
-    String? nrcDeliveryDate,
-    String? dispatchDate,
-    String? pendingValidity,
-    JobStatus? status,
-    JobDemand? jobDemand,
-    bool? isApprovalPending,
+    String? status,
+    double? latestRate,
+    double? preRate,
+    int? length,
+    int? width,
+    int? height,
+    String? boxDimensions,
+    int? diePunchCode,
+    String? boardCategory,
+    String? noOfColor,
+    String? processColors,
+    String? specialColor1,
+    String? specialColor2,
+    String? specialColor3,
+    String? specialColor4,
+    String? overPrintFinishing,
+    String? topFaceGSM,
+    String? flutingGSM,
+    String? bottomLinerGSM,
+    String? decalBoardX,
+    String? lengthBoardY,
+    String? boardSize,
+    String? noUps,
     String? artworkReceivedDate,
     String? artworkApprovalDate,
-    String? shadeCardDate,
-    bool? hasPoAdded,
+    String? shadeCardApprovalDate,
+    String? srNo,
+    String? jobDemand,
+    String? imageURL,
+    String? createdAt,
+    String? updatedAt,
+    int? userId,
+    int? machineId,
     PurchaseOrder? purchaseOrder,
   }) {
     return Job(
-      jobNumber: jobNumber ?? this.jobNumber,
-      customer: customer ?? this.customer,
-      plant: plant ?? this.plant,
-      jobDate: jobDate ?? this.jobDate,
-      deliveryDate: deliveryDate ?? this.deliveryDate,
-      createdDate: createdDate ?? this.createdDate,
-      createdBy: createdBy ?? this.createdBy,
-      style: style ?? this.style,
-      dieCode: dieCode ?? this.dieCode,
-      boardSize: boardSize ?? this.boardSize,
+      id: id ?? this.id,
+      nrcJobNo: nrcJobNo ?? this.nrcJobNo,
+      styleItemSKU: styleItemSKU ?? this.styleItemSKU,
+      customerName: customerName ?? this.customerName,
       fluteType: fluteType ?? this.fluteType,
-      jobMonth: jobMonth ?? this.jobMonth,
-      noOfUps: noOfUps ?? this.noOfUps,
-      noOfSheets: noOfSheets ?? this.noOfSheets,
-      totalQuantity: totalQuantity ?? this.totalQuantity,
-      unit: unit ?? this.unit,
-      dispatchQuantity: dispatchQuantity ?? this.dispatchQuantity,
-      pendingQuantity: pendingQuantity ?? this.pendingQuantity,
-      shadeCardApprovalDate: shadeCardApprovalDate ?? this.shadeCardApprovalDate,
-      nrcDeliveryDate: nrcDeliveryDate ?? this.nrcDeliveryDate,
-      dispatchDate: dispatchDate ?? this.dispatchDate,
-      pendingValidity: pendingValidity ?? this.pendingValidity,
       status: status ?? this.status,
-      jobDemand: jobDemand ?? this.jobDemand,
-      isApprovalPending: isApprovalPending ?? this.isApprovalPending,
+      latestRate: latestRate ?? this.latestRate,
+      preRate: preRate ?? this.preRate,
+      length: length ?? this.length,
+      width: width ?? this.width,
+      height: height ?? this.height,
+      boxDimensions: boxDimensions ?? this.boxDimensions,
+      diePunchCode: diePunchCode ?? this.diePunchCode,
+      boardCategory: boardCategory ?? this.boardCategory,
+      noOfColor: noOfColor ?? this.noOfColor,
+      processColors: processColors ?? this.processColors,
+      specialColor1: specialColor1 ?? this.specialColor1,
+      specialColor2: specialColor2 ?? this.specialColor2,
+      specialColor3: specialColor3 ?? this.specialColor3,
+      specialColor4: specialColor4 ?? this.specialColor4,
+      overPrintFinishing: overPrintFinishing ?? this.overPrintFinishing,
+      topFaceGSM: topFaceGSM ?? this.topFaceGSM,
+      flutingGSM: flutingGSM ?? this.flutingGSM,
+      bottomLinerGSM: bottomLinerGSM ?? this.bottomLinerGSM,
+      decalBoardX: decalBoardX ?? this.decalBoardX,
+      lengthBoardY: lengthBoardY ?? this.lengthBoardY,
+      boardSize: boardSize ?? this.boardSize,
+      noUps: noUps ?? this.noUps,
       artworkReceivedDate: artworkReceivedDate ?? this.artworkReceivedDate,
       artworkApprovalDate: artworkApprovalDate ?? this.artworkApprovalDate,
-      shadeCardDate: shadeCardDate ?? this.shadeCardDate,
-      hasPoAdded: hasPoAdded ?? this.hasPoAdded,
+      shadeCardApprovalDate: shadeCardApprovalDate ?? this.shadeCardApprovalDate,
+      srNo: srNo ?? this.srNo,
+      jobDemand: jobDemand ?? this.jobDemand,
+      imageURL: imageURL ?? this.imageURL,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      userId: userId ?? this.userId,
+      machineId: machineId ?? this.machineId,
       purchaseOrder: purchaseOrder ?? this.purchaseOrder,
     );
   }

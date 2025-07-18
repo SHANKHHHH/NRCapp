@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:nrc/constants/strings.dart';
 import '../../../data/models/job_model.dart';
 import '../../../data/datasources/job_api.dart';
 import 'job_list_page.dart';
@@ -35,7 +36,7 @@ class JobDetailScreen extends StatelessWidget {
       ),
     );
     try {
-      await JobApi(Dio(BaseOptions(baseUrl: 'http://51.20.4.108:3000/api')))
+      await JobApi(Dio(BaseOptions(baseUrl: '${AppStrings.baseUrl}/api')))
           .updateJobStatus(job.nrcJobNo, 'ACTIVE');
       // Remove loader
       Navigator.of(context, rootNavigator: true).pop();

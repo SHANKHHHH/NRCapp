@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../data/models/Job.dart';
 import 'package:go_router/go_router.dart';
+import '../../../data/datasources/job_api.dart';
+import '../../../core/services/dio_service.dart';
 
 class ArtworkWorkflowWidget extends StatefulWidget {
   final Job job;
@@ -24,6 +27,16 @@ class _ArtworkWorkflowWidgetState extends State<ArtworkWorkflowWidget> {
   late TextEditingController _shadeCardController;
   bool _isEditing = false;
 
+  // Track loading state for each field
+  bool _isLoadingArtworkReceived = false;
+  bool _isLoadingArtworkApproval = false;
+  bool _isLoadingShadeCard = false;
+
+  late JobApi _jobApi;
+
+  String? _artworkImageUrl;
+  bool _isUploadingImage = false;
+
   @override
   void initState() {
     super.initState();
@@ -34,13 +47,15 @@ class _ArtworkWorkflowWidgetState extends State<ArtworkWorkflowWidget> {
       text: widget.job.artworkApprovalDate ?? '',
     );
     _shadeCardController = TextEditingController(
-      text: widget.job.shadeCardDate ?? '',
+      text: widget.job.shadeCardApprovalDate ?? '',
     );
+    _jobApi = JobApi(DioService.instance);
+    _artworkImageUrl = widget.job.imageURL;
 
     // If all fields are empty, allow editing immediately
     if ((widget.job.artworkReceivedDate == null || widget.job.artworkReceivedDate!.isEmpty) &&
         (widget.job.artworkApprovalDate == null || widget.job.artworkApprovalDate!.isEmpty) &&
-        (widget.job.shadeCardDate == null || widget.job.shadeCardDate!.isEmpty)) {
+        (widget.job.shadeCardApprovalDate == null || widget.job.shadeCardApprovalDate!.isEmpty)) {
       _isEditing = true;
     }
   }
@@ -85,7 +100,7 @@ class _ArtworkWorkflowWidgetState extends State<ArtworkWorkflowWidget> {
               if (!_isEditing && widget.isActive && (
                 (widget.job.artworkReceivedDate?.isNotEmpty ?? false) ||
                 (widget.job.artworkApprovalDate?.isNotEmpty ?? false) ||
-                (widget.job.shadeCardDate?.isNotEmpty ?? false)
+                (widget.job.shadeCardApprovalDate?.isNotEmpty ?? false)
               ))
                 ElevatedButton.icon(
                   onPressed: () {
@@ -139,6 +154,44 @@ class _ArtworkWorkflowWidgetState extends State<ArtworkWorkflowWidget> {
             isEnabled: _isEditing && _artworkApprovalController.text.isNotEmpty,
           ),
 
+          // Upload Artwork Button and Image Preview (below all date fields)
+          Padding(
+            padding: const EdgeInsets.only(left: 0, right: 0, bottom: 8, top: 12),
+            child: Row(
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _isUploadingImage ? null : _pickAndUploadImage,
+                  icon: _isUploadingImage
+                      ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : Icon(Icons.upload),
+                  label: Text(_isUploadingImage ? 'Uploading...' : 'Upload Artwork'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue[600],
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+                if (_artworkImageUrl != null && _artworkImageUrl!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 12),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: Image.network(
+                        _artworkImageUrl!,
+                        width: 40,
+                        height: 40,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Icon(Icons.broken_image, color: Colors.grey),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
           const SizedBox(height: 16),
 
           // Action Buttons
@@ -155,6 +208,11 @@ class _ArtworkWorkflowWidgetState extends State<ArtworkWorkflowWidget> {
     required bool isCompleted,
     bool isEnabled = true,
   }) {
+    // Determine which field is loading
+    bool isLoading = false;
+    if (label == 'Artwork Received Date') isLoading = _isLoadingArtworkReceived;
+    if (label == 'Artwork Approval Date') isLoading = _isLoadingArtworkApproval;
+    if (label == 'Shade Card Approval Date') isLoading = _isLoadingShadeCard;
     return Container(
       decoration: BoxDecoration(
         color: isCompleted ? Colors.green[50] : Colors.white,
@@ -185,7 +243,7 @@ class _ArtworkWorkflowWidgetState extends State<ArtworkWorkflowWidget> {
           ),
         ),
         subtitle: GestureDetector(
-          onTap: isEnabled ? () => _selectDate(controller) : null,
+          onTap: isEnabled && !isLoading ? () => _selectAndUpdateDate(controller, label) : null,
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
             margin: const EdgeInsets.only(top: 8),
@@ -197,13 +255,25 @@ class _ArtworkWorkflowWidgetState extends State<ArtworkWorkflowWidget> {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    controller.text.isEmpty ? 'Select Date' : controller.text,
-                    style: TextStyle(
-                      color: controller.text.isEmpty ? Colors.grey[500] : Colors.black87,
-                      fontSize: 13,
-                    ),
-                  ),
+                  child: isLoading
+                      ? Row(
+                          children: [
+                            SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 8),
+                            Text('Updating...'),
+                          ],
+                        )
+                      : Text(
+                          controller.text.isEmpty ? 'Select Date' : controller.text,
+                          style: TextStyle(
+                            color: controller.text.isEmpty ? Colors.grey[500] : Colors.black87,
+                            fontSize: 13,
+                          ),
+                        ),
                 ),
                 Icon(
                   Icons.calendar_today,
@@ -220,11 +290,7 @@ class _ArtworkWorkflowWidgetState extends State<ArtworkWorkflowWidget> {
   }
 
   Widget _buildActionButtons() {
-    final allDatesFilled =
-        _artworkReceivedController.text.isNotEmpty &&
-            _artworkApprovalController.text.isNotEmpty &&
-            _shadeCardController.text.isNotEmpty;
-    final hasPoAdded = widget.job.hasPoAdded;
+
 
     if (_isEditing) {
       return SizedBox(
@@ -234,7 +300,7 @@ class _ArtworkWorkflowWidgetState extends State<ArtworkWorkflowWidget> {
             final updatedJob = widget.job.copyWith(
               artworkReceivedDate: _artworkReceivedController.text.isEmpty ? null : _artworkReceivedController.text,
               artworkApprovalDate: _artworkApprovalController.text.isEmpty ? null : _artworkApprovalController.text,
-              shadeCardDate: _shadeCardController.text.isEmpty ? null : _shadeCardController.text,
+              shadeCardApprovalDate: _shadeCardController.text.isEmpty ? null : _shadeCardController.text,
             );
             widget.onJobUpdate(updatedJob);
             setState(() {
@@ -242,7 +308,7 @@ class _ArtworkWorkflowWidgetState extends State<ArtworkWorkflowWidget> {
             });
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Changes saved for job ${widget.job.jobNumber}'),
+                content: Text('Changes saved for job ${widget.job.nrcJobNo}'),
                 backgroundColor: Colors.blue[600],
                 behavior: SnackBarBehavior.floating,
               ),
@@ -265,8 +331,8 @@ class _ArtworkWorkflowWidgetState extends State<ArtworkWorkflowWidget> {
     return const SizedBox.shrink();
   }
 
-  Future<void> _selectDate(TextEditingController controller) async {
-    if (!_isEditing) return; // Only allow date picking in edit mode
+  Future<void> _selectAndUpdateDate(TextEditingController controller, String label) async {
+    if (!_isEditing) return;
     final DateTime? pickedDate = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
@@ -286,15 +352,105 @@ class _ArtworkWorkflowWidgetState extends State<ArtworkWorkflowWidget> {
         );
       },
     );
-
     if (pickedDate != null) {
+      String formattedDate = _formatDate(pickedDate);
       setState(() {
-        controller.text = _formatDate(pickedDate);
+        controller.text = formattedDate;
+        if (label == 'Artwork Received Date') _isLoadingArtworkReceived = true;
+        if (label == 'Artwork Approval Date') _isLoadingArtworkApproval = true;
+        if (label == 'Shade Card Approval Date') _isLoadingShadeCard = true;
       });
+      try {
+        Map<String, dynamic> updateField = {};
+        if (label == 'Artwork Received Date') updateField['artworkReceivedDate'] = formattedDate;
+        if (label == 'Artwork Approval Date') updateField['artworkApprovedDate'] = formattedDate;
+        if (label == 'Shade Card Approval Date') updateField['shadeCardApprovalDate'] = formattedDate;
+        await _jobApi.updateJobField(widget.job.nrcJobNo, updateField);
+
+        final updatedJob = widget.job.copyWith(
+          artworkReceivedDate: label == 'Artwork Received Date' ? formattedDate : widget.job.artworkReceivedDate,
+          artworkApprovalDate: label == 'Artwork Approval Date' ? formattedDate : widget.job.artworkApprovalDate,
+          shadeCardApprovalDate: label == 'Shade Card Approval Date' ? formattedDate : widget.job.shadeCardApprovalDate,
+        );
+        widget.onJobUpdate(updatedJob);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$label updated!'),
+            backgroundColor: Colors.green[600],
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } catch (e) {
+        print(e);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update $label'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } finally {
+        setState(() {
+          if (label == 'Artwork Received Date') _isLoadingArtworkReceived = false;
+          if (label == 'Artwork Approval Date') _isLoadingArtworkApproval = false;
+          if (label == 'Shade Card Approval Date') _isLoadingShadeCard = false;
+        });
+      }
     }
   }
 
   String _formatDate(DateTime date) {
-    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+    final year = date.year.toString().padLeft(4, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    final second = date.second.toString().padLeft(2, '0');
+    return '$year-$month-${day}T$hour:$minute:${second}z';
+  }
+
+  Future<void> _pickAndUploadImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      setState(() {
+        _isUploadingImage = true;
+      });
+      try {
+        // Simulate upload and get a mock URL
+        final imageUrl = await _mockUploadImage(pickedFile.path);
+        setState(() {
+          _artworkImageUrl = imageUrl;
+        });
+        await _jobApi.updateJobField(widget.job.nrcJobNo, {'imageURL': imageUrl});
+        widget.onJobUpdate(widget.job.copyWith(imageURL: imageUrl));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Artwork image uploaded!'),
+            backgroundColor: Colors.green[600],
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to upload image'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } finally {
+        setState(() {
+          _isUploadingImage = false;
+        });
+      }
+    }
+  }
+
+  Future<String> _mockUploadImage(String path) async {
+    // Simulate a network upload delay
+    await Future.delayed(Duration(seconds: 2));
+    // Return a mock image URL (in real app, upload to server and get URL)
+    return 'https://via.placeholder.com/150?text=Artwork';
   }
 }

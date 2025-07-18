@@ -15,7 +15,8 @@ class PurchaseOrderInput extends StatefulWidget {
 
   const PurchaseOrderInput({
     Key? key,
-    required this.job,   this.existingPo,
+    required this.job,
+    this.existingPo,
   }) : super(key: key);
 
   @override
@@ -131,28 +132,24 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
             ),
             const SizedBox(height: 16),
             // Show all job fields
-            _buildJobDetailRow(Icons.confirmation_number, 'Job Number', job.jobNumber),
-            _buildJobDetailRow(Icons.person, 'Customer', job.customer),
-            _buildJobDetailRow(Icons.factory, 'Plant', job.plant),
-            _buildJobDetailRow(Icons.calendar_today, 'Job Date', job.jobDate),
-            _buildJobDetailRow(Icons.delivery_dining, 'Delivery Date', job.deliveryDate),
-            _buildJobDetailRow(Icons.style, 'Style', job.style ?? ''),
-            _buildJobDetailRow(Icons.code, 'Die Code', job.dieCode ?? ''),
+            _buildJobDetailRow(Icons.confirmation_number, 'Job Number', job.nrcJobNo),
+            _buildJobDetailRow(Icons.person, 'Customer', job.customerName),
+            _buildJobDetailRow(Icons.category, 'Style/SKU', job.styleItemSKU),
+            _buildJobDetailRow(Icons.settings, 'Flute Type', job.fluteType),
             _buildJobDetailRow(Icons.aspect_ratio, 'Board Size', job.boardSize ?? ''),
-            _buildJobDetailRow(Icons.layers, 'Flute Type', job.fluteType ?? ''),
-            _buildJobDetailRow(Icons.format_list_numbered, 'No. of Ups', job.noOfUps ?? ''),
-            _buildJobDetailRow(Icons.format_list_numbered, 'No. of Sheets', job.noOfSheets ?? ''),
-            _buildJobDetailRow(Icons.straighten, 'Unit', job.unit ?? ''),
-            _buildJobDetailRow(Icons.calendar_month, 'Job Month', job.jobMonth ?? ''),
-            _buildJobDetailRow(Icons.person_outline, 'Created By', job.createdBy ?? ''),
-            _buildJobDetailRow(Icons.date_range, 'Created Date', job.createdDate ?? ''),
+            _buildJobDetailRow(Icons.format_list_numbered, 'No. of Ups', job.noUps ?? ''),
+            _buildJobDetailRow(Icons.attach_money, 'Latest Rate', job.latestRate?.toString() ?? ''),
+            _buildJobDetailRow(Icons.money_off, 'Previous Rate', job.preRate?.toString() ?? ''),
+            _buildJobDetailRow(Icons.straighten, 'Dimensions', (job.length != null && job.width != null && job.height != null) ? '${job.length} x ${job.width} x ${job.height}' : ''),
             _buildJobDetailRow(Icons.check, 'Artwork Received Date', job.artworkReceivedDate ?? ''),
             _buildJobDetailRow(Icons.check, 'Artwork Approval Date', job.artworkApprovalDate ?? ''),
-            _buildJobDetailRow(Icons.check, 'Shade Card Date', job.shadeCardDate ?? ''),
-            _buildJobDetailRow(Icons.numbers, 'Total Quantity', job.totalQuantity.toString()),
-            _buildJobDetailRow(Icons.local_shipping, 'Dispatch Quantity', job.dispatchQuantity.toString()),
-            _buildJobDetailRow(Icons.pending, 'Pending Quantity', job.pendingQuantity.toString()),
-            // Add more fields as needed
+            _buildJobDetailRow(Icons.check, 'Shade Card Approval Date', job.shadeCardApprovalDate ?? ''),
+            _buildJobDetailRow(Icons.calendar_today, 'Created At', job.createdAt ?? ''),
+            _buildJobDetailRow(Icons.update, 'Updated At', job.updatedAt ?? ''),
+            if (job.purchaseOrder != null)
+              _buildJobDetailRow(Icons.assignment, 'Purchase Order', 'Available'),
+            if (job.hasPoAdded)
+              _buildJobDetailRow(Icons.assignment_turned_in, 'PO Status', 'Added'),
           ],
         ),
       ),
@@ -446,7 +443,7 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
         dispatchDate: _dispatchDateController.text,
       );
 
-      final updatedJob = widget.job.copyWith(purchaseOrder: purchaseOrder, hasPoAdded: true);
+      final updatedJob = widget.job.copyWith(purchaseOrder: purchaseOrder);
 
       // Pop and return the updated job
       context.pop(updatedJob);

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:nrc/constants/strings.dart';
 import '../../../data/models/job_model.dart';
 import '../../../data/datasources/job_api.dart';
 import '../../../data/repositories/job_repository.dart';
@@ -88,7 +89,7 @@ class _AllJobsScreenState extends State<AllJobsScreen> {
 
   // Use repository for fetching jobs
   final JobRepository _jobRepository = JobRepository(
-    JobApi(Dio(BaseOptions(baseUrl: 'http://51.20.4.108:3000/api'))),
+    JobApi(Dio(BaseOptions(baseUrl: '${AppStrings.baseUrl}/api'))),
   );
 
   @override

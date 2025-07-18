@@ -68,14 +68,25 @@ class WorkDetailsScreen extends StatelessWidget {
               color: Colors.blue,
             ),
             if (job != null) ...[
-              _buildKeyValueRow('Job Number', job!.jobNumber),
-              _buildKeyValueRow('Customer', job!.customer),
-              _buildKeyValueRow('Style', job!.style),
-              _buildKeyValueRow('Status', job!.status.name),
-              _buildKeyValueRow('Delivery Date', job!.deliveryDate),
-              _buildKeyValueRow('Total Quantity', '${job!.totalQuantity} ${job!.unit}'),
-              if (job!.isApprovalPending)
-                const SizedBox(height: 16),
+              _buildKeyValueRow('Job Number', job!.nrcJobNo),
+              _buildKeyValueRow('Customer', job!.customerName),
+              _buildKeyValueRow('Style/SKU', job!.styleItemSKU),
+              _buildKeyValueRow('Status', job!.status),
+              _buildKeyValueRow('Board Size', job!.boardSize ?? ''),
+              _buildKeyValueRow('Flute Type', job!.fluteType),
+              _buildKeyValueRow('No. of Ups', job!.noUps ?? ''),
+              _buildKeyValueRow('Latest Rate', job!.latestRate?.toString() ?? ''),
+              _buildKeyValueRow('Previous Rate', job!.preRate?.toString() ?? ''),
+              _buildKeyValueRow('Dimensions', (job!.length != null && job!.width != null && job!.height != null) ? '${job!.length} x ${job!.width} x ${job!.height}' : ''),
+              _buildKeyValueRow('Artwork Received', job!.artworkReceivedDate ?? ''),
+              _buildKeyValueRow('Artwork Approved', job!.artworkApprovalDate ?? ''),
+              _buildKeyValueRow('Shade Card Approval', job!.shadeCardApprovalDate ?? ''),
+              _buildKeyValueRow('Created At', job!.createdAt ?? ''),
+              _buildKeyValueRow('Updated At', job!.updatedAt ?? ''),
+              if (job!.purchaseOrder != null)
+                _buildKeyValueRow('Purchase Order', 'Available'),
+              if (job!.hasPoAdded)
+                _buildKeyValueRow('PO Status', 'Added'),
             ],
 
             // PO Section

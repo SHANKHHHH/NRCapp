@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:nrc/constants/colors.dart';
+import 'package:nrc/constants/strings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:dio/dio.dart';
+import '../../../data/datasources/job_api.dart';
 import '../../routes/UserRoleManager.dart';
-import '../../../data/models/Job.dart';
+import '../../../data/models/job_model.dart';
+import '../../../data/models/Job.dart'; // Add this import for Job model
 import 'JobDetailScreen.dart';
 import 'JobCard.dart';
 import 'JobStep.dart';
+import 'ArtworkWorkflowWidget.dart'; // Add this import for ArtworkWorkflowWidget
 
 class JobListPage extends StatefulWidget {
   const JobListPage({super.key, String? userRole});
@@ -16,15 +21,27 @@ class JobListPage extends StatefulWidget {
 
 class _JobListPageState extends State<JobListPage> {
   late String _userRole;
-  List<Job> _jobs = [];
-  List<Job> _filteredJobs = [];
-  Set<JobStatus> _selectedFilters = {};
+  List<JobModel> _jobs = [];
+  List<JobModel> _filteredJobs = [];
+  Set<String> _selectedFilters = {};
+  bool _isLoading = true;
+  String? _error;
+
+  late JobApi _jobApi;
 
   @override
   void initState() {
     super.initState();
+    _initializeApi();
     _loadUserRole();
-    _initializeJobs();
+    _loadJobs();
+  }
+
+  void _initializeApi() {
+    final dio = Dio();
+    // Set your base URL here
+    dio.options.baseUrl = '${AppStrings.baseUrl}/api';
+    _jobApi = JobApi(dio);
   }
 
   void _loadUserRole() async {
@@ -33,112 +50,32 @@ class _JobListPageState extends State<JobListPage> {
     setState(() {});
   }
 
-  void _initializeJobs() {
-    _jobs = [
-      Job(
-        jobNumber: 'NRC001',
-        customer: 'Fashion Hub Ltd.',
-        plant: 'Plant A',
-        jobDate: '2024-01-15',
-        deliveryDate: '2024-01-25',
-        createdDate: '2024-01-11',
-        createdBy: 'Jane Smith',
-        style: 'Style B',
-        dieCode: 'DIE002',
-        boardSize: '40x25',
-        fluteType: 'C Flute',
-        jobMonth: 'January',
-        noOfUps: '18',
-        noOfSheets: '150',
-        totalQuantity: 2700,
-        unit: 'PCS',
-        dispatchQuantity: 500,
-        pendingQuantity: 2200,
-        shadeCardApprovalDate: '2024-01-13',
-        nrcDeliveryDate: '2024-01-27',
-        dispatchDate: '2024-01-20',
-        pendingValidity: '2024-02-18',
-        status: JobStatus.inactive,
-      ),
-      Job(
-        jobNumber: 'NRC002',
-        customer: 'Denim World',
-        plant: 'Plant B',
-        jobDate: '2024-01-16',
-        deliveryDate: '2024-01-28',
-        createdDate: '2024-01-10',
-        createdBy: 'John Doe',
-        style: 'Style A',
-        dieCode: 'DIE001',
-        boardSize: '30x20',
-        fluteType: 'B Flute',
-        jobMonth: 'January',
-        noOfUps: '24',
-        noOfSheets: '100',
-        totalQuantity: 2400,
-        unit: 'PCS',
-        dispatchQuantity: 0,
-        pendingQuantity: 2400,
-        shadeCardApprovalDate: '2024-01-12',
-        nrcDeliveryDate: '2024-01-24',
-        dispatchDate: 'TBD',
-        pendingValidity: '2024-02-15',
-        status: JobStatus.inactive,
-      ),
-      Job(
-        jobNumber: 'NRC003',
-        customer: 'Corporate Wear Co.',
-        plant: 'Plant C',
-        jobDate: '2024-01-17',
-        deliveryDate: '2024-01-30',
-        createdDate: '2024-01-12',
-        createdBy: 'Mike Johnson',
-        style: 'Style C',
-        dieCode: 'DIE003',
-        boardSize: '35x22',
-        fluteType: 'E Flute',
-        jobMonth: 'January',
-        noOfUps: '30',
-        noOfSheets: '120',
-        totalQuantity: 3600,
-        unit: 'PCS',
-        dispatchQuantity: 0,
-        pendingQuantity: 3600,
-        shadeCardApprovalDate: '2024-01-14',
-        nrcDeliveryDate: '2024-01-29',
-        dispatchDate: 'TBD',
-        pendingValidity: '2024-02-20',
-        status: JobStatus.inactive,
-      ),
-      Job(
-        jobNumber: 'NRC004',
-        customer: 'Tech Solutions Inc.',
-        plant: 'Plant D',
-        jobDate: '2024-01-18',
-        deliveryDate: '2024-02-01',
-        createdDate: '2024-01-13',
-        createdBy: 'Sarah Wilson',
-        style: 'Style D',
-        dieCode: 'DIE004',
-        boardSize: '45x30',
-        fluteType: 'BC Flute',
-        jobMonth: 'January',
-        noOfUps: '20',
-        noOfSheets: '200',
-        totalQuantity: 4000,
-        unit: 'PCS',
-        dispatchQuantity: 0,
-        pendingQuantity: 4000,
-        shadeCardApprovalDate: '2024-01-15',
-        nrcDeliveryDate: '2024-01-31',
-        dispatchDate: 'TBD',
-        pendingValidity: '2024-02-25',
-        status: JobStatus.active,
-        jobDemand: JobDemand.high,
-        isApprovalPending: true,
-      ),
-    ];
-    _filteredJobs = List.from(_jobs);
+  Future<void> _loadJobs() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+
+      final jobs = await _jobApi.getJobs();
+
+      // Filter jobs with status 'Active' (case-insensitive)
+      final activeJobs = jobs.where((job) =>
+      job.status.toLowerCase() == 'active'
+      ).toList();
+
+      setState(() {
+        _jobs = activeJobs;
+        _filteredJobs = List.from(activeJobs);
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = 'Failed to load jobs: ${e.toString()}';
+        _isLoading = false;
+      });
+      print('Error loading jobs: $e');
+    }
   }
 
   void _applyFilters() {
@@ -146,9 +83,16 @@ class _JobListPageState extends State<JobListPage> {
       if (_selectedFilters.isEmpty) {
         _filteredJobs = List.from(_jobs);
       } else {
-        _filteredJobs = _jobs.where((job) => _selectedFilters.contains(job.status)).toList();
+        _filteredJobs = _jobs.where((job) =>
+            _selectedFilters.contains(job.status.toLowerCase())
+        ).toList();
       }
     });
+  }
+
+  // Get unique statuses from the current jobs
+  Set<String> get _availableStatuses {
+    return _jobs.map((job) => job.status.toLowerCase()).toSet();
   }
 
   @override
@@ -165,6 +109,10 @@ class _JobListPageState extends State<JobListPage> {
             icon: const Icon(Icons.filter_list),
             onPressed: () => _showFilterDialog(context),
           ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadJobs,
+          ),
           if (_userRole == 'Admin' || _userRole == 'Planner')
             IconButton(
               icon: const Icon(Icons.add),
@@ -172,90 +120,286 @@ class _JobListPageState extends State<JobListPage> {
             ),
         ],
       ),
-      body: _filteredJobs.isEmpty
-          ? const Center(
-        child: Text(
-          'No jobs found',
-          style: TextStyle(fontSize: 16, color: Colors.grey),
-        ),
-      )
-          : ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _filteredJobs.length,
-        itemBuilder: (context, index) {
-          final job = _filteredJobs[index];
-          return EnhancedJobCard(
-            job: job,
-            onJobUpdate: _updateJob,
-          );
-        },
-      ),
+      body: _buildBody(),
     );
   }
 
-  void _navigateToJobDetail(Job job) {
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
 
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Colors.grey.shade400,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _error!,
+              style: const TextStyle(fontSize: 16, color: Colors.grey),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadJobs,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_filteredJobs.isEmpty) {
+      return const Center(
+        child: Text(
+          'No active jobs found',
+          style: TextStyle(fontSize: 16, color: Colors.grey),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _filteredJobs.length,
+      itemBuilder: (context, index) {
+        final job = _filteredJobs[index];
+        return _buildJobCard(job);
+      },
+    );
   }
 
-  void _updateJob(Job updatedJob) {
+  Widget _buildJobCard(JobModel job) {
+    // Convert JobModel to Job for compatibility with existing JobCard
+    final compatibleJob = _convertJobModelToJob(job);
+
+    return EnhancedJobCard(
+      job: compatibleJob,
+      onJobUpdate: _updateJobFromJobCard,
+    );
+  }
+
+  // Helper method to convert JobModel to Job for existing UI components
+  Job _convertJobModelToJob(JobModel jobModel) {
+    return Job(
+      id: jobModel.id,
+      nrcJobNo: jobModel.nrcJobNo,
+      styleItemSKU: jobModel.styleItemSKU,
+      customerName: jobModel.customerName,
+      fluteType: jobModel.fluteType,
+      status: jobModel.status,
+      latestRate: jobModel.latestRate,
+      preRate: jobModel.preRate,
+      length: jobModel.length,
+      width: jobModel.width,
+      height: jobModel.height,
+      boxDimensions: jobModel.boxDimensions,
+      diePunchCode: jobModel.diePunchCode,
+      boardCategory: jobModel.boardCategory,
+      noOfColor: jobModel.noOfColor,
+      processColors: jobModel.processColors,
+      specialColor1: jobModel.specialColor1,
+      specialColor2: jobModel.specialColor2,
+      specialColor3: jobModel.specialColor3,
+      specialColor4: jobModel.specialColor4,
+      overPrintFinishing: jobModel.overPrintFinishing,
+      topFaceGSM: jobModel.topFaceGSM,
+      flutingGSM: jobModel.flutingGSM,
+      bottomLinerGSM: jobModel.bottomLinerGSM,
+      decalBoardX: jobModel.decalBoardX,
+      lengthBoardY: jobModel.lengthBoardY,
+      boardSize: jobModel.boardSize,
+      noUps: jobModel.noUps,
+      artworkReceivedDate: jobModel.artworkReceivedDate,
+      artworkApprovalDate: jobModel.artworkApprovedDate,
+      shadeCardApprovalDate: jobModel.shadeCardApprovalDate,
+      srNo: jobModel.srNo,
+      jobDemand: jobModel.jobDemand,
+      imageURL: jobModel.imageURL,
+      createdAt: jobModel.createdAt,
+      updatedAt: jobModel.updatedAt,
+      userId: jobModel.userId,
+      machineId: jobModel.machineId,
+      purchaseOrder: null, // Set this if you have PO data
+    );
+  }
+
+  // Helper method to convert Job back to JobModel (for updates)
+  JobModel _convertJobToJobModel(Job job, JobModel originalJobModel) {
+    return JobModel(
+      id: originalJobModel.id,
+      nrcJobNo: originalJobModel.nrcJobNo,
+      styleItemSKU: originalJobModel.styleItemSKU,
+      customerName: originalJobModel.customerName,
+      fluteType: originalJobModel.fluteType,
+      status: originalJobModel.status,
+      latestRate: originalJobModel.latestRate,
+      preRate: originalJobModel.preRate,
+      length: originalJobModel.length,
+      width: originalJobModel.width,
+      height: originalJobModel.height,
+      boxDimensions: originalJobModel.boxDimensions,
+      diePunchCode: originalJobModel.diePunchCode,
+      boardCategory: originalJobModel.boardCategory,
+      noOfColor: originalJobModel.noOfColor,
+      processColors: originalJobModel.processColors,
+      specialColor1: originalJobModel.specialColor1,
+      specialColor2: originalJobModel.specialColor2,
+      specialColor3: originalJobModel.specialColor3,
+      specialColor4: originalJobModel.specialColor4,
+      overPrintFinishing: originalJobModel.overPrintFinishing,
+      topFaceGSM: originalJobModel.topFaceGSM,
+      flutingGSM: originalJobModel.flutingGSM,
+      bottomLinerGSM: originalJobModel.bottomLinerGSM,
+      decalBoardX: originalJobModel.decalBoardX,
+      lengthBoardY: originalJobModel.lengthBoardY,
+      boardSize: originalJobModel.boardSize,
+      noUps: originalJobModel.noUps,
+      artworkReceivedDate: originalJobModel.artworkReceivedDate,
+      artworkApprovedDate: originalJobModel.artworkApprovedDate,
+      shadeCardApprovalDate: originalJobModel.shadeCardApprovalDate,
+      srNo: originalJobModel.srNo,
+      jobDemand: originalJobModel.jobDemand,
+      imageURL: originalJobModel.imageURL,
+      createdAt: originalJobModel.createdAt,
+      updatedAt: originalJobModel.updatedAt,
+      userId: originalJobModel.userId,
+      machineId: originalJobModel.machineId,
+    );
+  }
+
+  JobStatus _convertStringToJobStatus(String status) {
+    switch (status.toLowerCase()) {
+      case 'active':
+        return JobStatus.active;
+      case 'inactive':
+        return JobStatus.inactive;
+      case 'hold':
+        return JobStatus.hold;
+      case 'working started':
+      case 'workingstarted':
+        return JobStatus.workingStarted;
+      case 'completed':
+        return JobStatus.completed;
+      default:
+        return JobStatus.inactive;
+    }
+  }
+
+  JobDemand? _convertStringToJobDemand(String demand) {
+    switch (demand.toLowerCase()) {
+      case 'high':
+        return JobDemand.high;
+      case 'medium':
+        return JobDemand.medium;
+      case 'low':
+        return JobDemand.low;
+      default:
+        return null;
+    }
+  }
+
+  String _getMonthFromDate(String? dateString) {
+    if (dateString == null) return 'Unknown';
+    try {
+      final date = DateTime.parse(dateString);
+      const months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+      ];
+      return months[date.month - 1];
+    } catch (e) {
+      return 'Unknown';
+    }
+  }
+
+  void _navigateToJobDetail(JobModel job) {
+    // Navigate to job detail screen
+  }
+
+  void _updateJob(JobModel updatedJob) {
     setState(() {
-      final index = _jobs.indexWhere((j) => j.jobNumber == updatedJob.jobNumber);
+      final index = _jobs.indexWhere((j) => j.nrcJobNo == updatedJob.nrcJobNo);
       if (index != -1) {
         _jobs[index] = updatedJob;
       }
     });
-    _applyFilters(); // Reapply filters after update
+    _applyFilters();
   }
 
-  void _updateJobStatus(Job job, JobStatus newStatus) {
-    setState(() {
-      final index = _jobs.indexWhere((j) => j.jobNumber == job.jobNumber);
-      if (index != -1) {
-        _jobs[index] = job.copyWith(
-          status: newStatus,
-          isApprovalPending: false,
-        );
-      }
-    });
-
-    _applyFilters(); // Reapply filters after status update
-
-    // Show success message
-    final statusText = newStatus == JobStatus.workingStarted ? 'approved and work started' : 'rejected';
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Job ${job.jobNumber} has been $statusText'),
-        backgroundColor: newStatus == JobStatus.workingStarted ? Colors.green : Colors.red,
-        duration: const Duration(seconds: 2),
-      ),
+  // Keep the original method signature for compatibility with JobCard
+  void _updateJobFromJobCard(Job updatedJob) {
+    // Find the original JobModel to preserve API-specific fields
+    final originalJobModel = _jobs.firstWhere(
+          (j) => j.nrcJobNo == updatedJob.nrcJobNo,
+      orElse: () => throw Exception('Job not found'),
     );
+
+    final updatedJobModel = _convertJobToJobModel(updatedJob, originalJobModel);
+    _updateJob(updatedJobModel);
   }
 
-  Color _getStatusColor(JobStatus status) {
-    switch (status) {
-      case JobStatus.active:
-        return AppColors.green;
-      case JobStatus.inactive:
-        return AppColors.red;
-      case JobStatus.hold:
-        return AppColors.grey;
-      case JobStatus.workingStarted:
-        return Colors.blue;
-      case JobStatus.completed:
-        // TODO: Handle this case.
-        throw UnimplementedError();
+  Future<void> _updateJobStatus(JobModel job, String newStatus) async {
+    try {
+      await _jobApi.updateJobStatus(job.nrcJobNo, newStatus);
+
+      // Reload jobs to get updated data
+      await _loadJobs();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Job ${job.nrcJobNo} status updated to $newStatus'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to update job status: ${e.toString()}'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
     }
   }
 
-  String _formatDate(DateTime date) {
-    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'active':
+        return AppColors.green;
+      case 'inactive':
+        return AppColors.red;
+      case 'hold':
+        return AppColors.grey;
+      case 'working started':
+      case 'workingstarted':
+        return Colors.blue;
+      case 'completed':
+        return Colors.purple;
+      default:
+        return AppColors.grey;
+    }
   }
 
-  bool _isOverdue(DateTime dueDate) {
-    return dueDate.isBefore(DateTime.now());
+  String _formatDate(String? dateString) {
+    if (dateString == null || dateString.isEmpty) return 'TBD';
+    try {
+      final date = DateTime.parse(dateString);
+      return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+    } catch (e) {
+      return dateString;
+    }
   }
 
-  void _showJobDetails(BuildContext context, Job job) {
+  void _showJobDetails(BuildContext context, JobModel job) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -286,25 +430,42 @@ class _JobListPageState extends State<JobListPage> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                _buildDetailRow('Job Number', job.jobNumber),
-                _buildDetailRow('Customer', job.customer),
-                _buildDetailRow('Plant', job.plant),
-                _buildDetailRow('Job Date', job.jobDate),
-                _buildDetailRow('Delivery Date', job.deliveryDate),
-                _buildDetailRow('Status', job.status.name.toUpperCase(),
+                _buildDetailRow('Job Number', job.nrcJobNo),
+                _buildDetailRow('Customer', job.customerName),
+                _buildDetailRow('Style/SKU', job.styleItemSKU),
+                _buildDetailRow('Status', job.status.toUpperCase(),
                     valueColor: _getStatusColor(job.status)),
-                if (job.jobDemand != null)
-                  _buildDetailRow('Job Demand', job.jobDemand!.name.toUpperCase()),
-                _buildDetailRow('Total Quantity', '${job.totalQuantity} ${job.unit}'),
-                _buildDetailRow('Created By', job.createdBy),
-                _buildDetailRow('Style', job.style),
-                _buildDetailRow('Die Code', job.dieCode),
-                _buildDetailRow('Board Size', job.boardSize),
                 _buildDetailRow('Flute Type', job.fluteType),
-                _buildDetailRow('No. of Ups', job.noOfUps),
-                _buildDetailRow('No. of Sheets', job.noOfSheets),
-                _buildDetailRow('Dispatch Quantity', '${job.dispatchQuantity} ${job.unit}'),
-                _buildDetailRow('Pending Quantity', '${job.pendingQuantity} ${job.unit}'),
+                if (job.jobDemand != null && job.jobDemand!.isNotEmpty)
+                  _buildDetailRow('Job Demand', job.jobDemand!.toUpperCase()),
+                if (job.latestRate != null)
+                  _buildDetailRow('Latest Rate', '₹${job.latestRate!.toStringAsFixed(2)}'),
+                if (job.preRate != null)
+                  _buildDetailRow('Previous Rate', '₹${job.preRate!.toStringAsFixed(2)}'),
+                if (job.length != null && job.width != null && job.height != null)
+                  _buildDetailRow('Dimensions', '${job.length} x ${job.width} x ${job.height}'),
+                if (job.boardSize != null && job.boardSize!.isNotEmpty)
+                  _buildDetailRow('Board Size', job.boardSize!),
+                if (job.noUps != null && job.noUps!.isNotEmpty)
+                  _buildDetailRow('No. of Ups', job.noUps!),
+                if (job.diePunchCode != null)
+                  _buildDetailRow('Die Punch Code', job.diePunchCode.toString()),
+                if (job.boardCategory != null && job.boardCategory!.isNotEmpty)
+                  _buildDetailRow('Board Category', job.boardCategory!),
+                if (job.noOfColor != null && job.noOfColor!.isNotEmpty)
+                  _buildDetailRow('No. of Colors', job.noOfColor!),
+                if (job.processColors != null && job.processColors!.isNotEmpty)
+                  _buildDetailRow('Process Colors', job.processColors!),
+                if (job.artworkReceivedDate != null)
+                  _buildDetailRow('Artwork Received', _formatDate(job.artworkReceivedDate)),
+                if (job.artworkApprovedDate != null)
+                  _buildDetailRow('Artwork Approved', _formatDate(job.artworkApprovedDate)),
+                if (job.shadeCardApprovalDate != null)
+                  _buildDetailRow('Shade Card Approval', _formatDate(job.shadeCardApprovalDate)),
+                if (job.createdAt != null)
+                  _buildDetailRow('Created At', _formatDate(job.createdAt)),
+                if (job.updatedAt != null)
+                  _buildDetailRow('Updated At', _formatDate(job.updatedAt)),
                 const SizedBox(height: 30),
               ],
             ),
@@ -359,8 +520,8 @@ class _JobListPageState extends State<JobListPage> {
             children: [
               const Text('Filter by Status:'),
               const SizedBox(height: 16),
-              ...JobStatus.values.map((status) => CheckboxListTile(
-                title: Text(status.name.toUpperCase()),
+              ..._availableStatuses.map((status) => CheckboxListTile(
+                title: Text(status.toUpperCase()),
                 value: _selectedFilters.contains(status),
                 onChanged: (value) {
                   setDialogState(() {
@@ -405,7 +566,7 @@ class _JobListPageState extends State<JobListPage> {
   void _showAddJobDialog(BuildContext context) {
     final TextEditingController jobNumberController = TextEditingController();
     final TextEditingController customerController = TextEditingController();
-    final TextEditingController plantController = TextEditingController();
+    final TextEditingController styleController = TextEditingController();
 
     showDialog(
       context: context,
@@ -432,9 +593,9 @@ class _JobListPageState extends State<JobListPage> {
               ),
               const SizedBox(height: 12),
               TextField(
-                controller: plantController,
+                controller: styleController,
                 decoration: const InputDecoration(
-                  labelText: 'Plant',
+                  labelText: 'Style/SKU',
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -450,14 +611,15 @@ class _JobListPageState extends State<JobListPage> {
             onPressed: () {
               if (jobNumberController.text.isNotEmpty &&
                   customerController.text.isNotEmpty &&
-                  plantController.text.isNotEmpty) {
-                // Add the job logic here
-                _addNewJob(
-                  jobNumberController.text,
-                  customerController.text,
-                  plantController.text,
-                );
+                  styleController.text.isNotEmpty) {
+                // Note: You'll need to implement the API call to add a new job
                 Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Add job functionality needs API implementation'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -474,66 +636,18 @@ class _JobListPageState extends State<JobListPage> {
     );
   }
 
-  void _addNewJob(String jobNumber, String customer, String plant) {
-    final newJob = Job(
-      jobNumber: jobNumber,
-      customer: customer,
-      plant: plant,
-      jobDate: DateTime.now().toString().substring(0, 10),
-      deliveryDate: DateTime.now().add(const Duration(days: 14)).toString().substring(0, 10),
-      createdDate: DateTime.now().toString().substring(0, 10),
-      createdBy: _userRole,
-      style: 'TBD',
-      dieCode: 'TBD',
-      boardSize: 'TBD',
-      fluteType: 'TBD',
-      jobMonth: _getMonthName(DateTime.now().month),
-      noOfUps: '0',
-      noOfSheets: '0',
-      totalQuantity: 0,
-      unit: 'PCS',
-      dispatchQuantity: 0,
-      pendingQuantity: 0,
-      shadeCardApprovalDate: 'TBD',
-      nrcDeliveryDate: 'TBD',
-      dispatchDate: 'TBD',
-      pendingValidity: 'TBD',
-      status: JobStatus.hold,
-    );
-
-    setState(() {
-      _jobs.add(newJob);
-    });
-    _applyFilters();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Job $jobNumber added successfully'),
-        backgroundColor: Colors.green,
-      ),
-    );
-  }
-
-  String _getMonthName(int month) {
-    const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    return months[month - 1];
-  }
-
-  void _editJob(Job job) {
-    print('Editing job: ${job.jobNumber}');
+  void _editJob(JobModel job) {
+    print('Editing job: ${job.nrcJobNo}');
     // Navigate to edit screen or show edit dialog
     _navigateToJobDetail(job);
   }
 
-  void _deleteJob(Job job) {
+  void _deleteJob(JobModel job) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Job'),
-        content: Text('Are you sure you want to delete job ${job.jobNumber}?'),
+        content: Text('Are you sure you want to delete job ${job.nrcJobNo}?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -541,16 +655,12 @@ class _JobListPageState extends State<JobListPage> {
           ),
           ElevatedButton(
             onPressed: () {
-              setState(() {
-                _jobs.removeWhere((j) => j.jobNumber == job.jobNumber);
-              });
-              _applyFilters();
               Navigator.pop(context);
-
+              // Note: You'll need to implement the API call to delete a job
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Job ${job.jobNumber} deleted'),
-                  backgroundColor: Colors.red,
+                const SnackBar(
+                  content: Text('Delete job functionality needs API implementation'),
+                  backgroundColor: Colors.orange,
                 ),
               );
             },

@@ -112,7 +112,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     switch (step.status) {
       case StepStatus.pending:
         if (step.type == StepType.jobAssigned) {
-          return 'Job Number: ${widget.jobNumber ?? widget.job?.jobNumber ?? 'JOB001'}';
+          return 'Job Number: ${widget.jobNumber ?? widget.job?.nrcJobNo ?? 'JOB001'}';
         }
         return 'Ready to start - Click to begin work';
       case StepStatus.started:
@@ -121,7 +121,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         return 'In progress - Details saved - Click to edit or complete';
       case StepStatus.completed:
         if (step.type == StepType.jobAssigned) {
-          return 'Job Number: ${widget.jobNumber ?? widget.job?.jobNumber ?? 'JOB001'}';
+          return 'Job Number: ${widget.jobNumber ?? widget.job?.nrcJobNo ?? 'JOB001'}';
         }
         return 'Work completed ✓';
       case StepStatus.paused:
@@ -218,7 +218,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Job Details: ${widget.jobNumber ?? job?.jobNumber ?? 'JOB001'}',
+                'Job Details: ${widget.jobNumber ?? job?.nrcJobNo ?? 'JOB001'}',
                 style: const TextStyle(fontSize: 18),
               ),
             ),
@@ -233,8 +233,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _detailRow('Job Number', widget.jobNumber ?? job?.jobNumber ?? 'JOB001'),
-                _detailRow('Status', job?.status.name ?? 'In Progress'),
+                _detailRow('Job Number', widget.jobNumber ?? job?.nrcJobNo ?? 'JOB001'),
+                _detailRow('Status', job?.status ?? 'In Progress'),
                 _detailRow('Current Step', steps[currentActiveStep].title),
                 const SizedBox(height: 16),
                 Container(
@@ -261,31 +261,23 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                 ),
                 if (job != null) ...[
                   const SizedBox(height: 16),
-                  _detailRow('Customer', job.customer),
-                  _detailRow('Plant', job.plant),
-                  _detailRow('Job Date', job.jobDate),
-                  _detailRow('Delivery Date', job.deliveryDate),
-                  _detailRow('Created Date', job.createdDate),
-                  _detailRow('Created By', job.createdBy),
-                  _detailRow('Style', job.style),
-                  _detailRow('Die Code', job.dieCode),
-                  _detailRow('Board Size', job.boardSize),
+                  _detailRow('Customer', job.customerName),
+                  _detailRow('Style/SKU', job.styleItemSKU),
                   _detailRow('Flute Type', job.fluteType),
-                  _detailRow('Job Month', job.jobMonth),
-                  _detailRow('No. of Ups', job.noOfUps.toString()),
-                  _detailRow('No. of Sheets', job.noOfSheets.toString()),
-                  _detailRow('Total Quantity', job.totalQuantity.toString()),
-                  _detailRow('Unit', job.unit),
-                  _detailRow('Dispatch Quantity', job.dispatchQuantity.toString()),
-                  _detailRow('Pending Quantity', job.pendingQuantity.toString()),
-                  _detailRow('Shade Card Approval', job.shadeCardApprovalDate),
-                  _detailRow('NRC Delivery Date', job.nrcDeliveryDate),
-                  _detailRow('Dispatch Date', job.dispatchDate),
-                  _detailRow('Pending Validity', job.pendingValidity),
-                  _detailRow('Status', job.status.name),
-                  if (job.jobDemand != null)
-                    _detailRow('Job Demand', job.jobDemand!.name),
-                  _detailRow('Approval Pending', job.isApprovalPending ? 'Yes' : 'No'),
+                  _detailRow('Board Size', job.boardSize ?? ''),
+                  _detailRow('No. of Ups', job.noUps ?? ''),
+                  _detailRow('Latest Rate', job.latestRate?.toString() ?? ''),
+                  _detailRow('Previous Rate', job.preRate?.toString() ?? ''),
+                  _detailRow('Dimensions', (job.length != null && job.width != null && job.height != null) ? '${job.length} x ${job.width} x ${job.height}' : ''),
+                  _detailRow('Artwork Received', job.artworkReceivedDate ?? ''),
+                  _detailRow('Artwork Approved', job.artworkApprovalDate ?? ''),
+                  _detailRow('Shade Card Approval', job.shadeCardApprovalDate ?? ''),
+                  _detailRow('Created At', job.createdAt ?? ''),
+                  _detailRow('Updated At', job.updatedAt ?? ''),
+                  if (job.purchaseOrder != null)
+                    _detailRow('Purchase Order', 'Available'),
+                  if (job.hasPoAdded)
+                    _detailRow('PO Status', 'Added'),
                 ],
               ],
             ),
@@ -803,7 +795,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Job ${widget.jobNumber ?? widget.job?.jobNumber ?? 'JOB001'}',
+                'Job ${widget.jobNumber ?? widget.job?.nrcJobNo ?? 'JOB001'}',
                 overflow: TextOverflow.ellipsis,
               ),
             ),
