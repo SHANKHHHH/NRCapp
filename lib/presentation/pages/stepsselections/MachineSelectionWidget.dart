@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
+import '../../../data/datasources/job_api.dart';
 import '../../../data/models/Machine.dart';
-import '../../../data/models/MachineData.dart';
 import '../../../data/models/WorkStepAssignment.dart';
+import 'package:dio/dio.dart';
 
 class MachineSelectionWidget extends StatefulWidget {
   final List<WorkStepAssignment> selectedWorkStepAssignments;
-  final List<Machine> machines;
   final VoidCallback onSelectionChanged;
 
   const MachineSelectionWidget({
     Key? key,
     required this.selectedWorkStepAssignments,
-    required this.machines,
     required this.onSelectionChanged,
   }) : super(key: key);
 
@@ -20,6 +19,10 @@ class MachineSelectionWidget extends StatefulWidget {
 }
 
 class _MachineSelectionWidgetState extends State<MachineSelectionWidget> {
+  List<Machine> _machines = [];
+  bool _isLoading = true;
+  String? _error;
+
   bool _requiresMachine(String step) {
     return [
       'printing',
@@ -65,7 +68,43 @@ class _MachineSelectionWidgetState extends State<MachineSelectionWidget> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _fetchMachines();
+  }
+
+  void _fetchMachines() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final dio = Dio(); // Or use your existing Dio instance/provider
+      final jobApi = JobApi(dio);
+      final machines = await jobApi.getMachines();
+      setState(() {
+        _machines = machines;
+        _isLoading = false;
+      });
+      // Debug print to see all machine types fetched
+      print(_machines.map((m) => m.machineType).toSet());
+    } catch (e) {
+      setState(() {
+        _error = 'Failed to load machines';
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return Center(child: Text(_error!));
+    }
+
     if (widget.selectedWorkStepAssignments.isEmpty) {
       return const Card(
         margin: EdgeInsets.all(16),
@@ -136,8 +175,21 @@ class _MachineSelectionWidgetState extends State<MachineSelectionWidget> {
               );
             }
 
-            final machines =
-            MachineData.getFilteredMachines(assignment.workStep.step);
+            final stepLower = assignment.workStep.step.toLowerCase();
+
+            final machines = _machines.where((machine) {
+              final machineTypeLower = machine.machineType.toLowerCase();
+
+              if (stepLower == 'flutelamination') {
+                return machineTypeLower.contains('flute');
+              } else if (stepLower == 'punching') {
+                return machineTypeLower.contains('punching');
+              } else if (stepLower == 'flappasting') {
+                return machineTypeLower.contains('flap pasting');
+              } else {
+                return machineTypeLower == stepLower;
+              }
+            }).toList();
 
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -204,11 +256,15 @@ class _MachineSelectionWidgetState extends State<MachineSelectionWidget> {
                                 children: [
                                   Text('${machine.description} (${machine.type})'),
                                   Text('Capacity: ${machine.capacity}/8hrs'),
-                                  if (machine.remarks.isNotEmpty)
+                                  Text('Status: ${machine.status}'),
+                                  Text('Active: ${machine.isActive ? "Yes" : "No"}'),
+                                  Text('Created: ${machine.createdAt}'),
+                                  Text('Updated: ${machine.updatedAt}'),
+                                  if (machine.remarks != null && machine.remarks!.isNotEmpty)
                                     Padding(
                                       padding: const EdgeInsets.only(top: 4.0),
                                       child: Text(
-                                        'Remarks: ${machine.remarks}',
+                                        'Remarks: ${machine.remarks ?? "No remarks"}',
                                         style: const TextStyle(
                                           fontSize: 12,
                                           fontStyle: FontStyle.italic,

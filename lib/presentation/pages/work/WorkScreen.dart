@@ -1,17 +1,51 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:nrc/constants/colors.dart';
 import '../../../data/models/Job.dart';
 import '../../../data/models/purchase_order.dart';
 import '../../../data/models/WorkStepAssignment.dart';
 import '../job/JobStep.dart';
 import 'WorkDetailsScreen.dart';
+import '../../../data/datasources/job_api.dart';
 
-class WorkScreen extends StatelessWidget {
-  final Job? job;
-  final PurchaseOrder? po;
-  final Map<String, dynamic>? assignmentSummary;
+class WorkScreen extends StatefulWidget {
+  const WorkScreen({Key? key}) : super(key: key);
 
-  const WorkScreen({Key? key, this.job, this.po, this.assignmentSummary}) : super(key: key);
+  @override
+  State<WorkScreen> createState() => _WorkScreenState();
+}
+
+class _WorkScreenState extends State<WorkScreen> {
+  List<Map<String, dynamic>> jobPlannings = [];
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchAllJobPlannings();
+  }
+
+  Future<void> _fetchAllJobPlannings() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final dio = Dio();
+      final jobApi = JobApi(dio);
+      final plannings = await jobApi.getAllJobPlannings();
+      setState(() {
+        jobPlannings = plannings;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = 'Failed to load job plannings';
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,32 +57,40 @@ class WorkScreen extends StatelessWidget {
         elevation: 0,
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => JobTimelinePage(
-                  jobNumber: job?.nrcJobNo,
-                  job: job,
-                  assignedSteps: assignmentSummary?['steps'],
-                ),
-              ),
-            );
-          },
-          child: _buildSummaryCard(context),
-        ),
-      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(child: Text(_error!))
+              : jobPlannings.isEmpty
+                  ? const Center(child: Text('No job plannings found.'))
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: jobPlannings.length,
+                      itemBuilder: (context, index) {
+                        final planning = jobPlannings[index];
+                        return GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => WorkDetailsScreen(
+                                  nrcJobNo: planning['nrcJobNo'],
+                                ),
+                              ),
+                            );
+                          },
+                          child: _buildSummaryCard(context, planning),
+                        );
+                      },
+                    ),
     );
   }
 
-  Widget _buildSummaryCard(BuildContext context) {
+  Widget _buildSummaryCard(BuildContext context, Map<String, dynamic> jobPlanning) {
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: EdgeInsets.zero,
+      margin: const EdgeInsets.only(bottom: 16),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -69,39 +111,30 @@ class WorkScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
-
-            // Job Summary
-            if (job != null) _buildSummaryItem(
-              icon: Icons.work,
-              title: 'Job',
-              value: job!.nrcJobNo,
+            _buildSummaryItem(
+              icon: Icons.confirmation_number,
+              title: 'Job Plan ID',
+              value: jobPlanning['jobPlanId'].toString(),
               color: Colors.blue,
             ),
-
-            // PO Summary
-            if (job != null && job!.hasPoAdded) _buildSummaryItem(
-              icon: Icons.receipt_long,
-              title: 'Purchase Order',
-              value: job!.purchaseOrder.toString(),
-              color: Colors.orange,
+            _buildSummaryItem(
+              icon: Icons.work,
+              title: 'NRC Job No',
+              value: jobPlanning['nrcJobNo'] ?? '',
+              color: Colors.blue,
             ),
-
-            // Assignment Summary
-            if (assignmentSummary != null) _buildSummaryItem(
-              icon: Icons.assignment,
-              title: 'Work Steps',
-              value: '${(assignmentSummary!['steps'] as List<WorkStepAssignment>?)?.length ?? 0} steps',
+            _buildSummaryItem(
+              icon: Icons.trending_up,
+              title: 'Job Demand',
+              value: jobPlanning['jobDemand'] ?? '',
+              color: Colors.purple,
+            ),
+            _buildSummaryItem(
+              icon: Icons.calendar_today,
+              title: 'Created At',
+              value: jobPlanning['createdAt'] ?? '',
               color: Colors.green,
             ),
-
-            if (assignmentSummary != null && assignmentSummary!['demand'] != null)
-              _buildSummaryItem(
-                icon: Icons.trending_up,
-                title: 'Demand',
-                value: assignmentSummary!['demand'],
-                color: Colors.purple,
-              ),
-
             const SizedBox(height: 16),
             Center(
               child: ElevatedButton(
@@ -110,9 +143,7 @@ class WorkScreen extends StatelessWidget {
                     context,
                     MaterialPageRoute(
                       builder: (context) => WorkDetailsScreen(
-                        job: job,
-                        po: po,
-                        assignmentSummary: assignmentSummary,
+                        nrcJobNo: jobPlanning['nrcJobNo'],
                       ),
                     ),
                   );

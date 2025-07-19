@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../../data/datasources/job_api.dart';
 import '../../../data/models/Job.dart';
 import '../../../data/models/Machine.dart';
-import '../../../data/models/MachineData.dart';
 import '../../../data/models/WorkStep.dart';
 import '../../../data/models/WorkStepAssignment.dart';
 import '../../../data/models/WorkStepData.dart';
@@ -10,6 +10,7 @@ import 'MachineSelectionWidget.dart';
 import '../work/WorkScreen.dart';
 import 'ReviewStepWidget.dart';
 import 'WorkStepSelectionWidget.dart';
+import 'package:dio/dio.dart';
 
 class AssignWorkSteps extends StatefulWidget {
   final Job? job;
@@ -316,13 +317,13 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
       case 2:
         return MachineSelectionWidget(
           selectedWorkStepAssignments: selectedWorkStepAssignments,
-          machines: MachineData.machines,
           onSelectionChanged: _onMachineSelectionChanged,
         );
       case 3:
         return ReviewStepWidget(
           selectedDemand: selectedDemand,
           selectedWorkStepAssignments: selectedWorkStepAssignments,
+          selectedJob: widget.job, // Pass the job from AssignWorkSteps
         );
       default:
         return Container();
@@ -489,17 +490,109 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(
-                              builder: (context) => WorkScreen(
-                                job: widget.job,
-                                po: widget.job?.purchaseOrder,
-                                assignmentSummary: {
-                                  'demand': selectedDemand,
-                                  'steps': selectedWorkStepAssignments,
-                                },
+                        onPressed: () async {
+                          // Show loader dialog
+                          showDialog(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (context) => Center(child: CircularProgressIndicator()),
+                          );
+                          // Build the request body
+                          String getBackendStepName(String step) {
+                            switch (step.toLowerCase()) {
+                              case 'paperstore': return 'PaperStore';
+                              case 'printing': return 'PrintingDetails';
+                              case 'corrugation': return 'Corrugation';
+                              case 'flutelamination': return 'FluteLaminateBoardConversion';
+                              case 'punching': return 'Punching';
+                              case 'flappasting': return 'SideFlapPasting';
+                              case 'qc': return 'QualityDept';
+                              case 'dispatch': return 'DispatchProcess';
+                              default: return step;
+                            }
+                          }
+                          final body = {
+                            "nrcJobNo": widget.job?.nrcJobNo,
+                            "jobDemand": selectedDemand,
+                            "steps": selectedWorkStepAssignments.asMap().entries.map((entry) {
+                              final i = entry.key;
+                              final assignment = entry.value;
+                              return {
+                                "stepNo": i + 1,
+                                "stepName": getBackendStepName(assignment.workStep.step),
+                                "machineDetail": assignment.selectedMachine?.description ?? "",
+                              };
+                            }).toList(),
+                          };
+                          final dio = Dio();
+                          final jobApi = JobApi(dio);
+                          bool success = false;
+                          try {
+                            await jobApi.submitJobPlanning(body);
+                            success = true;
+                          } catch (e) {
+                            success = false;
+                          }
+                          Navigator.of(context).pop(); // Remove loader
+                          showDialog(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (context) => Dialog(
+                              backgroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                              child: Container(
+                                padding: const EdgeInsets.all(24),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 80,
+                                      height: 80,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: Colors.blue.shade100,
+                                      ),
+                                      child: Icon(
+                                        success ? Icons.check_circle : Icons.error,
+                                        color: Colors.blue,
+                                        size: 50,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 20),
+                                    Text(
+                                      success ? 'Work is Set. Now Click on Ok Button' : 'Failed to set work. Please try again.',
+                                      style: TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.blue,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 24),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.blue,
+                                          foregroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                        ),
+                                        onPressed: () {
+                                          Navigator.of(context).popUntil((route) => route.isFirst);
+                                          // Optionally, pushReplacement to HomePage if you have a named route or widget
+                                          // Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => HomePage()));
+                                        },
+                                        child: const Text('Ok'),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           );

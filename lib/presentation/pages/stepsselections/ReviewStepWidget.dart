@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
+import '../../../data/datasources/job_api.dart';
 import '../../../data/models/WorkStepAssignment.dart';
+import 'package:dio/dio.dart';
 
 class ReviewStepWidget extends StatelessWidget {
   final String? selectedDemand;
   final List<WorkStepAssignment> selectedWorkStepAssignments;
+  final dynamic selectedJob; // Added this parameter
 
   const ReviewStepWidget({
     Key? key,
     required this.selectedDemand,
     required this.selectedWorkStepAssignments,
+    required this.selectedJob, // Added this parameter
   }) : super(key: key);
 
   Color _getDemandColor(String? demand) {
@@ -44,6 +48,20 @@ class ReviewStepWidget extends StatelessWidget {
         return Icons.join_inner;
       default:
         return Icons.work;
+    }
+  }
+
+  String getBackendStepName(String step) {
+    switch (step.toLowerCase()) {
+      case 'paperstore': return 'PaperStore';
+      case 'printing': return 'PrintingDetails';
+      case 'corrugation': return 'Corrugation';
+      case 'flutelamination': return 'FluteLaminateBoardConversion';
+      case 'punching': return 'Punching';
+      case 'flappasting': return 'SideFlapPasting';
+      case 'qc': return 'QualityDept';
+      case 'dispatch': return 'DispatchProcess';
+      default: return step;
     }
   }
 
@@ -136,7 +154,7 @@ class ReviewStepWidget extends StatelessWidget {
                             Text('Description: ${assignment.selectedMachine!.description}'),
                             Text('Type: ${assignment.selectedMachine!.type}'),
                             Text('Capacity: ${assignment.selectedMachine!.capacity}/8hrs'),
-                            if (assignment.selectedMachine!.remarks.isNotEmpty)
+                            if (assignment.selectedMachine!.remarks != null && assignment.selectedMachine!.remarks!.isNotEmpty)
                               Text('Remarks: ${assignment.selectedMachine!.remarks}'),
                           ],
                         )
@@ -152,6 +170,7 @@ class ReviewStepWidget extends StatelessWidget {
             );
           },
         ),
+        const SizedBox(height: 20),
       ],
     );
   }

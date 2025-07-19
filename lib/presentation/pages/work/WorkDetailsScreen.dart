@@ -5,17 +5,79 @@ import '../../../data/models/Job.dart';
 import '../../../data/models/WorkStepAssignment.dart';
 import '../../../data/models/purchase_order.dart';
 
-class WorkDetailsScreen extends StatelessWidget {
-  final Job? job;
-  final PurchaseOrder? po;
-  final Map<String, dynamic>? assignmentSummary;
+import 'package:dio/dio.dart';
+import '../../../data/datasources/job_api.dart';
+
+class WorkDetailsScreen extends StatefulWidget {
+  final String nrcJobNo;
 
   const WorkDetailsScreen({
     Key? key,
-    this.job,
-    this.po,
-    this.assignmentSummary,
+    required this.nrcJobNo,
   }) : super(key: key);
+
+  @override
+  State<WorkDetailsScreen> createState() => _WorkDetailsScreenState();
+}
+
+class _WorkDetailsScreenState extends State<WorkDetailsScreen> {
+  Map<String, dynamic>? jobPlanning;
+  bool _isLoading = true;
+  String? _error;
+  Map<String, dynamic>? jobDetails;
+  bool _jobLoading = true;
+  String? _jobError;
+  bool _jobDetailsExpanded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchJobPlanning();
+    _fetchJobDetails();
+  }
+
+  Future<void> _fetchJobPlanning() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final dio = Dio();
+      final jobApi = JobApi(dio);
+      final planning = await jobApi.getJobPlanningByNrcJobNo(widget.nrcJobNo);
+      setState(() {
+        jobPlanning = planning;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = 'Failed to load job planning details';
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _fetchJobDetails() async {
+    setState(() {
+      _jobLoading = true;
+      _jobError = null;
+    });
+    try {
+      final dio = Dio();
+      final jobApi = JobApi(dio);
+      print(widget.nrcJobNo);
+      final job = await jobApi.getJobByNrcJobNo(widget.nrcJobNo);
+      setState(() {
+        jobDetails = job;
+        _jobLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _jobError = 'Failed to load job details';
+        _jobLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -28,14 +90,23 @@ class WorkDetailsScreen extends StatelessWidget {
         centerTitle: true,
       ),
       backgroundColor: Colors.white,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: _buildUnifiedCard(context),
-      ),
+      body: _isLoading || _jobLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(child: Text(_error!))
+              : _jobError != null
+                  ? Center(child: Text(_jobError!))
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: _buildUnifiedCard(context),
+                    ),
     );
   }
 
   Widget _buildUnifiedCard(BuildContext context) {
+    if (jobPlanning == null) {
+      return const Center(child: Text('No job planning details found.'));
+    }
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -46,6 +117,39 @@ class WorkDetailsScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Job Details Section
+            if (jobDetails != null && jobDetails!.isNotEmpty) ...[
+              _buildSectionHeader(
+                icon: Icons.work,
+                title: 'JOB DETAILS',
+                color: Colors.blue,
+              ),
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _jobDetailsExpanded = !_jobDetailsExpanded;
+                  });
+                },
+                child: Row(
+                  children: [
+                    Text(
+                      _jobDetailsExpanded ? 'Hide Details' : 'Show Details',
+                      style: TextStyle(
+                        color: Colors.blue,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Icon(
+                      _jobDetailsExpanded ? Icons.expand_less : Icons.expand_more,
+                      color: Colors.blue,
+                    ),
+                  ],
+                ),
+              ),
+              if (_jobDetailsExpanded)
+                ...jobDetails!.entries.map((entry) => _buildKeyValueRow(entry.key, entry.value?.toString() ?? '')),
+              const SizedBox(height: 16),
+            ],
             const Center(
               child: Text(
                 'WORK ASSIGNMENT DETAILS',
@@ -61,79 +165,60 @@ class WorkDetailsScreen extends StatelessWidget {
             const Divider(height: 1, color: Colors.grey),
             const SizedBox(height: 16),
 
-            // Job Section
+            // Job Planning Section
             _buildSectionHeader(
-              icon: Icons.work,
-              title: 'JOB INFORMATION',
+              icon: Icons.confirmation_number,
+              title: 'JOB PLANNING',
               color: Colors.blue,
             ),
-            if (job != null) ...[
-              _buildKeyValueRow('Job Number', job!.nrcJobNo),
-              _buildKeyValueRow('Customer', job!.customerName),
-              _buildKeyValueRow('Style/SKU', job!.styleItemSKU),
-              _buildKeyValueRow('Status', job!.status),
-              _buildKeyValueRow('Board Size', job!.boardSize ?? ''),
-              _buildKeyValueRow('Flute Type', job!.fluteType),
-              _buildKeyValueRow('No. of Ups', job!.noUps ?? ''),
-              _buildKeyValueRow('Latest Rate', job!.latestRate?.toString() ?? ''),
-              _buildKeyValueRow('Previous Rate', job!.preRate?.toString() ?? ''),
-              _buildKeyValueRow('Dimensions', (job!.length != null && job!.width != null && job!.height != null) ? '${job!.length} x ${job!.width} x ${job!.height}' : ''),
-              _buildKeyValueRow('Artwork Received', job!.artworkReceivedDate ?? ''),
-              _buildKeyValueRow('Artwork Approved', job!.artworkApprovalDate ?? ''),
-              _buildKeyValueRow('Shade Card Approval', job!.shadeCardApprovalDate ?? ''),
-              _buildKeyValueRow('Created At', job!.createdAt ?? ''),
-              _buildKeyValueRow('Updated At', job!.updatedAt ?? ''),
-              if (job!.purchaseOrder != null)
-                _buildKeyValueRow('Purchase Order', 'Available'),
-              if (job!.hasPoAdded)
-                _buildKeyValueRow('PO Status', 'Added'),
-            ],
+            _buildKeyValueRow('Job Plan ID', jobPlanning!['jobPlanId'].toString()),
+            _buildKeyValueRow('NRC Job No', jobPlanning!['nrcJobNo'] ?? ''),
+            _buildKeyValueRow('Job Demand', jobPlanning!['jobDemand'] ?? ''),
+            _buildKeyValueRow('Created At', jobPlanning!['createdAt'] ?? ''),
+            _buildKeyValueRow('Updated At', jobPlanning!['updatedAt'] ?? ''),
 
-            // PO Section
-            _buildSectionHeader(
-              icon: Icons.receipt_long,
-              title: 'PURCHASE ORDER',
-              color: Colors.orange,
-            ),
-            if (po != null) ...[
-              _buildKeyValueRow('PO Date', _formatDate(po!.poDate)),
-              _buildKeyValueRow('Deliver Date', _formatDate(po!.deliveryDate)),
-              _buildKeyValueRow('Dispatch Date', _formatDate(po!.dispatchDate)),
-              _buildKeyValueRow('NRC Delivery Date', _formatDate(po!.nrcDeliveryDate)),
-              _buildKeyValueRow('Total PO Quantity', po!.totalPOQuantity.toString()),
-              _buildKeyValueRow('Unit', po!.unit),
-              _buildKeyValueRow('Pending Validity', '${po!.pendingValidity} days'),
-              _buildKeyValueRow('No. of Sheets', po!.noOfSheets.toString()),
-              const SizedBox(height: 16),
-            ],
-
-            // Assignment Section
+            // Steps Section
             _buildSectionHeader(
               icon: Icons.assignment,
-              title: 'WORK ASSIGNMENT',
+              title: 'WORK STEPS',
               color: Colors.green,
             ),
-            if (assignmentSummary != null) ...[
-              _buildKeyValueRow(
-                'Demand',
-                assignmentSummary!['demand'] ?? 'Not specified',
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Work Steps:',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black54,
-                ),
-              ),
-              const SizedBox(height: 8),
-              ...(assignmentSummary!['steps'] as List<WorkStepAssignment>?)
-                  ?.map((step) => _buildWorkStepItem(step))
-                  .toList() ??
-                  [],
-            ],
+            if (jobPlanning!['steps'] != null && jobPlanning!['steps'] is List)
+              ...((jobPlanning!['steps'] as List).map((step) => _buildStepItem(step)).toList()),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildStepItem(dynamic step) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.translucentBlack),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            step['stepName'] ?? '',
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              color: Colors.black,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text('Status: ${step['status'] ?? ''}', style: const TextStyle(color: Colors.black54)),
+          if (step['user'] != null)
+            Text('User: ${step['user']}', style: const TextStyle(color: Colors.black54)),
+          if (step['startDate'] != null)
+            Text('Start: ${step['startDate']}', style: const TextStyle(color: Colors.black54)),
+          if (step['endDate'] != null)
+            Text('End: ${step['endDate']}', style: const TextStyle(color: Colors.black54)),
+        ],
       ),
     );
   }
