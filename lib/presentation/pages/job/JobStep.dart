@@ -8,10 +8,9 @@ import '../../../data/models/job_step_models.dart'; // Make sure this import is 
 
 class JobTimelinePage extends StatefulWidget {
   final String? jobNumber;
-  final Job? job; // Pass the complete job object for details
-  final List<WorkStepAssignment>? assignedSteps;
+  final List<dynamic>? assignedSteps; // Accept steps as List<Map<String, dynamic>> from API
 
-  const JobTimelinePage({super.key, this.jobNumber, this.job, this.assignedSteps});
+  const JobTimelinePage({super.key, this.jobNumber, this.assignedSteps});
 
   @override
   State<JobTimelinePage> createState() => _JobTimelinePageState();
@@ -20,6 +19,31 @@ class JobTimelinePage extends StatefulWidget {
 class _JobTimelinePageState extends State<JobTimelinePage> {
   late List<StepData> steps;
   int currentActiveStep = 0;
+
+  static const orderedStepNames = [
+    'PaperStore',
+    'PrintingDetails',
+    'Corrugation',
+    'FluteLaminateBoardConversion',
+    'Punching',
+    'SideFlapPasting',
+    'QualityDept',
+    'DispatchProcess',
+  ];
+
+  String getDisplayName(String stepName) {
+    switch (stepName) {
+      case 'PaperStore': return 'Paper Store';
+      case 'PrintingDetails': return 'Printing';
+      case 'Corrugation': return 'Corrugation';
+      case 'FluteLaminateBoardConversion': return 'Flute Lamination';
+      case 'Punching': return 'Punching';
+      case 'SideFlapPasting': return 'Flap Pasting';
+      case 'QualityDept': return 'Quality Control';
+      case 'DispatchProcess': return 'Dispatch';
+      default: return stepName;
+    }
+  }
 
   @override
   void initState() {
@@ -37,14 +61,23 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       ),
     ];
 
-    // Dynamically add steps from assignedSteps
+    // Sort and add steps from assignedSteps (API data)
     if (widget.assignedSteps != null && widget.assignedSteps!.isNotEmpty) {
-      for (final assignment in widget.assignedSteps!) {
+      final sortedSteps = List<Map<String, dynamic>>.from(widget.assignedSteps!);
+      sortedSteps.sort((a, b) {
+        int aIndex = orderedStepNames.indexOf(a['stepName'] ?? '');
+        int bIndex = orderedStepNames.indexOf(b['stepName'] ?? '');
+        return aIndex.compareTo(bIndex);
+      });
+      for (final stepMap in sortedSteps) {
+        final stepName = stepMap['stepName'] ?? '';
+        final displayName = getDisplayName(stepName);
         steps.add(
           StepData(
-            type: _getStepTypeFromString(assignment.workStep.step),
-            title: assignment.workStep.displayName,
-            description: _getStepDescription(assignment.workStep.displayName),
+            type: _getStepTypeFromString(stepName),
+            title: displayName,
+            description: _getStepDescription(displayName),
+            // Optionally, you can map status from API if available
           ),
         );
       }
@@ -112,7 +145,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     switch (step.status) {
       case StepStatus.pending:
         if (step.type == StepType.jobAssigned) {
-          return 'Job Number: ${widget.jobNumber ?? widget.job?.nrcJobNo ?? 'JOB001'}';
+          return 'Job Number: ${widget.jobNumber ?? ''}';
         }
         return 'Ready to start - Click to begin work';
       case StepStatus.started:
@@ -121,7 +154,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         return 'In progress - Details saved - Click to edit or complete';
       case StepStatus.completed:
         if (step.type == StepType.jobAssigned) {
-          return 'Job Number: ${widget.jobNumber ?? widget.job?.nrcJobNo ?? 'JOB001'}';
+          return 'Job Number: ${widget.jobNumber ?? ''}';
         }
         return 'Work completed ✓';
       case StepStatus.paused:
@@ -204,10 +237,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   }
 
   void _showCompleteJobDetails() {
-    final job = widget.job;
-    print("object");
-    print(job);
-
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -218,7 +247,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Job Details: ${widget.jobNumber ?? job?.nrcJobNo ?? 'JOB001'}',
+                'Job Details: ${widget.jobNumber ?? 'JOB001'}',
                 style: const TextStyle(fontSize: 18),
               ),
             ),
@@ -233,8 +262,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _detailRow('Job Number', widget.jobNumber ?? job?.nrcJobNo ?? 'JOB001'),
-                _detailRow('Status', job?.status ?? 'In Progress'),
+                _detailRow('Job Number', widget.jobNumber ?? 'JOB001'),
                 _detailRow('Current Step', steps[currentActiveStep].title),
                 const SizedBox(height: 16),
                 Container(
@@ -250,35 +278,13 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          job == null
-                            ? 'Complete job details are not available. Please ensure the job object is passed to this page to view all details.'
-                            : 'Full job details are shown below.',
+                          'Full job details are not available in this view. Please use the Work Details screen for complete information.',
                           style: const TextStyle(fontSize: 12, color: Colors.blue),
                         ),
                       ),
                     ],
                   ),
                 ),
-                if (job != null) ...[
-                  const SizedBox(height: 16),
-                  _detailRow('Customer', job.customerName),
-                  _detailRow('Style/SKU', job.styleItemSKU),
-                  _detailRow('Flute Type', job.fluteType),
-                  _detailRow('Board Size', job.boardSize ?? ''),
-                  _detailRow('No. of Ups', job.noUps ?? ''),
-                  _detailRow('Latest Rate', job.latestRate?.toString() ?? ''),
-                  _detailRow('Previous Rate', job.preRate?.toString() ?? ''),
-                  _detailRow('Dimensions', (job.length != null && job.width != null && job.height != null) ? '${job.length} x ${job.width} x ${job.height}' : ''),
-                  _detailRow('Artwork Received', job.artworkReceivedDate ?? ''),
-                  _detailRow('Artwork Approved', job.artworkApprovalDate ?? ''),
-                  _detailRow('Shade Card Approval', job.shadeCardApprovalDate ?? ''),
-                  _detailRow('Created At', job.createdAt ?? ''),
-                  _detailRow('Updated At', job.updatedAt ?? ''),
-                  if (job.purchaseOrder != null)
-                    _detailRow('Purchase Order', 'Available'),
-                  if (job.hasPoAdded)
-                    _detailRow('PO Status', 'Added'),
-                ],
               ],
             ),
           ),
@@ -795,7 +801,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Job ${widget.jobNumber ?? widget.job?.nrcJobNo ?? 'JOB001'}',
+                'Job ${widget.jobNumber ?? widget.jobNumber ?? ''}',
                 overflow: TextOverflow.ellipsis,
               ),
             ),

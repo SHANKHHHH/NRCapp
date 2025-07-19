@@ -134,6 +134,23 @@ class JobApi {
     return [];
   }
 
+  Future<Map<String, dynamic>?> getJobPlanningStepsByNrcJobNo(String nrcJobNo) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    final response = await dio.get(
+      'http://51.20.4.108:3000/api/job-planning/$nrcJobNo',
+      options: Options(
+        headers: {
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+    if (response.data['success'] == true && response.data['data'] != null) {
+      return response.data['data'];
+    }
+    return null;
+  }
+
   Future<Map<String, dynamic>?> getJobByNrcJobNo(String nrcJobNo) async {
     try {
       final prefs = await SharedPreferences.getInstance();

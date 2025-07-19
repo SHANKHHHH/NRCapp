@@ -68,106 +68,118 @@ class _WorkScreenState extends State<WorkScreen> {
                       itemCount: jobPlannings.length,
                       itemBuilder: (context, index) {
                         final planning = jobPlannings[index];
-                        return GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => WorkDetailsScreen(
-                                  nrcJobNo: planning['nrcJobNo'],
-                                ),
-                              ),
-                            );
-                          },
-                          child: _buildSummaryCard(context, planning),
-                        );
+                        return _buildSummaryCard(context, planning);
                       },
                     ),
     );
   }
 
   Widget _buildSummaryCard(BuildContext context, Map<String, dynamic> jobPlanning) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.only(bottom: 16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'WORK ASSIGNMENT SUMMARY',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue,
-                  ),
-                ),
-                Icon(Icons.chevron_right, color: Colors.grey[600]),
-              ],
+    return GestureDetector(
+      onTap: () async {
+        // Fetch job planning steps and navigate to JobTimelinePage
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(child: CircularProgressIndicator()),
+        );
+        final dio = Dio();
+        final jobApi = JobApi(dio);
+        final planning = await jobApi.getJobPlanningStepsByNrcJobNo(jobPlanning['nrcJobNo']);
+        Navigator.of(context).pop(); // Remove loader
+        final steps = planning?['steps'] ?? [];
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => JobTimelinePage(
+              jobNumber: jobPlanning['nrcJobNo'],
+              assignedSteps: steps,
             ),
-            const SizedBox(height: 16),
-            _buildSummaryItem(
-              icon: Icons.confirmation_number,
-              title: 'Job Plan ID',
-              value: jobPlanning['jobPlanId'].toString(),
-              color: Colors.blue,
-            ),
-            _buildSummaryItem(
-              icon: Icons.work,
-              title: 'NRC Job No',
-              value: jobPlanning['nrcJobNo'] ?? '',
-              color: Colors.blue,
-            ),
-            _buildSummaryItem(
-              icon: Icons.trending_up,
-              title: 'Job Demand',
-              value: jobPlanning['jobDemand'] ?? '',
-              color: Colors.purple,
-            ),
-            _buildSummaryItem(
-              icon: Icons.calendar_today,
-              title: 'Created At',
-              value: jobPlanning['createdAt'] ?? '',
-              color: Colors.green,
-            ),
-            const SizedBox(height: 16),
-            Center(
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => WorkDetailsScreen(
-                        nrcJobNo: jobPlanning['nrcJobNo'],
-                      ),
+          ),
+        );
+      },
+      child: Card(
+        elevation: 4,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.only(bottom: 16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'WORK ASSIGNMENT SUMMARY',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
                     ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  Icon(Icons.chevron_right, color: Colors.grey[600]),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _buildSummaryItem(
+                icon: Icons.confirmation_number,
+                title: 'Job Plan ID',
+                value: jobPlanning['jobPlanId'].toString(),
+                color: Colors.blue,
+              ),
+              _buildSummaryItem(
+                icon: Icons.work,
+                title: 'NRC Job No',
+                value: jobPlanning['nrcJobNo'] ?? '',
+                color: Colors.blue,
+              ),
+              _buildSummaryItem(
+                icon: Icons.trending_up,
+                title: 'Job Demand',
+                value: jobPlanning['jobDemand'] ?? '',
+                color: Colors.purple,
+              ),
+              _buildSummaryItem(
+                icon: Icons.calendar_today,
+                title: 'Created At',
+                value: jobPlanning['createdAt'] ?? '',
+                color: Colors.green,
+              ),
+              const SizedBox(height: 16),
+              Center(
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => WorkDetailsScreen(
+                          nrcJobNo: jobPlanning['nrcJobNo'],
+                        ),
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                  child: const Text('View Complete Details'),
                 ),
-                child: const Text('View Complete Details'),
               ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Tap card for new page',
-              style: TextStyle(
-                color: Colors.grey,
-                fontSize: 12,
+              const SizedBox(height: 8),
+              const Text(
+                'Tap card for new page',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 12,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
