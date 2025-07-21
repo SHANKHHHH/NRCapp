@@ -3,6 +3,7 @@ import 'package:nrc/presentation/pages/job/AllJobs.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/Job.dart';
 import '../../data/models/purchase_order.dart';
+import '../pages/dashboard/PlanningDashboard.dart';
 import '../pages/home/HomeScreen.dart';
 import '../pages/job/JobInputPage.dart';
 import '../pages/job/job_list_page.dart';
@@ -13,6 +14,7 @@ import '../pages/members/UserListPage.dart';
 import '../pages/purchaseorder/PoAssignDetailsPage.dart';
 import '../pages/purchaseorder/PurchaseOrderInput.dart';
 import 'UserRoleManager.dart';
+import '../pages/job/PendingJobsWorkPage.dart';
 
 final UserRoleManager userRoleManager = UserRoleManager();
 
@@ -23,6 +25,7 @@ final GoRouter router = GoRouter(
     GoRoute(path: '/create-id', builder: (context, state) => CreateID()),
     GoRoute(path: '/user-list', builder: (context, state) => UserListPage()),
     GoRoute(path: '/all-Jobs', builder: (context, state) => AllJobsScreen()),
+    GoRoute(path: '/planning-dashboard', builder: (context, state) => const PlanningDashboard()),
     GoRoute(
       path: '/add-po',
       builder: (context, state) => PurchaseOrderInput(job: state.extra as Job),
@@ -55,6 +58,16 @@ final GoRouter router = GoRouter(
     GoRoute(
       path: '/home',
       builder: (context, state) => MainScaffold()
+    ),
+    GoRoute(
+      path: '/pending-jobs-work',
+      builder: (context, state) {
+        final nrcJobNo = state.extra != null && state.extra is Map ? (state.extra as Map)['nrcJobNo'] as String : '';
+        final pendingFields = state.extra != null && state.extra is Map
+          ? List<Map<String, dynamic>>.from((state.extra as Map)['pendingFields'] as List)
+          : <Map<String, dynamic>>[];
+        return PendingJobsWorkPage(nrcJobNo: nrcJobNo, pendingFields: pendingFields);
+      },
     ),
   ],
 );

@@ -232,7 +232,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        const Text(
           'Department Overview',
           style: TextStyle(
             fontSize: 20,
@@ -240,48 +240,79 @@ class _HomeScreenState extends State<HomeScreen> {
             color: Colors.black87,
           ),
         ),
-        SizedBox(height: 16),
+        const SizedBox(height: 16),
         Row(
           children: [
             Expanded(
-              child: _buildDepartmentCard(
-                'Planning',
-                'Get comprehensive overview of planning activities',
-                Icons.analytics_outlined,
-                Colors.blue,
+              child: GestureDetector(
+                onTap: () => context.push('/planning-dashboard'),
+                child: _buildDepartmentCard(
+                  'Planning',
+                  'Get comprehensive overview of planning activities',
+                  Icons.analytics_outlined,
+                  Colors.blue,
+                ),
               ),
             ),
             const SizedBox(width: 12),
-            Expanded(
-              child: _buildDepartmentCard(
-                'Production Head',
-                'Monitor production metrics and performance',
-                Icons.factory_outlined,
-                Colors.cyan,
-              ),
-            ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => context.push('/printing-dashboard'),
+                  child: _buildDepartmentCard(
+                    'Printing Manager',
+                    'Manage printing operations and schedules',
+                    Icons.print_outlined,
+                    Colors.indigo,
+                  ),
+                ),
+              ), // Empty space for alignment
           ],
         ),
         const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
-              child: _buildDepartmentCard(
-                'Dispatch Executive',
-                'Manage dispatch operations and logistics',
-                Icons.local_shipping_outlined,
-                Colors.blue,
+              child: GestureDetector(
+                onTap: () => context.push('/production-dashboard'),
+                child: _buildDepartmentCard(
+                  'Production Head',
+                  'Monitor production metrics and performance',
+                  Icons.factory_outlined,
+                  Colors.cyan,
+                ),
+              ),
+            ),
+
+            Expanded(
+              child: GestureDetector(
+                onTap: () => context.push('/dispatch-dashboard'),
+                child: _buildDepartmentCard(
+                  'Dispatch Executive',
+                  'Manage dispatch operations and logistics',
+                  Icons.local_shipping_outlined,
+                  Colors.blue,
+                ),
               ),
             ),
             const SizedBox(width: 12),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
             Expanded(
-              child: _buildDepartmentCard(
-                'QC Manager',
-                'Quality control and assurance management',
-                Icons.verified_outlined,
-                Colors.cyan,
+              child: GestureDetector(
+                onTap: () => context.push('/qc-dashboard'),
+                child: _buildDepartmentCard(
+                  'QC Manager',
+                  'Quality control and assurance management',
+                  Icons.verified_outlined,
+                  Colors.cyan,
+                ),
               ),
             ),
+            const SizedBox(width: 12),
+            const Expanded(child: SizedBox()), // Empty space for alignment
           ],
         ),
       ],
