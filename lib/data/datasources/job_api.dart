@@ -177,4 +177,84 @@ class JobApi {
       return null;
     }
   }
+
+  Future<Response> postPaperStore(Map<String, dynamic> body) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    final response = await dio.post(
+      'http://51.20.4.108:3000/api/paper-store',
+      data: body,
+      options: Options(
+        headers: {
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+    print(response.statusCode);
+    return response;
+  }
+
+  Future<Response> addMember(Map<String, dynamic> body) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    print(token);
+    print(body);
+    final response = await dio.post(
+      'http://51.20.4.108:3000/api/auth/add-member',
+      data: body,
+      options: Options(
+        headers: {
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+    print(response.statusCode);
+    return response;
+  }
+
+  Future<List<Map<String, dynamic>>> getAllUsers() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    final response = await dio.get(
+      'http://51.20.4.108:3000/api/auth/users',
+      options: Options(
+        headers: {
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+    if (response.data['success'] == true && response.data['data'] is List) {
+      return List<Map<String, dynamic>>.from(response.data['data']);
+    }
+    return [];
+  }
+
+  Future<Response> updateUser(String id, Map<String, dynamic> body) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    final response = await dio.put(
+      'http://51.20.4.108:3000/api/auth/users/$id',
+      data: body,
+      options: Options(
+        headers: {
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+    return response;
+  }
+
+  Future<Response> deleteUser(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    final response = await dio.delete(
+      'http://51.20.4.108:3000/api/auth/users/$userId',
+      options: Options(
+        headers: {
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+    return response;
+  }
 }
