@@ -68,17 +68,26 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         final status = paperStore['status'];
         // Find the Paper Store step and update its status
         StepData? paperStoreStep;
+        int paperStoreStepIndex = -1;
+
         try {
-          paperStoreStep = steps.firstWhere((step) => step.type == StepType.paperStore);
+          paperStoreStepIndex = steps.indexWhere((step) => step.type == StepType.paperStore);
+          if (paperStoreStepIndex != -1) {
+            paperStoreStep = steps[paperStoreStepIndex];
+          }
         } catch (_) {
           paperStoreStep = null;
         }
+
         if (paperStoreStep != null) {
           setState(() {
             if (status == 'in_progress') {
               paperStoreStep?.status = StepStatus.started;
             } else if (status == 'accept') {
               paperStoreStep?.status = StepStatus.completed;
+
+              // Auto-advance to next step if Paper Store is completed
+              _moveToNextStep(paperStoreStepIndex);
             } else {
               paperStoreStep?.status = StepStatus.pending;
             }
@@ -87,6 +96,30 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       }
     } catch (e) {
       print('Error syncing Paper Store step: $e');
+    }
+  }
+
+  void _moveToNextStep(int completedStepIndex) {
+    // Check if the completed step is the current active step or before it
+    if (completedStepIndex <= currentActiveStep) {
+      // Find the next step that is not completed
+      int nextStepIndex = completedStepIndex + 1;
+
+      while (nextStepIndex < steps.length && steps[nextStepIndex].status == StepStatus.completed) {
+        nextStepIndex++;
+      }
+
+      // If we found a valid next step, make it active
+      if (nextStepIndex < steps.length) {
+        currentActiveStep = nextStepIndex;
+        steps[nextStepIndex].status = StepStatus.pending;
+
+        // Show success message
+        _showSuccessMessage('${steps[completedStepIndex].title} completed! Moving to ${steps[nextStepIndex].title}.');
+      } else {
+        // All steps are completed
+        _showSuccessMessage('All job steps completed! Job is ready for final review.');
+      }
     }
   }
 
@@ -311,6 +344,25 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
                 // Post initial status
                 await _jobApi.postPaperStore(body);
+
+                final stepDetails = await _jobApi.getJobPlanningStepDetails(widget.jobNumber!, 1);
+                if (stepDetails != null) {
+                  final planningId = stepDetails['jobPlanningId'];
+                  final stepNo = stepDetails['stepNo'];
+
+                  print(stepDetails);
+                  print(widget.jobNumber);
+                  print(planningId);
+                  print(stepNo);
+                  // Update step status to "start"
+                  await _jobApi.updateJobPlanningStepStatus(
+                      widget.jobNumber!,
+                      planningId,
+                      stepNo,
+                      "start"
+                  );
+                  print('Step status updated to start');
+                }
 
                 // On success, close only the loader dialog using the correct context
                 if (!mounted) return;
@@ -580,26 +632,29 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                     ),
                     onPressed: () async {
                       print('Complete Work button pressed');
-                      // POST to paper-store endpoint
-                      // final dio = Dio();
-                      // final jobApi = JobApi(dio);
+
                       final body = {
                         "jobStepId": 1,
                         'jobNrcJobNo': widget.jobNumber ?? '',
                         'status': 'accept',
                         'sheetSize': job['boardSize'] ?? '',
-                        'required': int.tryParse(job['noUps']?.toString() ?? '0') ?? 0,
-                        'available': int.tryParse(availableController.text) ?? 0,
+                        'required': int.tryParse(job['noUps']?.toString() ??
+                            '0') ?? 0,
+                        'available': int.tryParse(availableController.text) ??
+                            0,
                         'issuedDate': DateTime.now().toUtc().toIso8601String(),
                         'mill': millController.text,
                         'extraMargin': extraMarginController.text,
                         'gsm': job['fluteType'] ?? '',
                         'quality': qualityController.text,
                       };
+
                       print('Posting to paper-store endpoint with body: $body');
+
                       try {
                         // Get the Paper Store record (if exists) to get its id
-                        final paperStore = await _jobApi.getPaperStoreStepByJob(widget.jobNumber!);
+                        final paperStore = await _jobApi.getPaperStoreStepByJob(
+                            widget.jobNumber!);
                         if (paperStore != null) {
                           await _jobApi.putPaperStore(widget.jobNumber!, body);
                           print('PUT to paper-store successful');
@@ -607,30 +662,38 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                           await _jobApi.postPaperStore(body);
                           print('POST to paper-store successful');
                         }
+
                         if (!mounted) return;
-                        // Do NOT pop the dialog!
+
+                        // Find the Paper Store step index
+                        int paperStoreStepIndex = steps.indexWhere((s) =>
+                        s.type == StepType.paperStore);
+
                         setState(() {
                           step.status = StepStatus.completed;
-                          if (currentActiveStep + 1 < steps.length) {
-                            currentActiveStep++;
-                            steps[currentActiveStep].status = StepStatus.pending;
+
+                          // Move to next step using helper function
+                          if (paperStoreStepIndex != -1) {
+                            _moveToNextStep(paperStoreStepIndex);
                           }
                         });
+
+                        // Close the dialog after successful completion
+                        Navigator.pop(context);
+
                         ScaffoldMessenger.of(this.context).showSnackBar(
-                          SnackBar(content: Text('Paper Store work completed and saved!')),
+                          SnackBar(content: Text(
+                              'Paper Store work completed and saved!')),
                         );
                       } on DioException catch (e) {
                         if (!mounted) return;
-                        // Do NOT pop the dialog!
                         print('Error posting to paper-store: DioException');
                         if (e.response != null) {
-                          // The server responded with an error
                           print('Dio error!');
                           print('STATUS: ${e.response?.statusCode}');
                           print('DATA: ${e.response?.data}');
                           print('HEADERS: ${e.response?.headers}');
                         } else {
-                          // Error due to setting up or sending the request
                           print('Error sending request!');
                           print('Request URI: ${e.requestOptions.uri}');
                           print('Request Headers: ${e.requestOptions.headers}');
@@ -638,14 +701,17 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                           print(e.message);
                         }
                         ScaffoldMessenger.of(this.context).showSnackBar(
-                          SnackBar(content: Text('Failed to save Paper Store work. Error: ${e.response?.statusCode ?? 'Connection Error'}')),
+                          SnackBar(content: Text(
+                              'Failed to save Paper Store work. Error: ${e
+                                  .response?.statusCode ??
+                                  'Connection Error'}')),
                         );
                       } catch (e) {
                         if (!mounted) return;
-                        // Do NOT pop the dialog!
                         print('Unexpected error posting to paper-store: $e');
                         ScaffoldMessenger.of(this.context).showSnackBar(
-                          SnackBar(content: Text('An unexpected error occurred.')),
+                          SnackBar(
+                              content: Text('An unexpected error occurred.')),
                         );
                       }
                     },
@@ -716,19 +782,17 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   }
 
   void _completeWork(StepData step, Map<String, String> formData) {
+    int stepIndex = steps.indexOf(step);
+
     setState(() {
       step.formData = formData;
       step.status = StepStatus.completed;
 
-      // Move to next step if available
-      if (currentActiveStep + 1 < steps.length) {
-        currentActiveStep++;
-        steps[currentActiveStep].status = StepStatus.pending;
-      }
+      // Move to next step using the helper function
+      _moveToNextStep(stepIndex);
     });
 
     Navigator.pop(context); // Close the form dialog
-    _showSuccessMessage('${step.title} completed! Moving to next step.');
   }
 
   void _showSuccessMessage(String message) {

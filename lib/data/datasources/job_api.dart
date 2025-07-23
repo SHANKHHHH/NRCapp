@@ -293,4 +293,52 @@ class JobApi {
     );
     return response;
   }
+
+  Future<Map<String, dynamic>?> getJobPlanningStepDetails(String jobNumber, int stepId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    final response = await dio.get(
+      'https://nrc-backend-his4.onrender.com/api/job-planning/$jobNumber/steps/$stepId',
+      options: Options(
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+    if (response.data != null && response.data['success'] == true) {
+      return response.data['data'];
+    }
+    return null;
+  }
+
+  Future<Response> updateJobPlanningStepStatus(String jobNumber, int planningId, int stepId, String status) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    print(token);
+    print(status);
+    try {
+      final response = await dio.patch(
+        'https://nrc-backend-his4.onrender.com/api/job-planning/$jobNumber/$planningId/steps/$stepId/status',
+        data: {'status': status},
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            if (token != null) 'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      print('Success: ${response.data}');
+      return response;
+    } on DioError catch (e) {
+      if (e.response != null) {
+        print('Backend error: ${e.response?.data}');
+        print('Status code: ${e.response?.statusCode}');
+      } else {
+        print('Unexpected error: ${e.message}');
+      }
+      rethrow;
+    }
+  }
+
 }
