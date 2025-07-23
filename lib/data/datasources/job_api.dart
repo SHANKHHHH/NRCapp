@@ -58,7 +58,7 @@ class JobApi {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     final response = await dio.post(
-      'http://51.20.4.108:3000/api/purchase-orders/create',
+      'https://nrc-backend-his4.onrender.com/api/purchase-orders/create',
       data: purchaseOrderData,
       options: Options(
         headers: {
@@ -73,7 +73,7 @@ class JobApi {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     final response = await dio.get(
-      'http://51.20.4.108:3000/api/machines',
+      'https://nrc-backend-his4.onrender.com/api/machines',
       options: Options(
         headers: {
           if (token != null) 'Authorization': 'Bearer $token',
@@ -88,7 +88,7 @@ class JobApi {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     final response = await dio.post(
-      'http://51.20.4.108:3000/api/job-planning/',
+      'https://nrc-backend-his4.onrender.com/api/job-planning/',
       data: body,
       options: Options(
         headers: {
@@ -103,7 +103,7 @@ class JobApi {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     final response = await dio.get(
-      'http://51.20.4.108:3000/api/job-planning/',
+      'https://nrc-backend-his4.onrender.com/api/job-planning/',
       queryParameters: {'nrcJobNo': nrcJobNo},
       options: Options(
         headers: {
@@ -121,7 +121,7 @@ class JobApi {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     final response = await dio.get(
-      'http://51.20.4.108:3000/api/job-planning/',
+      'https://nrc-backend-his4.onrender.com/api/job-planning/',
       options: Options(
         headers: {
           if (token != null) 'Authorization': 'Bearer $token',
@@ -138,7 +138,7 @@ class JobApi {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     final response = await dio.get(
-      'http://51.20.4.108:3000/api/job-planning/$nrcJobNo',
+      'https://nrc-backend-his4.onrender.com/api/job-planning/$nrcJobNo',
       options: Options(
         headers: {
           if (token != null) 'Authorization': 'Bearer $token',
@@ -156,7 +156,7 @@ class JobApi {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('accessToken');
       final response = await dio.get(
-        'http://51.20.4.108:3000/api/jobs',
+        'https://nrc-backend-his4.onrender.com/api/jobs',
         options: Options(
           headers: {
             if (token != null) 'Authorization': 'Bearer $token',
@@ -181,11 +181,13 @@ class JobApi {
   Future<Response> postPaperStore(Map<String, dynamic> body) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
+    print(body);
     final response = await dio.post(
-      'http://51.20.4.108:3000/api/paper-store',
+      'https://nrc-backend-his4.onrender.com/api/paper-store',
       data: body,
       options: Options(
         headers: {
+          'Content-Type': 'application/json',
           if (token != null) 'Authorization': 'Bearer $token',
         },
       ),
@@ -200,7 +202,7 @@ class JobApi {
     print(token);
     print(body);
     final response = await dio.post(
-      'http://51.20.4.108:3000/api/auth/add-member',
+      'https://nrc-backend-his4.onrender.com/api/auth/add-member',
       data: body,
       options: Options(
         headers: {
@@ -216,7 +218,7 @@ class JobApi {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     final response = await dio.get(
-      'http://51.20.4.108:3000/api/auth/users',
+      'https://nrc-backend-his4.onrender.com/api/auth/users',
       options: Options(
         headers: {
           if (token != null) 'Authorization': 'Bearer $token',
@@ -233,7 +235,7 @@ class JobApi {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     final response = await dio.put(
-      'http://51.20.4.108:3000/api/auth/users/$id',
+      'https://nrc-backend-his4.onrender.com/api/auth/users/$id',
       data: body,
       options: Options(
         headers: {
@@ -248,9 +250,43 @@ class JobApi {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     final response = await dio.delete(
-      'http://51.20.4.108:3000/api/auth/users/$userId',
+      'https://nrc-backend-his4.onrender.com/api/auth/users/$userId',
       options: Options(
         headers: {
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+    return response;
+  }
+
+  Future<Map<String, dynamic>?> getPaperStoreStepByJob(String jobNrcJobNo) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    final response = await dio.get(
+      'https://nrc-backend-his4.onrender.com/api/paper-store/by-job/$jobNrcJobNo',
+      options: Options(
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+    if (response.data != null && response.data['success'] == true && response.data['data'] is List && response.data['data'].isNotEmpty) {
+      return response.data['data'][0];
+    }
+    return null;
+  }
+
+  Future<Response> putPaperStore(String jobNrcJobNo, Map<String, dynamic> body) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    final response = await dio.put(
+      'https://nrc-backend-his4.onrender.com/api/paper-store/$jobNrcJobNo',
+      data: body,
+      options: Options(
+        headers: {
+          'Content-Type': 'application/json',
           if (token != null) 'Authorization': 'Bearer $token',
         },
       ),

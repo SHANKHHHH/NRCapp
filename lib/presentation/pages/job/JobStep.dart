@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nrc/constants/colors.dart';
+import 'package:nrc/core/services/dio_service.dart';
 import 'package:nrc/presentation/pages/job/work_action_form.dart';
 import 'package:nrc/presentation/pages/job/work_form.dart';
 import '../../../data/datasources/job_api.dart';
@@ -24,6 +25,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   Map<String, dynamic>? jobDetails;
   bool _jobLoading = false;
   String? _jobError;
+  late final JobApi _jobApi;
 
   static const orderedStepNames = [
     'PaperStore',
@@ -53,7 +55,39 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   @override
   void initState() {
     super.initState();
+    _jobApi = JobApi(DioService.instance);
     _initializeSteps();
+    _syncPaperStoreStepWithBackend();
+  }
+
+  Future<void> _syncPaperStoreStepWithBackend() async {
+    if (widget.jobNumber == null) return;
+    try {
+      final paperStore = await _jobApi.getPaperStoreStepByJob(widget.jobNumber!);
+      if (paperStore != null) {
+        final status = paperStore['status'];
+        // Find the Paper Store step and update its status
+        StepData? paperStoreStep;
+        try {
+          paperStoreStep = steps.firstWhere((step) => step.type == StepType.paperStore);
+        } catch (_) {
+          paperStoreStep = null;
+        }
+        if (paperStoreStep != null) {
+          setState(() {
+            if (status == 'in_progress') {
+              paperStoreStep?.status = StepStatus.started;
+            } else if (status == 'accept') {
+              paperStoreStep?.status = StepStatus.completed;
+            } else {
+              paperStoreStep?.status = StepStatus.pending;
+            }
+          });
+        }
+      }
+    } catch (e) {
+      print('Error syncing Paper Store step: $e');
+    }
   }
 
   void _initializeSteps() {
@@ -227,12 +261,91 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            onPressed: () {
-              setState(() {
-                step.status = StepStatus.started;
-              });
-              Navigator.pop(context);
-              _showSuccessMessage('${step.title} work started!');
+            onPressed: () async {
+              final dialogContext = context;
+              Navigator.pop(dialogContext); // Close confirmation dialog
+
+              // Show loader
+              late BuildContext loaderDialogContext;
+              showDialog(
+                context: dialogContext,
+                barrierDismissible: false,
+                useRootNavigator: true,
+                builder: (context) {
+                  loaderDialogContext = context;
+                  return Dialog(
+                    backgroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          CircularProgressIndicator(),
+                          SizedBox(width: 16),
+                          Expanded(child: Text('Starting work...')),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+
+              try {
+                // Fetch job details if needed
+                if (jobDetails == null) {
+                  await _fetchJobDetails();
+                }
+                final job = jobDetails ?? {};
+
+                // Construct body for 'in_progress' status
+                final body = {
+                  "jobStepId": 1, // Assuming this is correct for PaperStore
+                  'jobNrcJobNo': widget.jobNumber ?? '',
+                  'status': 'in_progress',
+                  'sheetSize': job['boardSize'] ?? '',
+                  'required': int.tryParse(job['noUps']?.toString() ?? '0') ?? 0,
+                  'gsm': job['fluteType'] ?? '',
+                  'issuedDate': DateTime.now().toUtc().toIso8601String(),
+                };
+
+                // Post initial status
+                await _jobApi.postPaperStore(body);
+
+                // On success, close only the loader dialog using the correct context
+                if (!mounted) return;
+                if (Navigator.of(loaderDialogContext, rootNavigator: true).canPop()) {
+                  Navigator.of(loaderDialogContext, rootNavigator: true).pop();
+                }
+                setState(() {
+                  step.status = StepStatus.started;
+                });
+                _showSuccessMessage('${step.title} work started!');
+              } on DioException catch (e) {
+                if (!mounted) return;
+                if (Navigator.of(loaderDialogContext, rootNavigator: true).canPop()) {
+                  Navigator.of(loaderDialogContext, rootNavigator: true).pop();
+                }
+                print('Error starting work: DioException');
+                if (e.response != null) {
+                  print('STATUS: ${e.response?.statusCode}');
+                  print('DATA: ${e.response?.data}');
+                } else {
+                  print('Error sending request: ${e.message}');
+                }
+                ScaffoldMessenger.of(this.context).showSnackBar(
+                  SnackBar(content: Text('Failed to start work. Error: ${e.response?.statusCode ?? 'Connection Error'}')),
+                );
+              } catch (e) {
+                if (!mounted) return;
+                if (Navigator.of(loaderDialogContext, rootNavigator: true).canPop()) {
+                  Navigator.of(loaderDialogContext, rootNavigator: true).pop();
+                }
+                print('Unexpected error starting work: $e');
+                ScaffoldMessenger.of(this.context).showSnackBar(
+                  SnackBar(content: Text('An unexpected error occurred while starting work.')),
+                );
+              }
             },
             child: const Text('Start Work'),
           ),
@@ -247,9 +360,9 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       _jobError = null;
     });
     try {
-      final dio = Dio();
-      final jobApi = JobApi(dio);
-      final job = await jobApi.getJobByNrcJobNo(widget.jobNumber ?? '');
+      // final dio = Dio();
+      // final jobApi = JobApi(dio);
+      final job = await _jobApi.getJobByNrcJobNo(widget.jobNumber ?? '');
       setState(() {
         jobDetails = job;
         _jobLoading = false;
@@ -266,6 +379,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     showDialog(
       context: context,
       barrierDismissible: false,
+      useRootNavigator: true,
       builder: (context) => Dialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -355,6 +469,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       showDialog(
         context: context,
         barrierDismissible: false,
+        useRootNavigator: true,
         builder: (context) => Dialog(
           backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -388,6 +503,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       showDialog(
         context: context,
         barrierDismissible: false,
+        useRootNavigator: true,
         builder: (context) {
           return StatefulBuilder(
             builder: (context, setState) {
@@ -438,7 +554,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                       const SizedBox(height: 12),
                       TextField(
                         controller: extraMarginController,
-                        decoration: InputDecoration(
+                        decoration: InputDecoration(  
                           labelText: 'Extra Margin',
                           border: OutlineInputBorder(),
                         ),
@@ -465,16 +581,16 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                     onPressed: () async {
                       print('Complete Work button pressed');
                       // POST to paper-store endpoint
-                      final dio = Dio();
-                      final jobApi = JobApi(dio);
+                      // final dio = Dio();
+                      // final jobApi = JobApi(dio);
                       final body = {
                         "jobStepId": 1,
                         'jobNrcJobNo': widget.jobNumber ?? '',
-                        'status': 'Work Completed',
+                        'status': 'accept',
                         'sheetSize': job['boardSize'] ?? '',
-                        'required': job['noUps']?.toString() ?? '',
-                        'available': availableController.text,
-                        'issuedDate': _formatDate(DateTime.now()),
+                        'required': int.tryParse(job['noUps']?.toString() ?? '0') ?? 0,
+                        'available': int.tryParse(availableController.text) ?? 0,
+                        'issuedDate': DateTime.now().toUtc().toIso8601String(),
                         'mill': millController.text,
                         'extraMargin': extraMarginController.text,
                         'gsm': job['fluteType'] ?? '',
@@ -482,30 +598,55 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                       };
                       print('Posting to paper-store endpoint with body: $body');
                       try {
-                        await jobApi.postPaperStore(body);
-                        print('POST to paper-store successful');
-                        Navigator.pop(context);
-                        // Only advance the step after successful POST
-                        Future.delayed(Duration.zero, () {
-                          setState(() {
-                            step.status = StepStatus.completed;
-                            if (currentActiveStep + 1 < steps.length) {
-                              currentActiveStep++;
-                              steps[currentActiveStep].status = StepStatus.pending;
-                            }
-                          });
-                          ScaffoldMessenger.of(this.context).showSnackBar(
-                            SnackBar(content: Text('Paper Store work completed and saved!')),
-                          );
+                        // Get the Paper Store record (if exists) to get its id
+                        final paperStore = await _jobApi.getPaperStoreStepByJob(widget.jobNumber!);
+                        if (paperStore != null) {
+                          await _jobApi.putPaperStore(widget.jobNumber!, body);
+                          print('PUT to paper-store successful');
+                        } else {
+                          await _jobApi.postPaperStore(body);
+                          print('POST to paper-store successful');
+                        }
+                        if (!mounted) return;
+                        // Do NOT pop the dialog!
+                        setState(() {
+                          step.status = StepStatus.completed;
+                          if (currentActiveStep + 1 < steps.length) {
+                            currentActiveStep++;
+                            steps[currentActiveStep].status = StepStatus.pending;
+                          }
                         });
+                        ScaffoldMessenger.of(this.context).showSnackBar(
+                          SnackBar(content: Text('Paper Store work completed and saved!')),
+                        );
+                      } on DioException catch (e) {
+                        if (!mounted) return;
+                        // Do NOT pop the dialog!
+                        print('Error posting to paper-store: DioException');
+                        if (e.response != null) {
+                          // The server responded with an error
+                          print('Dio error!');
+                          print('STATUS: ${e.response?.statusCode}');
+                          print('DATA: ${e.response?.data}');
+                          print('HEADERS: ${e.response?.headers}');
+                        } else {
+                          // Error due to setting up or sending the request
+                          print('Error sending request!');
+                          print('Request URI: ${e.requestOptions.uri}');
+                          print('Request Headers: ${e.requestOptions.headers}');
+                          print('Request Data: ${e.requestOptions.data}');
+                          print(e.message);
+                        }
+                        ScaffoldMessenger.of(this.context).showSnackBar(
+                          SnackBar(content: Text('Failed to save Paper Store work. Error: ${e.response?.statusCode ?? 'Connection Error'}')),
+                        );
                       } catch (e) {
-                        print('Error posting to paper-store: $e');
-                        Navigator.pop(context);
-                        Future.delayed(Duration.zero, () {
-                          ScaffoldMessenger.of(this.context).showSnackBar(
-                            SnackBar(content: Text('Failed to save Paper Store work.')),
-                          );
-                        });
+                        if (!mounted) return;
+                        // Do NOT pop the dialog!
+                        print('Unexpected error posting to paper-store: $e');
+                        ScaffoldMessenger.of(this.context).showSnackBar(
+                          SnackBar(content: Text('An unexpected error occurred.')),
+                        );
                       }
                     },
                     child: const Text('Complete Work'),
@@ -940,16 +1081,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         ],
       ),
     );
-  }
-
-  String _formatDate(DateTime date) {
-    final year = date.year.toString().padLeft(4, '0');
-    final month = date.month.toString().padLeft(2, '0');
-    final day = date.day.toString().padLeft(2, '0');
-    final hour = date.hour.toString().padLeft(2, '0');
-    final minute = date.minute.toString().padLeft(2, '0');
-    final second = date.second.toString().padLeft(2, '0');
-    return '$year-$month-${day}T$hour:$minute:${second}z';
   }
 
   @override
