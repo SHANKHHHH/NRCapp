@@ -658,8 +658,16 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                         if (paperStore != null) {
                           await _jobApi.putPaperStore(widget.jobNumber!, body);
                           print('PUT to paper-store successful');
-                        } else {
-                          await _jobApi.postPaperStore(body);
+                        }
+                        final stepDetails = await _jobApi.getJobPlanningStepDetails(widget.jobNumber!, 1);
+                        if (stepDetails != null) {
+                          final planningId = stepDetails['jobPlanningId'];
+                          final stepNo = stepDetails['stepNo'];
+
+                          await _jobApi.updateJobPlanningStepStatus(widget.jobNumber!,
+                              planningId,
+                              stepNo,
+                              "start");
                           print('POST to paper-store successful');
                         }
 
