@@ -1,18 +1,22 @@
 import 'package:flutter/material.dart';
-import '../../../data/datasources/job_api.dart';
-import '../../../data/models/WorkStepAssignment.dart';
 import 'package:dio/dio.dart';
+import 'package:nrc/constants/strings.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../../constants/colors.dart';
+import '../../../data/models/WorkStepAssignment.dart';
+import '../process/DialogManager.dart'; // Make sure this path is correct
 
 class ReviewStepWidget extends StatelessWidget {
   final String? selectedDemand;
   final List<WorkStepAssignment> selectedWorkStepAssignments;
-  final dynamic selectedJob; // Added this parameter
+  final dynamic selectedJob;
 
   const ReviewStepWidget({
     Key? key,
     required this.selectedDemand,
     required this.selectedWorkStepAssignments,
-    required this.selectedJob, // Added this parameter
+    required this.selectedJob,
   }) : super(key: key);
 
   Color _getDemandColor(String? demand) {
@@ -53,15 +57,24 @@ class ReviewStepWidget extends StatelessWidget {
 
   String getBackendStepName(String step) {
     switch (step.toLowerCase()) {
-      case 'paperstore': return 'PaperStore';
-      case 'printing': return 'PrintingDetails';
-      case 'corrugation': return 'Corrugation';
-      case 'flutelamination': return 'FluteLaminateBoardConversion';
-      case 'punching': return 'Punching';
-      case 'flappasting': return 'SideFlapPasting';
-      case 'qc': return 'QualityDept';
-      case 'dispatch': return 'DispatchProcess';
-      default: return step;
+      case 'paperstore':
+        return 'PaperStore';
+      case 'printing':
+        return 'PrintingDetails';
+      case 'corrugation':
+        return 'Corrugation';
+      case 'flutelamination':
+        return 'FluteLaminateBoardConversion';
+      case 'punching':
+        return 'Punching';
+      case 'flappasting':
+        return 'SideFlapPasting';
+      case 'qc':
+        return 'QualityDept';
+      case 'dispatch':
+        return 'DispatchProcess';
+      default:
+        return step;
     }
   }
 
@@ -154,7 +167,8 @@ class ReviewStepWidget extends StatelessWidget {
                             Text('Description: ${assignment.selectedMachine!.description}'),
                             Text('Type: ${assignment.selectedMachine!.type}'),
                             Text('Capacity: ${assignment.selectedMachine!.capacity}/8hrs'),
-                            if (assignment.selectedMachine!.remarks != null && assignment.selectedMachine!.remarks!.isNotEmpty)
+                            if (assignment.selectedMachine!.remarks != null &&
+                                assignment.selectedMachine!.remarks!.isNotEmpty)
                               Text('Remarks: ${assignment.selectedMachine!.remarks}'),
                           ],
                         )
@@ -171,6 +185,21 @@ class ReviewStepWidget extends StatelessWidget {
           },
         ),
         const SizedBox(height: 20),
+
+        // ✅ Done Button
+        Center(
+          child: ElevatedButton(
+            onPressed: () => _submitJobPlanning(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Done'),
+          ),
+        ),
+        const SizedBox(height: 40),
       ],
     );
   }
@@ -211,5 +240,47 @@ class ReviewStepWidget extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  // ✅ Submission Logic
+  void _submitJobPlanning(BuildContext context) async {
+    try {
+      final dio = Dio();
+      final url = '${AppStrings.baseUrl}/api/job-planning/';
+
+      final payload = {
+        "nrcJobNo": selectedJob?.nrcJobNo ?? 'UNKNOWN',
+        "jobDemand": selectedDemand ?? 'low',
+        "steps": selectedWorkStepAssignments.asMap().entries.map((entry) {
+          final index = entry.key;
+          final assignment = entry.value;
+          return {
+            "stepNo": index + 1,
+            "stepName": getBackendStepName(assignment.workStep.step),
+            "machineDetail": assignment.selectedMachine?.machineCode ?? 'Not Required',
+          };
+        }).toList(),
+      };
+
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('accessToken');
+      final response = await dio.post(
+          url,
+          data: payload,
+        options: Options(
+          headers: {
+            if (token != null) 'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        DialogManager.showSuccessMessage(context, "Job planning submitted successfully.");
+      } else {
+        DialogManager.showErrorMessage(context, "Failed to submit. Status: ${response.statusCode}");
+      }
+    } catch (e) {
+      DialogManager.showErrorMessage(context, "Error: ${e.toString()}");
+    }
   }
 }

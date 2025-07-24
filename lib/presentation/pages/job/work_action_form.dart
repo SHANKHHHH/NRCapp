@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:nrc/data/datasources/job_api.dart';
 import '../../../constants/colors.dart';
+import '../process/JobApiService.dart';
 
 class WorkActionForm extends StatefulWidget {
   final String title;
@@ -10,6 +12,9 @@ class WorkActionForm extends StatefulWidget {
   final void Function()? onStart;
   final void Function()? onPause;
   final void Function()? onStop;
+  final String? jobNumber; // Add jobNumber parameter
+  final int? stepNo; // Add stepNo parameter
+  final JobApiService? apiService; // Add apiService parameter
 
   const WorkActionForm({
     super.key,
@@ -21,6 +26,9 @@ class WorkActionForm extends StatefulWidget {
     this.onPause,
     this.onStop,
     this.hasData = false,
+    this.jobNumber, // Add jobNumber
+    this.stepNo, // Add stepNo
+    this.apiService, // Add apiService
   });
 
   @override
@@ -32,11 +40,16 @@ class _WorkActionFormState extends State<WorkActionForm> {
   final TextEditingController _qtyController = TextEditingController();
   String _status = 'pending';
   DateTime? _startTime;
+  DateTime? _endTime;
+  bool _isLoading = false;
+  late JobApi _job;
 
   @override
   void initState() {
     super.initState();
     _qtyController.text = widget.initialQty ?? '';
+    // Load current status from database if API service is available
+    _loadCurrentStatus();
   }
 
   @override
@@ -45,21 +58,101 @@ class _WorkActionFormState extends State<WorkActionForm> {
     super.dispose();
   }
 
-  void _handleStart() {
-    if (_startTime == null) {
-      _startTime = DateTime.now(); // Store time only once
+  // Load current status from database
+  void _loadCurrentStatus() async {
+    if (widget.jobNumber == null || widget.stepNo == null || widget.apiService == null) {
+      return;
     }
-    setState(() => _status = 'started');
-    widget.onStart?.call();
+
+    setState(() => _isLoading = true);
+
+    try {
+      // Get current step status from database
+      final response = await _job.getJobPlanningStepsByNrcJobNo(widget.jobNumber!);
+
+      // Find the current step in the response
+      if (response?['success'] == true && response?['data'] != null) {
+        final stepData = response?['data'];
+        if (stepData['stepNo'] == widget.stepNo) {
+          setState(() {
+            _status = stepData['status'] ?? 'pending';
+            if (stepData['startDate'] != null) {
+              _startTime = DateTime.parse(stepData['startDate']);
+            }
+            if (stepData['endDate'] != null) {
+              _endTime = DateTime.parse(stepData['endDate']);
+            }
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading current status: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _handleStart() async {
+    if (widget.jobNumber == null || widget.stepNo == null || widget.apiService == null) {
+      // Fallback to original behavior if API parameters not provided
+      if (_startTime == null) {
+        _startTime = DateTime.now();
+      }
+      setState(() => _status = 'start');
+      widget.onStart?.call();
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // Call API to update job planning step status to 'start' with startDate
+      await widget.apiService!.updateJobPlanningStepComplete(
+          widget.jobNumber!,
+          widget.stepNo!,
+          "start"
+      );
+
+      // Set local start time
+      _startTime = DateTime.now();
+
+      setState(() {
+        _status = 'start';
+        _isLoading = false;
+      });
+
+      widget.onStart?.call();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${widget.title} work started successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to start work: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _handlePause() {
+    // Note: Pause functionality might need API integration based on your requirements
     setState(() => _status = 'paused');
     widget.onPause?.call();
   }
 
   void _handleStop() async {
-    if (_startTime == null) {
+    if (_status != 'start') {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please start the task before stopping it.')),
       );
@@ -70,7 +163,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Confirm Stop'),
-        content: const Text('Are you sure the job is done?'),
+        content: const Text('Are you sure you want to stop the work?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -83,33 +176,100 @@ class _WorkActionFormState extends State<WorkActionForm> {
         ],
       ),
     );
-    if (confirmed == true) {
-      setState(() => _status = 'stopped');
+
+    if (confirmed != true) return;
+
+    if (widget.jobNumber == null || widget.stepNo == null || widget.apiService == null) {
+      // Fallback to original behavior if API parameters not provided
+      setState(() {
+        _status = 'stopped';
+        _endTime = DateTime.now();
+      });
       widget.onStop?.call();
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // Call API to update job planning step with end time
+      await widget.apiService!.updateJobPlanningStepComplete(
+          widget.jobNumber!,
+          widget.stepNo!,
+          "stop"
+      );
+
+      setState(() {
+        _status = 'stopped';
+        _endTime = DateTime.now();
+        _isLoading = false;
+      });
+
+      widget.onStop?.call();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${widget.title} work stopped successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to stop work: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
-  void _handleComplete() {
+  void _handleComplete() async {
     if (_formKey.currentState!.validate()) {
-      if (_startTime == null || _status != 'stopped') {
+      if (_status != 'stopped') {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Please start and stop the task before completing.')),
         );
         return;
       }
 
-      final formData = <String, String>{
-        'Qty Sheet': _qtyController.text,
-        'Status': _status,
-        'Start Time': _startTime.toString(),
-      };
-      widget.onComplete(formData);
+      setState(() => _isLoading = true);
+
+      try {
+        final formData = <String, String>{
+          'Qty Sheet': _qtyController.text,
+          'Status': _status,
+          'Start Time': _startTime?.toString() ?? '',
+          'End Time': _endTime?.toString() ?? DateTime.now().toString(),
+        };
+
+        // Call the onComplete callback which will handle the specific step post operation
+        widget.onComplete(formData);
+
+        setState(() => _isLoading = false);
+      } catch (e) {
+        setState(() => _isLoading = false);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to complete work: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
     }
   }
 
   Color _statusColor() {
     switch (_status) {
-      case 'started':
+      case 'start':
         return Colors.orange;
       case 'paused':
         return Colors.blue;
@@ -122,7 +282,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
 
   String _statusText() {
     switch (_status) {
-      case 'started':
+      case 'start':
         return 'Started';
       case 'paused':
         return 'Paused';
@@ -131,6 +291,26 @@ class _WorkActionFormState extends State<WorkActionForm> {
       default:
         return 'Pending';
     }
+  }
+
+  // Check if Start button should be enabled
+  bool _isStartEnabled() {
+    return !_isLoading && (_status == 'pending' || _status == 'paused');
+  }
+
+  // Check if Pause button should be enabled
+  bool _isPauseEnabled() {
+    return !_isLoading && _status == 'start';
+  }
+
+  // Check if Stop button should be enabled
+  bool _isStopEnabled() {
+    return !_isLoading && _status == 'start';
+  }
+
+  // Check if Complete button should be enabled
+  bool _isCompleteEnabled() {
+    return !_isLoading && _status == 'stopped';
   }
 
   @override
@@ -212,25 +392,34 @@ class _WorkActionFormState extends State<WorkActionForm> {
                     Expanded(
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange,
+                          backgroundColor: _isStartEnabled() ? Colors.orange : Colors.grey,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
-                        onPressed: _handleStart,
-                        child: const Text('Start'),
+                        onPressed: _isStartEnabled() ? _handleStart : null,
+                        child: _isLoading && _status == 'pending'
+                            ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                            : const Text('Start'),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
+                          backgroundColor: _isPauseEnabled() ? Colors.blue : Colors.grey,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
-                        onPressed: _handlePause,
+                        onPressed: _isPauseEnabled() ? _handlePause : null,
                         child: const Text('Pause'),
                       ),
                     ),
@@ -238,13 +427,22 @@ class _WorkActionFormState extends State<WorkActionForm> {
                     Expanded(
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
+                          backgroundColor: _isStopEnabled() ? Colors.red : Colors.grey,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
-                        onPressed: _handleStop,
-                        child: const Text('Stop'),
+                        onPressed: _isStopEnabled() ? _handleStop : null,
+                        child: _isLoading && _status == 'start'
+                            ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                            : const Text('Stop'),
                       ),
                     ),
                   ],
@@ -275,6 +473,32 @@ class _WorkActionFormState extends State<WorkActionForm> {
                     ),
                   ],
                 ),
+                // Show timing information if available
+                if (_startTime != null || _endTime != null) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_startTime != null)
+                          Text(
+                            'Started: ${_startTime!.toString().substring(0, 19)}',
+                            style: const TextStyle(fontSize: 12, color: Colors.black87),
+                          ),
+                        if (_endTime != null)
+                          Text(
+                            'Ended: ${_endTime!.toString().substring(0, 19)}',
+                            style: const TextStyle(fontSize: 12, color: Colors.black87),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -288,14 +512,23 @@ class _WorkActionFormState extends State<WorkActionForm> {
               width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
+                  backgroundColor: _isCompleteEnabled() ? Colors.green : Colors.grey,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   elevation: 2,
                 ),
-                onPressed: (_startTime != null && _status == 'stopped') ? _handleComplete : null,
-                child: Row(
+                onPressed: _isCompleteEnabled() ? _handleComplete : null,
+                child: _isLoading && _status == 'stopped'
+                    ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+                    : Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Icon(Icons.check_circle, size: 20),
@@ -315,7 +548,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
             SizedBox(
               width: double.infinity,
               child: TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: _isLoading ? null : () => Navigator.pop(context),
                 style: TextButton.styleFrom(
                   foregroundColor: Colors.grey[600],
                   padding: const EdgeInsets.symmetric(vertical: 12),

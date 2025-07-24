@@ -6,6 +6,17 @@ class JobApiService {
 
   JobApiService(this._jobApi);
 
+  /// Get step details from job planning
+  Future<Map<String, dynamic>?> getJobPlanningStepDetails(String jobNumber, int stepNo) async {
+    try {
+      return await _jobApi.getJobPlanningStepDetails(jobNumber, stepNo);
+    } catch (e) {
+      print('Error getting job planning step details: $e');
+      return null;
+    }
+  }
+
+  /// Sync Paper Store step with backend
   Future<void> syncPaperStoreStep(String jobNumber, Function(StepStatus) onStatusUpdate) async {
     try {
       final paperStore = await _jobApi.getPaperStoreStepByJob(jobNumber);
@@ -24,6 +35,17 @@ class JobApiService {
     }
   }
 
+  /// Get Paper Store step by job number
+  Future<Map<String, dynamic>?> getPaperStoreStepByJob(String jobNumber) async {
+    try {
+      return await _jobApi.getPaperStoreStepByJob(jobNumber);
+    } catch (e) {
+      print('Error getting paper store step: $e');
+      return null;
+    }
+  }
+
+  /// Fetch job details
   Future<Map<String, dynamic>?> fetchJobDetails(String jobNumber) async {
     try {
       return await _jobApi.getJobByNrcJobNo(jobNumber);
@@ -33,6 +55,7 @@ class JobApiService {
     }
   }
 
+  /// Start Paper Store work
   Future<void> startPaperStoreWork(String jobNumber, Map<String, dynamic> jobDetails) async {
     final body = {
       "jobStepId": 1,
@@ -47,6 +70,17 @@ class JobApiService {
     await _jobApi.postPaperStore(body);
   }
 
+  /// Update job planning step status and dates
+  Future<void> updateJobPlanningStepComplete(String jobNumber, int stepNo, String status) async {
+    try {
+      await _jobApi.updateJobPlanningStepComplete(jobNumber, stepNo, status);
+    } catch (e) {
+      print('Error updating job planning step: $e');
+      rethrow;
+    }
+  }
+
+  /// Update step status (legacy method for backward compatibility)
   Future<void> updateStepStatus(String jobNumber, int stepNo, String status) async {
     if (stepNo == 1) {
       // Paper Store specific handling
@@ -61,6 +95,7 @@ class JobApiService {
     }
   }
 
+  /// Complete Paper Store work
   Future<void> completePaperStoreWork(String jobNumber, Map<String, dynamic> jobDetails, Map<String, String> formData) async {
     final body = {
       "jobStepId": 1,
@@ -79,12 +114,12 @@ class JobApiService {
     final paperStore = await _jobApi.getPaperStoreStepByJob(jobNumber);
     if (paperStore != null) {
       await _jobApi.putPaperStore(jobNumber, body);
+    } else {
+      await _jobApi.postPaperStore(body);
     }
-
-    // Update planning step status
-    await updateStepStatus(jobNumber, 1, "stop");
   }
 
+  /// Post step details for different step types
   Future<void> postStepDetails(StepType stepType, String jobNumber, Map<String, String> formData, int stepNo) async {
     switch (stepType) {
       case StepType.printing:
@@ -126,6 +161,8 @@ class JobApiService {
       "machine": formData['Machine'] ?? '',
       "remarks": formData['Remarks'] ?? '',
     };
+    print("Printing Details");
+    print(body);
     await _jobApi.postPrintingDetails(body);
   }
 
