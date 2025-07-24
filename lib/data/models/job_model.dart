@@ -1,3 +1,5 @@
+import 'package:nrc/data/models/purchase_order.dart';
+
 class JobModel {
   final int id;
   final String nrcJobNo;
@@ -37,6 +39,8 @@ class JobModel {
   final String? updatedAt;
   final int? userId;
   final int? machineId;
+  final List<PurchaseOrder>? purchaseOrders;
+
 
   JobModel({
     required this.id,
@@ -77,6 +81,7 @@ class JobModel {
     this.updatedAt,
     this.userId,
     this.machineId,
+    this.purchaseOrders
   });
 
   factory JobModel.fromJson(Map<String, dynamic> json) {
@@ -131,6 +136,11 @@ class JobModel {
       machineId: json['machineId'] is int
           ? json['machineId']
           : (json['machineId'] is double ? (json['machineId'] as double).toInt() : null),
+      purchaseOrders: json['purchaseOrders'] != null
+          ? (json['purchaseOrders'] as List)
+          .map((po) => PurchaseOrder.fromJson(po))
+          .toList()
+          : null,
     );
   }
 }

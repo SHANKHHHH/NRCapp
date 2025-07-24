@@ -21,14 +21,14 @@ class PurchaseOrder {
 
   factory PurchaseOrder.fromJson(Map<String, dynamic> json) {
     return PurchaseOrder(
-      poDate: DateTime.parse(json['poDate']),
-      deliveryDate: DateTime.parse(json['deliveryDate']),
-      dispatchDate: DateTime.parse(json['dispatchDate']),
-      nrcDeliveryDate: DateTime.parse(json['nrcDeliveryDate']),
-      totalPOQuantity: json['totalPOQuantity'],
-      unit: json['unit'],
-      pendingValidity: json['pendingValidity'],
-      noOfSheets: json['noOfSheets'],
+      poDate: json['poDate'] != null ? DateTime.parse(json['poDate'].toString()) : DateTime.now(),
+      deliveryDate: json['deliveryDate'] != null ? DateTime.parse(json['deliveryDate'].toString()) : DateTime.now(),
+      dispatchDate: json['dispatchDate'] != null ? DateTime.parse(json['dispatchDate'].toString()) : DateTime.now(),
+      nrcDeliveryDate: json['nrcDeliveryDate'] != null ? DateTime.parse(json['nrcDeliveryDate'].toString()) : DateTime.now(),
+      totalPOQuantity: json['totalPOQuantity'] is int ? json['totalPOQuantity'] : int.tryParse(json['totalPOQuantity']?.toString() ?? '0') ?? 0,
+      unit: json['unit']?.toString() ?? '',
+      pendingValidity: json['pendingValidity'] is int ? json['pendingValidity'] : int.tryParse(json['pendingValidity']?.toString() ?? '0') ?? 0,
+      noOfSheets: json['noOfSheets'] is int ? json['noOfSheets'] : int.tryParse(json['noOfSheets']?.toString() ?? '0') ?? 0,
     );
   }
 

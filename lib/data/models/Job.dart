@@ -44,6 +44,9 @@ class Job {
   final int? userId;
   final int? machineId;
   final PurchaseOrder? purchaseOrder;
+  final List<PurchaseOrder>? purchaseOrders;
+  final bool? hasPurchaseOrders;
+
 
   Job({
     required this.id,
@@ -85,7 +88,57 @@ class Job {
     this.userId,
     this.machineId,
     this.purchaseOrder,
+    this.purchaseOrders,
+    this.hasPurchaseOrders,
   });
+
+  factory Job.fromJson(Map<String, dynamic> json) {
+    return Job(
+      id: json['id'],
+      nrcJobNo: json['nrcJobNo'] ?? '',
+      styleItemSKU: json['styleItemSKU'] ?? '',
+      customerName: json['customerName'] ?? '',
+      fluteType: json['fluteType'] ?? '',
+      status: json['status'] ?? '',
+      latestRate: (json['latestRate'] != null) ? (json['latestRate'] as num?)?.toDouble() : null,
+      preRate: (json['preRate'] != null) ? (json['preRate'] as num?)?.toDouble() : null,
+      length: json['length'] is int ? json['length'] : (json['length'] is double ? (json['length'] as double).toInt() : null),
+      width: json['width'] is int ? json['width'] : (json['width'] is double ? (json['width'] as double).toInt() : null),
+      height: json['height'] is int ? json['height'] : (json['height'] is double ? (json['height'] as double).toInt() : null),
+      boxDimensions: json['boxDimensions']?.toString(),
+      diePunchCode: json['diePunchCode'] is int ? json['diePunchCode'] : (json['diePunchCode'] is double ? (json['diePunchCode'] as double).toInt() : null),
+      boardCategory: json['boardCategory']?.toString(),
+      noOfColor: json['noOfColor']?.toString(),
+      processColors: json['processColors']?.toString(),
+      specialColor1: json['specialColor1']?.toString(),
+      specialColor2: json['specialColor2']?.toString(),
+      specialColor3: json['specialColor3']?.toString(),
+      specialColor4: json['specialColor4']?.toString(),
+      overPrintFinishing: json['overPrintFinishing']?.toString(),
+      topFaceGSM: json['topFaceGSM']?.toString(),
+      flutingGSM: json['flutingGSM']?.toString(),
+      bottomLinerGSM: json['bottomLinerGSM']?.toString(),
+      decalBoardX: json['decalBoardX']?.toString(),
+      lengthBoardY: json['lengthBoardY']?.toString(),
+      boardSize: json['boardSize']?.toString(),
+      noUps: json['noUps']?.toString(),
+      artworkReceivedDate: json['artworkReceivedDate']?.toString(),
+      artworkApprovalDate: json['artworkApprovalDate']?.toString(),
+      shadeCardApprovalDate: json['shadeCardApprovalDate']?.toString(),
+      srNo: json['srNo']?.toString(),
+      jobDemand: json['jobDemand']?.toString(),
+      imageURL: json['imageURL']?.toString(),
+      createdAt: json['createdAt']?.toString(),
+      updatedAt: json['updatedAt']?.toString(),
+      userId: json['userId'] is int ? json['userId'] : (json['userId'] is double ? (json['userId'] as double).toInt() : null),
+      machineId: json['machineId'] is int ? json['machineId'] : (json['machineId'] is double ? (json['machineId'] as double).toInt() : null),
+      purchaseOrder: json['purchaseOrder'] != null ? PurchaseOrder.fromJson(json['purchaseOrder']) : null,
+      purchaseOrders: json['purchaseOrders'] != null
+          ? List<PurchaseOrder>.from((json['purchaseOrders'] as List).map((po) => PurchaseOrder.fromJson(po)))
+          : [],
+      hasPurchaseOrders: json['hasPurchaseOrders'],
+    );
+  }
 
   // Check if all artwork workflow steps are completed
   bool get isArtworkWorkflowComplete {
@@ -146,6 +199,8 @@ class Job {
     int? userId,
     int? machineId,
     PurchaseOrder? purchaseOrder,
+    List<PurchaseOrder>? purchaseOrders,
+    bool? hasPurchaseOrders,
   }) {
     return Job(
       id: id ?? this.id,
@@ -187,6 +242,8 @@ class Job {
       userId: userId ?? this.userId,
       machineId: machineId ?? this.machineId,
       purchaseOrder: purchaseOrder ?? this.purchaseOrder,
+      purchaseOrders: purchaseOrders ?? this.purchaseOrders,
+      hasPurchaseOrders: hasPurchaseOrders ?? this.hasPurchaseOrders,
     );
   }
 }

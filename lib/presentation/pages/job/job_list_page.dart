@@ -113,11 +113,6 @@ class _JobListPageState extends State<JobListPage> {
             icon: const Icon(Icons.refresh),
             onPressed: _loadJobs,
           ),
-          if (_userRole == 'Admin' || _userRole == 'Planner')
-            IconButton(
-              icon: const Icon(Icons.add),
-              onPressed: () => _showAddJobDialog(context),
-            ),
         ],
       ),
       body: _buildBody(),
@@ -227,7 +222,6 @@ class _JobListPageState extends State<JobListPage> {
       updatedAt: jobModel.updatedAt,
       userId: jobModel.userId,
       machineId: jobModel.machineId,
-      purchaseOrder: null, // Set this if you have PO data
     );
   }
 
@@ -563,78 +557,6 @@ class _JobListPageState extends State<JobListPage> {
     );
   }
 
-  void _showAddJobDialog(BuildContext context) {
-    final TextEditingController jobNumberController = TextEditingController();
-    final TextEditingController customerController = TextEditingController();
-    final TextEditingController styleController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add New Job'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: jobNumberController,
-                decoration: const InputDecoration(
-                  labelText: 'Job Number',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: customerController,
-                decoration: const InputDecoration(
-                  labelText: 'Customer',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: styleController,
-                decoration: const InputDecoration(
-                  labelText: 'Style/SKU',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (jobNumberController.text.isNotEmpty &&
-                  customerController.text.isNotEmpty &&
-                  styleController.text.isNotEmpty) {
-                // Note: You'll need to implement the API call to add a new job
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Add job functionality needs API implementation'),
-                    backgroundColor: Colors.orange,
-                  ),
-                );
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Please fill all required fields'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-            child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
-  }
 
   void _editJob(JobModel job) {
     print('Editing job: ${job.nrcJobNo}');

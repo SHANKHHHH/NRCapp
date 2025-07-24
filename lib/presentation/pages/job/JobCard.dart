@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import '../../../core/services/dio_service.dart';
 import '../../../data/models/Job.dart';
 import '../stepsselections/AssignWorkSteps.dart';
 import 'ArtworkWorkflowWidget.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nrc/data/models/purchase_order.dart';
+import '../../../data/datasources/job_api.dart';
+import 'package:dio/dio.dart';
 
 class EnhancedJobCard extends StatelessWidget {
   final Job job;
@@ -76,7 +79,6 @@ class EnhancedJobCard extends StatelessWidget {
               if (_buildStatusControlSection(context) != null)
                 _buildStatusControlSection(context),
             ],
-            // Always show Add PO button at the bottom if all artwork dates are filled and PO not added
             if ((job.artworkReceivedDate?.isNotEmpty ?? false) &&
                 (job.artworkApprovalDate?.isNotEmpty ?? false) &&
                 (job.shadeCardApprovalDate?.isNotEmpty ?? false) &&
@@ -374,70 +376,119 @@ class EnhancedJobCard extends StatelessWidget {
   }
 
   Widget _buildPurchaseOrderButton(BuildContext context) {
-    final hasUpdatedAt = job.updatedAt != null && job.updatedAt!.isNotEmpty;
-    if (!hasUpdatedAt) {
-      // Show Add PO button
-      return SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: () async {
-            // Navigate to PurchaseOrderInput page and wait for result
-            final result = await GoRouter.of(context).push('/add-po', extra: job);
+    return FutureBuilder<List<Job>>(
+      future: JobApi(DioService.instance).getJobsByNo(job.nrcJobNo),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-            // If PO was successfully added, refresh the job card
-            if (result == true && onJobUpdate != null) {
-              onJobUpdate!(job);
-            }
-          },
-          icon: const Icon(Icons.add_business),
-          label: const Text('Add PO'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.orange[600],
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 12),
-          ),
-        ),
-      );
-    } else {
-      // Show View Details and Add Machine Details buttons
-      return Column(
-        children: [
-          // Confirmation that PO is added
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.green[100],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.green[700], size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  'Purchase Order Added Successfully',
-                  style: TextStyle(
-                    color: Colors.green[700],
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
+        if (snapshot.hasError) {
+          print('PO FutureBuilder error: ${snapshot.error}');
+          return const SizedBox(); // ← Hide error message from UI
+        }
 
-          // View Details button
-          SizedBox(
+        final jobs = snapshot.data;
+        if (jobs == null || jobs.isEmpty) {
+          return const SizedBox(); // ← No job found
+        }
+
+        final latestJob = jobs.first;
+        final poList = latestJob.purchaseOrders ?? [];
+        final hasPO = poList.isNotEmpty || latestJob.hasPurchaseOrders == true;
+
+        print('poList: $poList');
+        print('hasPO: $hasPO');
+
+        if (!hasPO) {
+          return SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
+              onPressed: () async {
+                final result = await GoRouter.of(context).push('/add-po', extra: latestJob);
+                if (result == true && onJobUpdate != null) {
+                  onJobUpdate!(latestJob);
+                }
+              },
+              icon: const Icon(Icons.add_business),
+              label: const Text('Add PO'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange[600],
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          );
+        }
+
+        // Show PO Details and Add Machine Details
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.green[100],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green[700], size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Purchase Order Added Successfully',
+                    style: TextStyle(
+                      color: Colors.green[700],
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
               onPressed: () {
-                context.push(
-                  '/job-details/${job.nrcJobNo}',
-                  extra: {
-                    'job': job,
-                    'po': job.purchaseOrder,
-                  },
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Purchase Order Details'),
+                    content: SingleChildScrollView(
+                      child: poList.isEmpty
+                        ? const Text('No PO details available.')
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: poList.map<Widget>((po) {
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: po.toJson().entries.map<Widget>((entry) {
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 2),
+                                    child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '${entry.key}: ',
+                                          style: const TextStyle(fontWeight: FontWeight.bold),
+                                        ),
+                                        Expanded(
+                                          child: Text(entry.value?.toString() ?? ''),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                              );
+                            }).toList(),
+                          ),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Close'),
+                      ),
+                    ],
+                  ),
                 );
               },
               icon: const Icon(Icons.visibility),
@@ -448,18 +499,13 @@ class EnhancedJobCard extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          // Add Machine Details button
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
               onPressed: () {
-                // Navigate to AssignWorkSteps page
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => AssignWorkSteps(job: job),
+                    builder: (context) => AssignWorkSteps(job: latestJob),
                   ),
                 );
               },
@@ -471,10 +517,10 @@ class EnhancedJobCard extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
-          ),
-        ],
-      );
-    }
+          ],
+        );
+      },
+    );
   }
 
   bool _shouldShowStatusControls() {

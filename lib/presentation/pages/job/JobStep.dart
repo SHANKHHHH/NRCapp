@@ -169,19 +169,19 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     switch (step.toLowerCase()) {
       case 'paperstore':
         return StepType.paperStore;
-      case 'printing':
+      case 'printingdetails':
         return StepType.printing;
       case 'corrugation':
         return StepType.corrugation;
-      case 'flutelamination':
+      case 'flutelaminateboardconversion':
         return StepType.fluteLamination;
       case 'punching':
         return StepType.punching;
-      case 'flappasting':
+      case 'sideflappasting':
         return StepType.flapPasting;
-      case 'qc':
+      case 'qualitydept':
         return StepType.qc;
-      case 'dispatch':
+      case 'dispatchprocess':
         return StepType.dispatch;
       default:
         return StepType.jobAssigned;
@@ -234,15 +234,30 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     }
   }
 
+  // FIXED: Corrected the step tap handling logic
   void _handleStepTap(StepData step) {
+    print('Step tapped: ${step.title} (${step.type}) - Status: ${step.status}');
+
+    // Handle Job Assigned step differently
     if (step.type == StepType.jobAssigned) {
       _showCompleteJobDetails();
-    } else if (step.status == StepStatus.pending && _isStepActive(step)) {
+      return;
+    }
+
+    if (step.status == StepStatus.pending && _isStepActive(step)) {
       _startWork(step);
     } else if (step.status == StepStatus.started || step.status == StepStatus.inProgress) {
       _showWorkForm(step);
     } else if (step.status == StepStatus.completed && step.formData.isNotEmpty) {
       _showCompletedStepDetails(step);
+    } else {
+      print('Step ${step.title} is not interactive in current state');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${step.title} is not available yet. Complete previous steps first.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
     }
   }
 
@@ -295,109 +310,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             onPressed: () async {
-              final dialogContext = context;
-              Navigator.pop(dialogContext); // Close confirmation dialog
-
-              // Show loader
-              late BuildContext loaderDialogContext;
-              showDialog(
-                context: dialogContext,
-                barrierDismissible: false,
-                useRootNavigator: true,
-                builder: (context) {
-                  loaderDialogContext = context;
-                  return Dialog(
-                    backgroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          CircularProgressIndicator(),
-                          SizedBox(width: 16),
-                          Expanded(child: Text('Starting work...')),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              );
-
-              try {
-                // Fetch job details if needed
-                if (jobDetails == null) {
-                  await _fetchJobDetails();
-                }
-                final job = jobDetails ?? {};
-
-                // Construct body for 'in_progress' status
-                final body = {
-                  "jobStepId": 1, // Assuming this is correct for PaperStore
-                  'jobNrcJobNo': widget.jobNumber ?? '',
-                  'status': 'in_progress',
-                  'sheetSize': job['boardSize'] ?? '',
-                  'required': int.tryParse(job['noUps']?.toString() ?? '0') ?? 0,
-                  'gsm': job['fluteType'] ?? '',
-                  'issuedDate': DateTime.now().toUtc().toIso8601String(),
-                };
-
-                // Post initial status
-                await _jobApi.postPaperStore(body);
-
-                final stepDetails = await _jobApi.getJobPlanningStepDetails(widget.jobNumber!, 1);
-                if (stepDetails != null) {
-                  final planningId = stepDetails['jobPlanningId'];
-                  final stepNo = stepDetails['stepNo'];
-
-                  print(stepDetails);
-                  print(widget.jobNumber);
-                  print(planningId);
-                  print(stepNo);
-                  // Update step status to "start"
-                  await _jobApi.updateJobPlanningStepStatus(
-                      widget.jobNumber!,
-                      planningId,
-                      stepNo,
-                      "start"
-                  );
-                  print('Step status updated to start');
-                }
-
-                // On success, close only the loader dialog using the correct context
-                if (!mounted) return;
-                if (Navigator.of(loaderDialogContext, rootNavigator: true).canPop()) {
-                  Navigator.of(loaderDialogContext, rootNavigator: true).pop();
-                }
-                setState(() {
-                  step.status = StepStatus.started;
-                });
-                _showSuccessMessage('${step.title} work started!');
-              } on DioException catch (e) {
-                if (!mounted) return;
-                if (Navigator.of(loaderDialogContext, rootNavigator: true).canPop()) {
-                  Navigator.of(loaderDialogContext, rootNavigator: true).pop();
-                }
-                print('Error starting work: DioException');
-                if (e.response != null) {
-                  print('STATUS: ${e.response?.statusCode}');
-                  print('DATA: ${e.response?.data}');
-                } else {
-                  print('Error sending request: ${e.message}');
-                }
-                ScaffoldMessenger.of(this.context).showSnackBar(
-                  SnackBar(content: Text('Failed to start work. Error: ${e.response?.statusCode ?? 'Connection Error'}')),
-                );
-              } catch (e) {
-                if (!mounted) return;
-                if (Navigator.of(loaderDialogContext, rootNavigator: true).canPop()) {
-                  Navigator.of(loaderDialogContext, rootNavigator: true).pop();
-                }
-                print('Unexpected error starting work: $e');
-                ScaffoldMessenger.of(this.context).showSnackBar(
-                  SnackBar(content: Text('An unexpected error occurred while starting work.')),
-                );
-              }
+              Navigator.pop(context); // Close confirmation dialog
+              await _performStartWork(step);
             },
             child: const Text('Start Work'),
           ),
@@ -406,14 +320,115 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     );
   }
 
+  Future<void> _performStartWork(StepData step) async {
+    // Show loader
+    late BuildContext loaderDialogContext;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: true,
+      builder: (context) {
+        loaderDialogContext = context;
+        return Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                CircularProgressIndicator(),
+                SizedBox(width: 16),
+                Expanded(child: Text('Starting work...')),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    try {
+      await _performStepSpecificStart(step);
+
+      if (!mounted) return;
+      if (Navigator.of(loaderDialogContext, rootNavigator: true).canPop()) {
+        Navigator.of(loaderDialogContext, rootNavigator: true).pop();
+      }
+
+      setState(() {
+        step.status = StepStatus.started;
+      });
+      _showSuccessMessage('${step.title} work started!');
+    } catch (e) {
+      if (!mounted) return;
+      if (Navigator.of(loaderDialogContext, rootNavigator: true).canPop()) {
+        Navigator.of(loaderDialogContext, rootNavigator: true).pop();
+      }
+      print('Error starting work: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to start work: ${e.toString()}')),
+      );
+    }
+  }
+
+  Future<void> _performStepSpecificStart(StepData step) async {
+    int stepNo = _getStepNumber(step.type);
+
+    // Get job details if needed
+    if (jobDetails == null) {
+      await _fetchJobDetails();
+    }
+
+    // For Paper Store, use the specific API function with planning ID
+    if (step.type == StepType.paperStore) {
+      // Get step details for planning updates
+      final stepDetails = await _jobApi.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
+      if (stepDetails != null) {
+        final planningId = stepDetails['jobPlanningId'];
+        final stepNoFromDetails = stepDetails['stepNo'];
+
+        // Update step status to "start" using the specific API function
+        await _jobApi.updateJobPlanningStepStatus(
+            widget.jobNumber!,
+            planningId,
+            stepNoFromDetails,
+            "start"
+        );
+        print('Paper Store step status updated to start');
+      }
+
+      await _startPaperStoreWork();
+      return;
+    }
+
+    // For all other steps, use the updateJobPlanningStepComplete function with "start" status
+    await _jobApi.updateJobPlanningStepComplete(widget.jobNumber!, stepNo, "start");
+    print('Step $stepNo status updated to start');
+  }
+
+  Future<void> _startPaperStoreWork() async {
+    final job = jobDetails ?? {};
+
+    // Construct body for 'in_progress' status
+    final body = {
+      "jobStepId": 1,
+      'jobNrcJobNo': widget.jobNumber ?? '',
+      'status': 'in_progress',
+      'sheetSize': job['boardSize'] ?? '',
+      'required': int.tryParse(job['noUps']?.toString() ?? '0') ?? 0,
+      'gsm': job['fluteType'] ?? '',
+      'issuedDate': DateTime.now().toUtc().toIso8601String(),
+    };
+
+    await _jobApi.postPaperStore(body);
+  }
+
   Future<void> _fetchJobDetails() async {
     setState(() {
       _jobLoading = true;
       _jobError = null;
     });
     try {
-      // final dio = Dio();
-      // final jobApi = JobApi(dio);
       final job = await _jobApi.getJobByNrcJobNo(widget.jobNumber ?? '');
       setState(() {
         jobDetails = job;
@@ -469,11 +484,11 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         content: jobDetails == null
             ? const Text('No job details found.')
             : SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: jobDetails!.entries.map((entry) => _detailRow(entry.key, entry.value?.toString() ?? '')).toList(),
-                ),
-              ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: jobDetails!.entries.map((entry) => _detailRow(entry.key, entry.value?.toString() ?? '')).toList(),
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -517,7 +532,239 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
   void _showWorkForm(StepData step) async {
     if (step.type == StepType.paperStore) {
-      // Show loader dialog immediately
+      await _showPaperStoreForm(step);
+      return;
+    }
+
+    final fieldNames = _getFieldNamesForStep(step.type);
+    final initialValues = step.formData.map((key, value) => MapEntry(key, value.toString()));
+
+    showDialog(
+      context: context,
+      barrierDismissible: false, // Prevent dismissing by tapping outside
+      builder: (context) => WorkForm(
+        title: step.title,
+        description: step.description,
+        initialValues: initialValues,
+        fieldNames: fieldNames,
+        hasData: step.formData.isNotEmpty,
+        onSubmit: (formData) {
+          _submitForm(step, formData);
+        },
+        onComplete: (formData) async {
+          await _handleWorkFormComplete(step, formData);
+        },
+      ),
+    );
+  }
+
+  Future<void> _showPaperStoreForm(StepData step) async {
+    // Show loader dialog immediately
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: true,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Expanded(child: Text('Loading...')),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    // Fetch job details for pre-fill
+    if (jobDetails == null) {
+      await _fetchJobDetails();
+    }
+    final job = jobDetails ?? {};
+
+    // Close loader
+    Navigator.of(context).pop();
+
+    final TextEditingController availableController = TextEditingController();
+    final TextEditingController millController = TextEditingController();
+    final TextEditingController extraMarginController = TextEditingController();
+    final TextEditingController qualityController = TextEditingController();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Row(
+                children: [
+                  Icon(Icons.work_outline, color: AppColors.maincolor),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      step.title,
+                      style: TextStyle(
+                        color: AppColors.maincolor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.white,
+              content: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _detailRow('Job NRC Job No', widget.jobNumber ?? ''),
+                    _detailRow('Sheet Size', job['boardSize'] ?? ''),
+                    _detailRow('Required', job['noUps']?.toString() ?? ''),
+                    _detailRow('GSM', job['fluteType'] ?? ''),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: availableController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: 'Available',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: millController,
+                      decoration: InputDecoration(
+                        labelText: 'Mill',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: extraMarginController,
+                      decoration: InputDecoration(
+                        labelText: 'Extra Margin',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: qualityController,
+                      decoration: InputDecoration(
+                        labelText: 'Quality',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () async {
+                    await _completePaperStoreWork(step, {
+                      'available': availableController.text,
+                      'mill': millController.text,
+                      'extraMargin': extraMarginController.text,
+                      'quality': qualityController.text,
+                    });
+                  },
+                  child: const Text('Complete Work'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _completePaperStoreWork(StepData step, Map<String, String> formData) async {
+    final job = jobDetails ?? {};
+
+    final body = {
+      "jobStepId": 1,
+      'jobNrcJobNo': widget.jobNumber ?? '',
+      'status': 'accept',
+      'sheetSize': job['boardSize'] ?? '',
+      'required': int.tryParse(job['noUps']?.toString() ?? '0') ?? 0,
+      'available': int.tryParse(formData['available'] ?? '0') ?? 0,
+      'issuedDate': DateTime.now().toUtc().toIso8601String(),
+      'mill': formData['mill'] ?? '',
+      'extraMargin': formData['extraMargin'] ?? '',
+      'gsm': job['fluteType'] ?? '',
+      'quality': formData['quality'] ?? '',
+    };
+
+    try {
+      // Get the Paper Store record (if exists) to get its id
+      final paperStore = await _jobApi.getPaperStoreStepByJob(widget.jobNumber!);
+      if (paperStore != null) {
+        await _jobApi.putPaperStore(widget.jobNumber!, body);
+      }
+
+      // Update job planning step status to "stop" using the specific API function
+      final stepDetails = await _jobApi.getJobPlanningStepDetails(widget.jobNumber!, 1);
+      if (stepDetails != null) {
+        final planningId = stepDetails['jobPlanningId'];
+        final stepNo = stepDetails['stepNo'];
+        print(planningId);
+        print(stepNo);
+        await _jobApi.updateJobPlanningStepStatus(widget.jobNumber!,
+            planningId,
+            stepNo,
+            "stop");
+        print('Paper Store step status updated to stop');
+      }
+
+      if (!mounted) return;
+
+      // Find the Paper Store step index
+      int paperStoreStepIndex = steps.indexWhere((s) => s.type == StepType.paperStore);
+
+      setState(() {
+        step.status = StepStatus.completed;
+        step.formData = formData;
+
+        // Move to next step using helper function
+        if (paperStoreStepIndex != -1) {
+          _moveToNextStep(paperStoreStepIndex);
+        }
+      });
+
+      // Close the dialog after successful completion
+      Navigator.pop(context);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Paper Store work completed and saved!')),
+      );
+    } catch (e) {
+      print('Error completing Paper Store work: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to complete Paper Store work: ${e.toString()}')),
+      );
+    }
+  }
+
+  Future<void> _handleWorkFormComplete(StepData step, Map<String, String> formData) async {
+    try {
+      // Show loading dialog
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -532,230 +779,257 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
               children: const [
                 CircularProgressIndicator(),
                 SizedBox(width: 16),
-                Expanded(child: Text('Loading...')),
+                Expanded(child: Text('Completing work...')),
               ],
             ),
           ),
         ),
       );
 
-      // Fetch job details for pre-fill
-      if (jobDetails == null) {
-        await _fetchJobDetails();
-      }
-      final job = jobDetails ?? {};
+      // Get step number based on step type
+      int stepNo = _getStepNumber(step.type);
 
-      // Close loader
-      Navigator.of(context).pop();
+      // For Paper Store, use the specific API function
+      if (step.type == StepType.paperStore) {
+        // Update job planning step status to "stop" using the specific API function
+        final stepDetails = await _jobApi.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
+        if (stepDetails != null) {
+          final planningId = stepDetails['jobPlanningId'];
 
-      final TextEditingController availableController = TextEditingController();
-      final TextEditingController millController = TextEditingController();
-      final TextEditingController extraMarginController = TextEditingController();
-      final TextEditingController qualityController = TextEditingController();
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        useRootNavigator: true,
-        builder: (context) {
-          return StatefulBuilder(
-            builder: (context, setState) {
-              return AlertDialog(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                title: Row(
-                  children: [
-                    Icon(Icons.work_outline, color: AppColors.maincolor),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        step.title,
-                        style: TextStyle(
-                          color: AppColors.maincolor,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                backgroundColor: Colors.white,
-                content: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _detailRow('Job NRC Job No', widget.jobNumber ?? ''),
-                      _detailRow('Sheet Size', job['boardSize'] ?? ''),
-                      _detailRow('Required', job['noUps']?.toString() ?? ''),
-                      _detailRow('GSM', job['fluteType'] ?? ''),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: availableController,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: 'Available',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: millController,
-                        decoration: InputDecoration(
-                          labelText: 'Mill',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: extraMarginController,
-                        decoration: InputDecoration(  
-                          labelText: 'Extra Margin',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: qualityController,
-                        decoration: InputDecoration(
-                          labelText: 'Quality',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                actions: [
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    onPressed: () async {
-                      print('Complete Work button pressed');
-
-                      final body = {
-                        "jobStepId": 1,
-                        'jobNrcJobNo': widget.jobNumber ?? '',
-                        'status': 'accept',
-                        'sheetSize': job['boardSize'] ?? '',
-                        'required': int.tryParse(job['noUps']?.toString() ??
-                            '0') ?? 0,
-                        'available': int.tryParse(availableController.text) ??
-                            0,
-                        'issuedDate': DateTime.now().toUtc().toIso8601String(),
-                        'mill': millController.text,
-                        'extraMargin': extraMarginController.text,
-                        'gsm': job['fluteType'] ?? '',
-                        'quality': qualityController.text,
-                      };
-
-                      print('Posting to paper-store endpoint with body: $body');
-
-                      try {
-                        // Get the Paper Store record (if exists) to get its id
-                        final paperStore = await _jobApi.getPaperStoreStepByJob(
-                            widget.jobNumber!);
-                        if (paperStore != null) {
-                          await _jobApi.putPaperStore(widget.jobNumber!, body);
-                          print('PUT to paper-store successful');
-                        }
-                        final stepDetails = await _jobApi.getJobPlanningStepDetails(widget.jobNumber!, 1);
-                        if (stepDetails != null) {
-                          final planningId = stepDetails['jobPlanningId'];
-                          final stepNo = stepDetails['stepNo'];
-
-                          await _jobApi.updateJobPlanningStepStatus(widget.jobNumber!,
-                              planningId,
-                              stepNo,
-                              "start");
-                          print('POST to paper-store successful');
-                        }
-
-                        if (!mounted) return;
-
-                        // Find the Paper Store step index
-                        int paperStoreStepIndex = steps.indexWhere((s) =>
-                        s.type == StepType.paperStore);
-
-                        setState(() {
-                          step.status = StepStatus.completed;
-
-                          // Move to next step using helper function
-                          if (paperStoreStepIndex != -1) {
-                            _moveToNextStep(paperStoreStepIndex);
-                          }
-                        });
-
-                        // Close the dialog after successful completion
-                        Navigator.pop(context);
-
-                        ScaffoldMessenger.of(this.context).showSnackBar(
-                          SnackBar(content: Text(
-                              'Paper Store work completed and saved!')),
-                        );
-                      } on DioException catch (e) {
-                        if (!mounted) return;
-                        print('Error posting to paper-store: DioException');
-                        if (e.response != null) {
-                          print('Dio error!');
-                          print('STATUS: ${e.response?.statusCode}');
-                          print('DATA: ${e.response?.data}');
-                          print('HEADERS: ${e.response?.headers}');
-                        } else {
-                          print('Error sending request!');
-                          print('Request URI: ${e.requestOptions.uri}');
-                          print('Request Headers: ${e.requestOptions.headers}');
-                          print('Request Data: ${e.requestOptions.data}');
-                          print(e.message);
-                        }
-                        ScaffoldMessenger.of(this.context).showSnackBar(
-                          SnackBar(content: Text(
-                              'Failed to save Paper Store work. Error: ${e
-                                  .response?.statusCode ??
-                                  'Connection Error'}')),
-                        );
-                      } catch (e) {
-                        if (!mounted) return;
-                        print('Unexpected error posting to paper-store: $e');
-                        ScaffoldMessenger.of(this.context).showSnackBar(
-                          SnackBar(
-                              content: Text('An unexpected error occurred.')),
-                        );
-                      }
-                    },
-                    child: const Text('Complete Work'),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Close'),
-                  ),
-                ],
-              );
-            },
+          await _jobApi.updateJobPlanningStepStatus(
+              widget.jobNumber!,
+              planningId,
+              stepNo,
+              "stop"
           );
-        },
-      );
-      return;
-    }
-    final fieldNames = _getFieldNamesForStep(step.type);
-    final initialValues = step.formData.map((key, value) => MapEntry(key, value.toString()));
+          print('Paper Store step status updated to stop with endDate');
+        }
+      } else {
+        // For all other steps, use updateJobPlanningStepComplete with "stop" status
+        print("updateJobPlanningStepComplete with stop status");
+        await _jobApi.updateJobPlanningStepComplete(widget.jobNumber!, stepNo, "stop");
+      }
 
-    showDialog(
-      context: context,
-      builder: (context) => WorkForm(
-        title: step.title,
-        description: step.description,
-        initialValues: initialValues,
-        fieldNames: fieldNames,
-        hasData: step.formData.isNotEmpty,
-        onSubmit: (formData) {
-          _submitForm(step, formData);
-        },
-        onComplete: (formData) {
-          _completeWork(step, formData);
-        },
-      ),
-    );
+      // Then, perform the specific POST operation based on step type
+      await _performStepSpecificPost(step.type, formData, stepNo);
+
+      // Close loading dialog
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+
+      // Update UI
+      int stepIndex = steps.indexOf(step);
+      setState(() {
+        step.formData = formData;
+        step.status = StepStatus.completed;
+
+        // Move to next step
+        _moveToNextStep(stepIndex);
+      });
+
+      // Close the WorkForm dialog
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+
+      _showSuccessMessage('${step.title} completed successfully!');
+
+    } catch (e) {
+      // Close loading dialog if it's open
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+
+      print('Error completing work: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to complete work: ${e.toString()}')),
+      );
+    }
+  }
+
+  int _getStepNumber(StepType stepType) {
+    switch (stepType) {
+      case StepType.paperStore:
+        return 1;
+      case StepType.printing:
+        return 2;
+      case StepType.corrugation:
+        return 3;
+      case StepType.fluteLamination:
+        return 4;
+      case StepType.punching:
+        return 5;
+      case StepType.flapPasting:
+        return 6;
+      case StepType.qc:
+        return 7;
+      case StepType.dispatch:
+        return 8;
+      default:
+        return 1;
+    }
+  }
+
+  Future<void> _performStepSpecificPost(StepType stepType, Map<String, String> formData, int stepNo) async {
+    switch (stepType) {
+      case StepType.printing:
+        await _postPrintingDetails(formData, stepNo);
+        break;
+      case StepType.corrugation:
+        await _postCorrugationDetails(formData, stepNo);
+        break;
+      case StepType.fluteLamination:
+        await _postFluteLaminationDetails(formData, stepNo);
+        break;
+      case StepType.punching:
+        await _postPunchingDetails(formData, stepNo);
+        break;
+      case StepType.flapPasting:
+        await _postFlapPastingDetails(formData, stepNo);
+        break;
+      case StepType.qc:
+        await _postQCDetails(formData, stepNo);
+        break;
+      case StepType.dispatch:
+        await _postDispatchDetails(formData, stepNo);
+        break;
+      default:
+        break;
+    }
+  }
+
+  Future<void> _postPrintingDetails(Map<String, String> formData, int stepNo) async {
+    final body = {
+      "jobNrcJobNo": widget.jobNumber ?? '',
+      "jobStepId": stepNo,
+      "status": "accept",
+      "postPrintingFinishingOkQty": int.tryParse(formData['Quantity OK'] ?? '0') ?? 0,
+      "date": formData['Date'] ?? DateTime.now().toIso8601String(),
+      "operatorName": formData['Operator Name'] ?? '',
+      "colorsUsed": formData['Colors Used'] ?? '',
+      "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
+      "machine": formData['Machine'] ?? '',
+      "remarks": formData['Remarks'] ?? '',
+    };
+
+    // You'll need to add this method to your JobApi class
+    await _jobApi.postPrintingDetails(body);
+    print('Printing details posted successfully');
+  }
+
+  Future<void> _postCorrugationDetails(Map<String, String> formData, int stepNo) async {
+    final body = {
+      "jobNrcJobNo": widget.jobNumber ?? '',
+      "jobStepId": stepNo,
+      "status": "accept",
+      "date": formData['Date'] ?? DateTime.now().toIso8601String(),
+      "operatorName": formData['Operator Name'] ?? '',
+      "machineNo": formData['Machine No'] ?? '',
+      "sheetsCount": int.tryParse(formData['Sheets Count'] ?? '0') ?? 0,
+      "size": formData['Size'] ?? '',
+      "gsm": formData['GSM'] ?? '',
+      "fluteType": formData['Flute Type'] ?? '',
+      "remarks": formData['Remarks'] ?? '',
+    };
+
+    // You'll need to add this method to your JobApi class
+    await _jobApi.postCorrugationDetails(body);
+    print('Corrugation details posted successfully');
+  }
+
+  Future<void> _postFluteLaminationDetails(Map<String, String> formData, int stepNo) async {
+    final body = {
+      "jobNrcJobNo": widget.jobNumber ?? '',
+      "jobStepId": stepNo,
+      "status": "accept",
+      "date": formData['Date'] ?? DateTime.now().toIso8601String(),
+      "operatorName": formData['Operator Name'] ?? '',
+      "filmType": formData['Film Type'] ?? '',
+      "okQuantity": int.tryParse(formData['OK Quantity'] ?? '0') ?? 0,
+      "adhesive": formData['Adhesive'] ?? '',
+      "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
+      "remarks": formData['Remarks'] ?? '',
+    };
+
+    // You'll need to add this method to your JobApi class
+    await _jobApi.postFluteLaminationDetails(body);
+    print('Flute Lamination details posted successfully');
+  }
+
+  Future<void> _postPunchingDetails(Map<String, String> formData, int stepNo) async {
+    final body = {
+      "jobNrcJobNo": widget.jobNumber ?? '',
+      "jobStepId": stepNo,
+      "status": "accept",
+      "date": formData['Date'] ?? DateTime.now().toIso8601String(),
+      "operatorName": formData['Operator Name'] ?? '',
+      "machine": formData['Machine'] ?? '',
+      "okQuantity": int.tryParse(formData['OK Quantity'] ?? '0') ?? 0,
+      "dieUsed": formData['Die Used'] ?? '',
+      "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
+      "remarks": formData['Remarks'] ?? '',
+    };
+
+    // You'll need to add this method to your JobApi class
+    await _jobApi.postPunchingDetails(body);
+    print('Punching details posted successfully');
+  }
+
+  Future<void> _postFlapPastingDetails(Map<String, String> formData, int stepNo) async {
+    final body = {
+      "jobNrcJobNo": widget.jobNumber ?? '',
+      "jobStepId": stepNo,
+      "status": "accept",
+      "date": formData['Date'] ?? DateTime.now().toIso8601String(),
+      "operatorName": formData['Operator Name'] ?? '',
+      "machineNo": formData['Machine No'] ?? '',
+      "adhesive": formData['Adhesive'] ?? '',
+      "quantity": int.tryParse(formData['Quantity'] ?? '0') ?? 0,
+      "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
+      "remarks": formData['Remarks'] ?? '',
+    };
+
+    // You'll need to add this method to your JobApi class
+    await _jobApi.postFlapPastingDetails(body);
+    print('Flap Pasting details posted successfully');
+  }
+
+  Future<void> _postQCDetails(Map<String, String> formData, int stepNo) async {
+    final body = {
+      "jobNrcJobNo": widget.jobNumber ?? '',
+      "jobStepId": stepNo,
+      "status": "accept",
+      "date": formData['Date'] ?? DateTime.now().toIso8601String(),
+      "checkedBy": formData['Checked By'] ?? '',
+      "passQuantity": int.tryParse(formData['Pass Quantity'] ?? '0') ?? 0,
+      "rejectQuantity": int.tryParse(formData['Reject Quantity'] ?? '0') ?? 0,
+      "reasonForRejection": formData['Reason for Rejection'] ?? '',
+      "remarks": formData['Remarks'] ?? '',
+    };
+
+    // You'll need to add this method to your JobApi class
+    await _jobApi.postQCDetails(body);
+    print('QC details posted successfully');
+  }
+
+  Future<void> _postDispatchDetails(Map<String, String> formData, int stepNo) async {
+    final body = {
+      "jobNrcJobNo": widget.jobNumber ?? '',
+      "jobStepId": stepNo,
+      "status": "accept",
+      "date": formData['Date'] ?? DateTime.now().toIso8601String(),
+      "operatorName": formData['Operator Name'] ?? '',
+      "noOfBoxes": int.tryParse(formData['No of Boxes'] ?? '0') ?? 0,
+      "dispatchNo": formData['Dispatch No'] ?? '',
+      "dispatchDate": formData['Dispatch Date'] ?? '',
+      "balanceQty": int.tryParse(formData['Balance Qty'] ?? '0') ?? 0,
+      "remarks": formData['Remarks'] ?? '',
+    };
+
+    // You'll need to add this method to your JobApi class
+    await _jobApi.postDispatchDetails(body);
+    print('Dispatch details posted successfully');
   }
 
   List<String> _getFieldNamesForStep(StepType type) {

@@ -532,7 +532,7 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
           ? DateTime.now().difference(shadeCardDate).inDays
           : 0;
       final purchaseOrderData = {
-        'nrcJobNo': widget.job.nrcJobNo,
+        'jobNrcJobNo': widget.job.nrcJobNo,
         'customer': widget.job.customerName,
         'poDate': _formatDate(poDate),
         'deliveryDate': _formatDate(DateTime.parse(_deliverDateController.text)),
