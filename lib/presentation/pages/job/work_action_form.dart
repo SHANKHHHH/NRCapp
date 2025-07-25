@@ -253,9 +253,11 @@ class _WorkActionFormState extends State<WorkActionForm> {
 
         setState(() => _isLoading = false);
       } catch (e) {
+        print("this is the issue");
         setState(() => _isLoading = false);
 
         if (mounted) {
+          print(e);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Failed to complete work: ${e.toString()}'),

@@ -79,9 +79,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
       // Second priority: Find any step with 'planned' status - stay on that step
       for (int i = 1; i < steps.length; i++) {
-        // Check backend status for this step
         if (steps[i].status == StepStatus.pending) {
-          // This step might be 'planned' - check if previous steps are completed
           bool allPreviousCompleted = true;
           for (int j = 1; j < i; j++) {
             if (steps[j].status != StepStatus.completed) {
@@ -116,20 +114,15 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         print('Step ${step.title}: status=$status, startDate=$startDate, endDate=$endDate');
 
         setState(() {
-
           if (status == 'stop' && endDate != null) {
-            // Step is completed - this allows moving to next step
             step.status = StepStatus.completed;
             print('Step ${step.title} marked as COMPLETED');
           } else if (status == 'start' && startDate != null && endDate == null) {
-            // Step is in progress - this is the current active step
             step.status = StepStatus.started;
             print('Step ${step.title} marked as STARTED (in progress)');
           } else if (status == 'planned') {
-            // Step is planned - keep user on this step until it changes to 'stop'
             step.status = StepStatus.pending;
-            print('Step ${step.title} marked as PENDING (planned - will stay active until status changes to stop)');
-            // Force this step to be the active step if previous steps are completed
+            print('Step ${step.title} marked as PENDING (planned)');
             bool allPreviousCompleted = true;
             for (int j = 1; j < stepIndex; j++) {
               if (steps[j].status != StepStatus.completed) {
@@ -142,7 +135,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
               print('Forcing step ${step.title} to be active due to planned status');
             }
           } else {
-            // Fallback for unknown status
             step.status = StepStatus.pending;
             print('Step ${step.title} marked as PENDING (fallback for status: $status)');
           }
@@ -153,7 +145,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           await _syncPaperStoreStepWithBackend();
         }
       } else {
-        // If no step details found, mark as pending
         setState(() {
           step.status = StepStatus.pending;
           print('Step ${step.title} marked as PENDING (no details found)');
@@ -161,47 +152,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       }
     } catch (e) {
       print('Error syncing step ${step.title}: $e');
-      // On error, mark as pending
       setState(() {
         step.status = StepStatus.pending;
       });
     }
-  }
-
-  void _moveToNextAvailableStep() {
-    // Only move to next step if current step is completed
-    // If current step has 'planned' status, don't move until it becomes 'stop'
-    final currentStep = steps[currentActiveStep];
-
-    // Check current step's backend status before moving
-    _syncStepWithBackend(currentStep, currentActiveStep).then((_) {
-      // Only move if current step is actually completed (status = 'stop')
-      if (currentStep.status == StepStatus.completed) {
-        // Find the next pending step that can be activated
-        for (int i = currentActiveStep + 1; i < steps.length; i++) {
-          if (steps[i].status == StepStatus.pending) {
-            // Check if all previous steps are completed
-            bool allPreviousCompleted = true;
-            for (int j = 1; j < i; j++) {
-              if (steps[j].status != StepStatus.completed) {
-                allPreviousCompleted = false;
-                break;
-              }
-            }
-
-            if (allPreviousCompleted) {
-              setState(() {
-                currentActiveStep = i;
-              });
-              break;
-            }
-          }
-        }
-      } else {
-        // Current step is still 'planned' or 'started', stay on it
-        print('Staying on current step ${currentStep.title} - status: ${currentStep.status}');
-      }
-    });
   }
 
   Future<void> _syncPaperStoreStepWithBackend() async {
@@ -220,7 +174,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
               currentActiveStep = paperStoreStepIndex;
             } else if (status == 'accept') {
               steps[paperStoreStepIndex].status = StepStatus.completed;
-              // Don't automatically move to next step, wait for 'stop' status from job planning
             }
           });
         }
@@ -295,14 +248,34 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     );
 
     try {
+      // First update the backend
       await _performStartWork(step);
+
+      // Close loading dialog
       if (mounted) Navigator.pop(context);
 
+      // Update local state immediately for UI responsiveness
       setState(() {
         step.status = StepStatus.started;
+        // Ensure this step becomes the current active step
+        final stepIndex = steps.indexOf(step);
+        if (stepIndex != -1) {
+          currentActiveStep = stepIndex;
+        }
       });
 
+      // Show success message
       DialogManager.showSuccessMessage(context, '${step.title} work started!');
+
+      // Force UI rebuild to reflect changes
+      Future.delayed(Duration(milliseconds: 100), () {
+        if (mounted) {
+          setState(() {
+            // Trigger rebuild
+          });
+        }
+      });
+
     } catch (e) {
       if (mounted) Navigator.pop(context);
       DialogManager.showErrorMessage(context, 'Failed to start work: ${e.toString()}');
@@ -342,23 +315,41 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         description: step.description,
         initialQty: step.formData['Qty Sheet'] ?? '',
         hasData: step.formData.isNotEmpty,
-        jobNumber: widget.jobNumber, // Pass jobNumber
-        stepNo: stepNo, // Pass stepNo
-        apiService: _apiService, // Pass apiService
-        onComplete: (formData) async => await _handleWorkFormComplete(step, formData),
+        jobNumber: widget.jobNumber,
+        stepNo: stepNo,
+        apiService: _apiService,
+        onComplete: (formData) async {
+          // Format date into proper UTC ISO string with .000Z
+          String formatUtcDateToFixedIso(dynamic value) {
+            if (value is DateTime) {
+              final utc = value.toUtc();
+              return "${utc.toIso8601String().split('.').first}.000Z";
+            } else if (value is String) {
+              final utc = DateTime.parse(value).toUtc();
+              return "${utc.toIso8601String().split('.').first}.000Z";
+            }
+            return DateTime.now().toUtc().toIso8601String();
+          }
+
+          // Ensure your formData uses formatted date
+          formData['Date'] = formatUtcDateToFixedIso(formData['Date']);
+
+          await _handleWorkFormComplete(step, formData);
+        },
         onStart: () {
-          // Handle start action - update local step status
           setState(() {
             step.status = StepStatus.started;
+            final stepIndex = steps.indexOf(step);
+            if (stepIndex != -1) {
+              currentActiveStep = stepIndex;
+            }
           });
           print('Work started for ${step.title}');
         },
         onPause: () {
-          // Handle pause action - you can add pause logic here if needed
           print('Work paused for ${step.title}');
         },
         onStop: () {
-          // Handle stop action - you can add stop logic here if needed
           print('Work stopped for ${step.title}');
         },
       ),
@@ -444,7 +435,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       await _apiService.postStepDetails(step.type, widget.jobNumber!, formData, stepNo);
 
       // Then update job planning step status to 'stop' with end date
-      // This is the final call to mark the step as completely finished
       await _apiService.updateJobPlanningStepComplete(widget.jobNumber!, stepNo, "stop");
 
       if (mounted && Navigator.canPop(context)) {
@@ -457,14 +447,13 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         step.status = StepStatus.completed;
       });
 
-      // Re-sync all steps to check for any 'planned' status that should keep user on current step
-      await _initializeStepsWithBackendSync();
+      // Re-sync all steps to check for any 'planned' status
+      await _refreshStepStatuses();
 
-      // Only move to next step if no steps have 'planned' status
+      // Check for any planned steps that should become active
       bool hasPlannedStep = false;
       for (int i = 1; i < steps.length; i++) {
         if (steps[i].status == StepStatus.pending) {
-          // Check backend status to see if it's 'planned'
           final checkStepNo = StepDataManager.getStepNumber(steps[i].type);
           final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, checkStepNo);
           if (stepDetails != null && stepDetails['status'] == 'planned') {
@@ -499,6 +488,17 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       }
       DialogManager.showErrorMessage(context, 'Failed to complete work: ${e.toString()}');
     }
+  }
+
+  // New method to refresh step statuses
+  Future<void> _refreshStepStatuses() async {
+    if (widget.jobNumber == null) return;
+
+    for (int i = 1; i < steps.length; i++) {
+      await _syncStepWithBackend(steps[i], i);
+    }
+
+    _determineCurrentActiveStep();
   }
 
   void _submitForm(StepData step, Map<String, String> formData) {
@@ -552,27 +552,31 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            JobTimelineUI.buildProgressIndicator(steps),
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: steps.length,
-              itemBuilder: (context, index) {
-                final step = steps[index];
-                return StepItemWidget(
-                  step: step,
-                  index: index,
-                  isActive: _isStepActive(step),
-                  jobNumber: widget.jobNumber,
-                  onTap: () => _handleStepTap(step),
-                );
-              },
-            ),
-            const SizedBox(height: 40),
-          ],
+      body: RefreshIndicator(
+        onRefresh: _refreshStepStatuses,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            children: [
+              JobTimelineUI.buildProgressIndicator(steps),
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: steps.length,
+                itemBuilder: (context, index) {
+                  final step = steps[index];
+                  return StepItemWidget(
+                    step: step,
+                    index: index,
+                    isActive: _isStepActive(step),
+                    jobNumber: widget.jobNumber,
+                    onTap: () => _handleStepTap(step),
+                  );
+                },
+              ),
+              const SizedBox(height: 40),
+            ],
+          ),
         ),
       ),
     );

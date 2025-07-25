@@ -257,7 +257,7 @@ class ReviewStepWidget extends StatelessWidget {
           return {
             "stepNo": index + 1,
             "stepName": getBackendStepName(assignment.workStep.step),
-            "machineDetail": assignment.selectedMachine?.machineCode ?? 'Not Required',
+            "machineDetails": assignment.selectedMachine?.machineCode ?? 'Not Required',
           };
         }).toList(),
       };

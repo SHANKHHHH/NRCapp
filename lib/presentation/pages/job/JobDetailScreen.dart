@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:go_router/go_router.dart';
 import 'package:nrc/constants/strings.dart';
 import '../../../data/models/job_model.dart';
 import '../../../data/datasources/job_api.dart';
-import 'job_list_page.dart';
 
 class JobDetailScreen extends StatelessWidget {
   final JobModel job;
@@ -38,8 +38,10 @@ class JobDetailScreen extends StatelessWidget {
     try {
       await JobApi(Dio(BaseOptions(baseUrl: '${AppStrings.baseUrl}/api')))
           .updateJobStatus(job.nrcJobNo, 'ACTIVE');
+
       // Remove loader
       Navigator.of(context, rootNavigator: true).pop();
+
       // Show success dialog
       showDialog(
         context: context,
@@ -72,12 +74,8 @@ class JobDetailScreen extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                     onPressed: () {
-                      Navigator.of(context, rootNavigator: true).pop();
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(builder: (_) => const JobListPage()),
-                        (route) => false,
-                      );
+                      Navigator.of(context, rootNavigator: true).pop(); // Close success dialog
+                      context.go('/all-Jobs'); // ✅ GoRouter navigation
                     },
                     child: const Text(
                       'OK',
@@ -99,7 +97,7 @@ class JobDetailScreen extends StatelessWidget {
           content: Text('Failed to update job: $e'),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
+              onPressed: () => context.go('/all-Jobs'), // ✅ GoRouter fallback
               child: const Text('OK'),
             ),
           ],

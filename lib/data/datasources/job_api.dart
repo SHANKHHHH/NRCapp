@@ -401,6 +401,9 @@ class JobApi {
   Future<Map<String, dynamic>?> _postWithAuth(String endpoint, Map<String, dynamic> body) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
+    print("${AppStrings.baseUrl}/api$endpoint");
+    print("this is the url");
+    print(AppStrings.baseUrl);
     print('[_postWithAuth] Endpoint: $endpoint');
     print('[_postWithAuth] Token: $token');
     print('[_postWithAuth] Body: $body');
@@ -430,6 +433,8 @@ class JobApi {
   Future<Map<String, dynamic>?> _putWithAuth(String endpoint, Map<String, dynamic> body) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
+    print("${AppStrings.baseUrl}/api$endpoint");
+    print("this is the url");
     print('[_putWithAuth] Endpoint: $endpoint');
     print('[_putWithAuth] Token: $token');
     print('[_putWithAuth] Body: $body');
@@ -461,7 +466,7 @@ class JobApi {
   }
 
   Future<Map<String, dynamic>?> putCorrugationDetails(Map<String, dynamic> body) {
-    return _postWithAuth('/corrugation/', body);
+    return _postWithAuth('/corrugation', body);
   }
 
   Future<Map<String, dynamic>?> putFluteLaminationDetails(Map<String, dynamic> body) {

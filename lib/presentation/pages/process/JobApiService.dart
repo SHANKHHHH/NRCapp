@@ -56,9 +56,24 @@ class JobApiService {
   }
 
   /// Start Paper Store work
+  /// Start Paper Store work
   Future<void> startPaperStoreWork(String jobNumber, Map<String, dynamic> jobDetails) async {
+    // Get the job planning step details to retrieve the ID
+    final stepDetails = await getJobPlanningStepDetails(jobNumber, 1); // stepNo 1 for Paper Store
+
+    if (stepDetails == null) {
+      throw Exception('Failed to get job planning step details for Paper Store');
+    }
+
+    final jobStepId = stepDetails['id'];
+    print("stepDetails");
+    print(stepDetails);
+    if (jobStepId == null) {
+      throw Exception('Job step ID not found in planning details');
+    }
+
     final body = {
-      "jobStepId": 1,
+      "jobStepId": jobStepId, // Use the ID from job planning step details
       'jobNrcJobNo': jobNumber,
       'status': 'in_progress',
       'sheetSize': jobDetails['boardSize'] ?? '',
@@ -69,7 +84,6 @@ class JobApiService {
 
     await _jobApi.postPaperStore(body);
   }
-
   /// Update job planning step status and dates
   Future<void> updateJobPlanningStepComplete(String jobNumber, int stepNo, String status) async {
     try {
@@ -97,14 +111,28 @@ class JobApiService {
 
   /// Complete Paper Store work
   Future<void> completePaperStoreWork(String jobNumber, Map<String, dynamic> jobDetails, Map<String, String> formData) async {
+
+    final stepDetails = await getJobPlanningStepDetails(jobNumber, 1); // stepNo 1 for Paper Store
+
+    if (stepDetails == null) {
+      throw Exception('Failed to get job planning step details for Paper Store');
+    }
+
+    final jobStepId = stepDetails['id'];
+    print("stepDetails");
+    print(stepDetails);
+    if (jobStepId == null) {
+      throw Exception('Job step ID not found in planning details');
+    }
+
     final body = {
-      "jobStepId": 1,
+      "jobStepId": jobStepId,
       'jobNrcJobNo': jobNumber,
       'status': 'accept',
       'sheetSize': jobDetails['boardSize'] ?? '',
       'required': int.tryParse(jobDetails['noUps']?.toString() ?? '0') ?? 0,
       'available': int.tryParse(formData['available'] ?? '0') ?? 0,
-      'issuedDate': DateTime.now().toUtc().toIso8601String(),
+      'issuedDate': DateTime.now().toUtc().toIso8601String()+'Z',
       'mill': formData['mill'] ?? '',
       'extraMargin': formData['extraMargin'] ?? '',
       'gsm': jobDetails['fluteType'] ?? '',
@@ -149,12 +177,23 @@ class JobApiService {
   }
 
   Future<void> _postPrintingDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
+
+    final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
+
+    if (stepDetails == null) {
+      throw Exception('Failed to get job planning step details for Paper Store');
+    }
+
+    final jobStepId = stepDetails['id'];
+
+    print(jobNumber);
+    print(stepNo);
     final body = {
       "jobNrcJobNo": jobNumber,
-      "jobStepId": stepNo,
+      "jobStepId": jobStepId,
       "status": "accept",
       "postPrintingFinishingOkQty": int.tryParse(formData['Quantity OK'] ?? '0') ?? 0,
-      "date": formData['Date'] ?? DateTime.now().toIso8601String(),
+      "date": DateTime.now().toUtc().toIso8601String(),
       "operatorName": formData['Operator Name'] ?? '',
       "colorsUsed": formData['Colors Used'] ?? '',
       "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
@@ -167,11 +206,22 @@ class JobApiService {
   }
 
   Future<void> _postCorrugationDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
+    print("Comes to Corrugation");
+    final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
+
+    print("Steps Details will come here");
+    if (stepDetails == null) {
+      throw Exception('Failed to get job planning step details for Corrugation Store');
+    }
+
+    final jobStepId = stepDetails['id'];
+    print("Corrugation job step number is $jobStepId");
+
     final body = {
+      "jobStepId": jobStepId,
       "jobNrcJobNo": jobNumber,
-      "jobStepId": stepNo,
       "status": "accept",
-      "date": formData['Date'] ?? DateTime.now().toIso8601String(),
+      "date": DateTime.now().toUtc().toIso8601String(),
       "operatorName": formData['Operator Name'] ?? '',
       "machineNo": formData['Machine No'] ?? '',
       "sheetsCount": int.tryParse(formData['Sheets Count'] ?? '0') ?? 0,
@@ -180,47 +230,110 @@ class JobApiService {
       "fluteType": formData['Flute Type'] ?? '',
       "remarks": formData['Remarks'] ?? '',
     };
+
+    print("Corrugation Details Body:");
+    print(body);
+
     await _jobApi.postCorrugationDetails(body);
   }
 
+
   Future<void> _postFluteLaminationDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
+    print("Comes to FluteLamination");
+    final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
+
+    print("Steps Details will come here");
+    if (stepDetails == null) {
+      throw Exception('Failed to get job planning step details for Corrugation Store');
+    }
+
+    final jobStepId = stepDetails['id'];
+    print("Corrugation job step number is $jobStepId");
     final body = {
       "jobNrcJobNo": jobNumber,
-      "jobStepId": stepNo,
+      "jobStepId": jobStepId,
       "status": "accept",
-      "date": formData['Date'] ?? DateTime.now().toIso8601String(),
+      "date": DateTime.now().toUtc().toIso8601String(),
+      "shift": formData['Shift'] ?? '',                  // New
       "operatorName": formData['Operator Name'] ?? '',
-      "filmType": formData['Film Type'] ?? '',
-      "okQuantity": int.tryParse(formData['OK Quantity'] ?? '0') ?? 0,
+      "film": formData['Film Type'] ?? '',               // Changed key from 'filmType' to 'film'
+      "okQty": int.tryParse(formData['OK Quantity'] ?? '0') ?? 0, // Changed key from okQuantity to okQty
+      "qcCheckSignBy": formData['QC Sign By'] ?? '',     // New
       "adhesive": formData['Adhesive'] ?? '',
       "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
-      "remarks": formData['Remarks'] ?? '',
     };
+
     await _jobApi.postFluteLaminationDetails(body);
   }
 
   Future<void> _postPunchingDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
+    print("Comes to Punching");
+    final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
+
+    print("Steps Details will come here");
+    if (stepDetails == null) {
+      throw Exception('Failed to get job planning step details for Corrugation Store');
+    }
+
+    final jobStepId = stepDetails['id'];
+    print("Punching job step number is $jobStepId");
     final body = {
       "jobNrcJobNo": jobNumber,
-      "jobStepId": stepNo,
+      "jobStepId": jobStepId,
       "status": "accept",
-      "date": formData['Date'] ?? DateTime.now().toIso8601String(),
+      "date": DateTime.now().toUtc().toIso8601String(),
       "operatorName": formData['Operator Name'] ?? '',
       "machine": formData['Machine'] ?? '',
-      "okQuantity": int.tryParse(formData['OK Quantity'] ?? '0') ?? 0,
-      "dieUsed": formData['Die Used'] ?? '',
+      "okQty": int.tryParse(formData['OK Quantity'] ?? '0') ?? 0,
+      "die": formData['Die Used'] ?? '',
       "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
       "remarks": formData['Remarks'] ?? '',
     };
     await _jobApi.postPunchingDetails(body);
   }
 
-  Future<void> _postFlapPastingDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
+  Future<void> _postQCDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
+    print("Comes to Quality Control");
+    final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
+
+    print("Steps Details will come here");
+    if (stepDetails == null) {
+      throw Exception('Failed to get job planning step details for Corrugation Store');
+    }
+
+    final jobStepId = stepDetails['id'];
+    print("Quality Control job step number is $jobStepId");
     final body = {
       "jobNrcJobNo": jobNumber,
-      "jobStepId": stepNo,
+      "jobStepId": jobStepId,
       "status": "accept",
-      "date": formData['Date'] ?? DateTime.now().toIso8601String(),
+      "date": DateTime.now().toUtc().toIso8601String(),
+      "checkedBy": formData['Checked By'] ?? '',
+      "passQuantity": int.tryParse(formData['Pass Quantity'] ?? '0') ?? 0,
+      "rejectQuantity": int.tryParse(formData['Reject Quantity'] ?? '0') ?? 0,
+      "reasonForRejection": formData['Reason for Rejection'] ?? '',
+      "remarks": formData['Remarks'] ?? '',
+    };
+    await _jobApi.postQCDetails(body);
+  }
+
+  Future<void> _postFlapPastingDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
+    print("Comes to FlapPasting");
+    final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
+
+    print("Steps Details will come here");
+    if (stepDetails == null) {
+      throw Exception('Failed to get job planning step details for Corrugation Store');
+    }
+
+    final jobStepId = stepDetails['id'];
+    print("FlapPasting job step number is $jobStepId");
+    final body = {
+      "jobNrcJobNo": jobNumber,
+      "jobStepId": jobStepId,
+      "status": "accept",
+      "date": DateTime.now().toUtc().toIso8601String(),
+      "shift": '',
       "operatorName": formData['Operator Name'] ?? '',
       "machineNo": formData['Machine No'] ?? '',
       "adhesive": formData['Adhesive'] ?? '',
@@ -231,22 +344,17 @@ class JobApiService {
     await _jobApi.postFlapPastingDetails(body);
   }
 
-  Future<void> _postQCDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
-    final body = {
-      "jobNrcJobNo": jobNumber,
-      "jobStepId": stepNo,
-      "status": "accept",
-      "date": formData['Date'] ?? DateTime.now().toIso8601String(),
-      "checkedBy": formData['Checked By'] ?? '',
-      "passQuantity": int.tryParse(formData['Pass Quantity'] ?? '0') ?? 0,
-      "rejectQuantity": int.tryParse(formData['Reject Quantity'] ?? '0') ?? 0,
-      "reasonForRejection": formData['Reason for Rejection'] ?? '',
-      "remarks": formData['Remarks'] ?? '',
-    };
-    await _jobApi.postQCDetails(body);
-  }
-
   Future<void> _postDispatchDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
+    print("Comes to FlapPasting");
+    final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
+
+    print("Steps Details will come here");
+    if (stepDetails == null) {
+      throw Exception('Failed to get job planning step details for Corrugation Store');
+    }
+
+    final jobStepId = stepDetails['id'];
+    print("FlapPasting job step number is $jobStepId");
     final body = {
       "jobNrcJobNo": jobNumber,
       "jobStepId": stepNo,
