@@ -67,23 +67,41 @@ class _WorkActionFormState extends State<WorkActionForm> {
     setState(() => _isLoading = true);
 
     try {
-      // Get current step status from database
-      final response = await _job.getJobPlanningStepsByNrcJobNo(widget.jobNumber!);
-
-      // Find the current step in the response
-      if (response?['success'] == true && response?['data'] != null) {
-        final stepData = response?['data'];
-        if (stepData['stepNo'] == widget.stepNo) {
-          setState(() {
-            _status = stepData['status'] ?? 'pending';
-            if (stepData['startDate'] != null) {
-              _startTime = DateTime.parse(stepData['startDate']);
-            }
-            if (stepData['endDate'] != null) {
-              _endTime = DateTime.parse(stepData['endDate']);
-            }
-          });
-        }
+      // Get current step details from backend
+      final stepDetails = await widget.apiService!.getJobPlanningStepDetails(widget.jobNumber!, widget.stepNo!);
+      if (stepDetails != null) {
+        final startDate = stepDetails['startDate'];
+        final endDate = stepDetails['endDate'];
+        final status = stepDetails['status'];
+        setState(() {
+          if (endDate != null && status == 'start') {
+            // Only Stop enabled
+            _status = 'start';
+            _startTime = DateTime.tryParse(startDate);
+            _endTime = DateTime.tryParse(endDate);
+            _isStartDisabled = true;
+            _isPauseDisabled = true;
+            _isStopDisabled = false;
+          } else if (status == 'stop') {
+            // All disabled, show Ended Time
+            _status = 'stop';
+            _startTime = DateTime.tryParse(startDate);
+            _endTime = DateTime.tryParse(endDate);
+            _isStartDisabled = true;
+            _isPauseDisabled = true;
+            _isStopDisabled = true;
+          } else if (startDate != null) {
+            _status = 'start';
+            _startTime = DateTime.tryParse(startDate);
+            _isStartDisabled = true;
+            _isPauseDisabled = false;
+            _isStopDisabled = false;
+          } else {
+            _isStartDisabled = false;
+            _isPauseDisabled = false;
+            _isStopDisabled = false;
+          }
+        });
       }
     } catch (e) {
       print('Error loading current status: $e');
@@ -106,11 +124,11 @@ class _WorkActionFormState extends State<WorkActionForm> {
     setState(() => _isLoading = true);
 
     try {
-      // Call API to update job planning step status to 'start' with startDate
-      await widget.apiService!.updateJobPlanningStepComplete(
-          widget.jobNumber!,
-          widget.stepNo!,
-          "start"
+      // Only update startDate using JobApiService generic method
+      await widget.apiService!.updateJobPlanningStepFields(
+        widget.jobNumber!,
+        widget.stepNo!,
+        {'startDate': DateTime.now().toUtc().toIso8601String()},
       );
 
       // Set local start time
@@ -192,11 +210,11 @@ class _WorkActionFormState extends State<WorkActionForm> {
     setState(() => _isLoading = true);
 
     try {
-      // Call API to update job planning step with end time
-      await widget.apiService!.updateJobPlanningStepComplete(
-          widget.jobNumber!,
-          widget.stepNo!,
-          "stop"
+      // Only update endDate using JobApiService generic method
+      await widget.apiService!.updateJobPlanningStepFields(
+        widget.jobNumber!,
+        widget.stepNo!,
+        {'endDate': DateTime.now().toUtc().toIso8601String()},
       );
 
       setState(() {
@@ -295,19 +313,20 @@ class _WorkActionFormState extends State<WorkActionForm> {
     }
   }
 
-  // Check if Start button should be enabled
+  // Add these fields to the state
+  bool _isStartDisabled = false;
+  bool _isPauseDisabled = false;
+  bool _isStopDisabled = false;
+
+  // Update button enabled checks
   bool _isStartEnabled() {
-    return !_isLoading && (_status == 'pending' || _status == 'paused');
+    return !_isLoading && !_isStartDisabled && (_status == 'pending' || _status == 'paused');
   }
-
-  // Check if Pause button should be enabled
   bool _isPauseEnabled() {
-    return !_isLoading && _status == 'start';
+    return !_isLoading && !_isPauseDisabled && _status == 'start';
   }
-
-  // Check if Stop button should be enabled
   bool _isStopEnabled() {
-    return !_isLoading && _status == 'start';
+    return !_isLoading && !_isStopDisabled && _status == 'start';
   }
 
   // Check if Complete button should be enabled
@@ -492,10 +511,10 @@ class _WorkActionFormState extends State<WorkActionForm> {
                             'Started: ${_startTime!.toString().substring(0, 19)}',
                             style: const TextStyle(fontSize: 12, color: Colors.black87),
                           ),
-                        if (_endTime != null)
+                        if (_endTime != null && _status == 'stopped')
                           Text(
                             'Ended: ${_endTime!.toString().substring(0, 19)}',
-                            style: const TextStyle(fontSize: 12, color: Colors.black87),
+                            style: const TextStyle(fontSize: 12, color: Colors.red),
                           ),
                       ],
                     ),

@@ -105,50 +105,85 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     try {
       final stepNo = StepDataManager.getStepNumber(step.type);
       final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
-
-      if (stepDetails != null) {
-        final status = stepDetails['status'];
-        final startDate = stepDetails['startDate'];
-        final endDate = stepDetails['endDate'];
-
-        print('Step ${step.title}: status=$status, startDate=$startDate, endDate=$endDate');
-
-        setState(() {
-          if (status == 'stop' && endDate != null) {
-            step.status = StepStatus.completed;
-            print('Step ${step.title} marked as COMPLETED');
-          } else if (status == 'start' && startDate != null && endDate == null) {
-            step.status = StepStatus.started;
-            print('Step ${step.title} marked as STARTED (in progress)');
-          } else if (status == 'planned') {
-            step.status = StepStatus.pending;
-            print('Step ${step.title} marked as PENDING (planned)');
-            bool allPreviousCompleted = true;
-            for (int j = 1; j < stepIndex; j++) {
-              if (steps[j].status != StepStatus.completed) {
-                allPreviousCompleted = false;
-                break;
-              }
-            }
-            if (allPreviousCompleted) {
-              currentActiveStep = stepIndex;
-              print('Forcing step ${step.title} to be active due to planned status');
-            }
-          } else {
-            step.status = StepStatus.pending;
-            print('Step ${step.title} marked as PENDING (fallback for status: $status)');
-          }
-        });
-
-        // For Paper Store, also sync with paper store API
-        if (step.type == StepType.paperStore) {
-          await _syncPaperStoreStepWithBackend();
-        }
+      final stepStatus = await _apiService.getStepStatusByType(step.type, widget.jobNumber!);
+      
+      dynamic planningStatus;
+      if (stepDetails is List && stepDetails!.isEmpty) {
+        planningStatus = null;
+      } else if (stepDetails is Map && stepDetails!.containsKey('status')) {
+        planningStatus = stepDetails['status'];
+      } else if (stepDetails is Map && stepDetails!.isEmpty) {
+        planningStatus = null;
       } else {
+        planningStatus = null;
+      }
+
+      // 1. Work Complete: If either status is 'stop', mark as completed and move to next step
+      if (stepStatus == 'stop' || planningStatus == 'stop') {
+        setState(() {
+          step.status = StepStatus.completed;
+        });
+        print('Step  [33m${step.title} [0m marked as WORK COMPLETE (stop detected)');
+        // Move to the next available step
+        for (int i = stepIndex + 1; i < steps.length; i++) {
+          if (steps[i].status == StepStatus.pending || steps[i].status == StepStatus.inProgress || steps[i].status == StepStatus.started) {
+            setState(() {
+              currentActiveStep = i;
+            });
+            print('Moved to next step: ${steps[i].title}');
+            break;
+          }
+        }
+        StepProgressManager.moveToNextStep(
+          steps,
+          stepIndex,
+              (newActiveStep) => setState(() => currentActiveStep = newActiveStep),
+              (message) => DialogManager.showSuccessMessage(context, message),
+        );
+        return;
+      }
+
+      // 2. Work Started: If either status is 'start'
+      if (stepStatus == 'start' || planningStatus == 'start') {
+        setState(() {
+          step.status = StepStatus.started;
+          currentActiveStep = stepIndex;
+        });
+        print('Step ${step.title} marked as WORK STARTED (from either API)');
+        return;
+      }
+
+      // 3. Pending: If planning status is 'planned'
+      if (planningStatus == 'planned') {
         setState(() {
           step.status = StepStatus.pending;
-          print('Step ${step.title} marked as PENDING (no details found)');
         });
+        print('Step ${step.title} marked as PENDING (planned)');
+        bool allPreviousCompleted = true;
+        for (int j = 1; j < stepIndex; j++) {
+          if (steps[j].status != StepStatus.completed) {
+            allPreviousCompleted = false;
+            break;
+          }
+        }
+        if (allPreviousCompleted) {
+          setState(() {
+            currentActiveStep = stepIndex;
+          });
+          print('Forcing step ${step.title} to be active due to planned status');
+        }
+        return;
+      }
+
+      // 4. Fallback: Pending
+      setState(() {
+        step.status = StepStatus.pending;
+        print('Step ${step.title} marked as PENDING (fallback)');
+      });
+
+      // For Paper Store, also sync with paper store API
+      if (step.type == StepType.paperStore) {
+        await _syncPaperStoreStepWithBackend();
       }
     } catch (e) {
       print('Error syncing step ${step.title}: $e');
@@ -287,6 +322,13 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
     if (jobDetails == null) {
       await _fetchJobDetails();
+    }
+
+    // Defensive check for jobStepId
+    final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
+    if (stepDetails == null || !(stepDetails is Map) || !stepDetails.containsKey('id')) {
+      DialogManager.showErrorMessage(context, 'Job step ID not found in planning details. Please contact admin.');
+      throw Exception('Job step ID not found in planning details.');
     }
 
     // Update job planning step status to 'start' with start date

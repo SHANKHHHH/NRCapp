@@ -88,6 +88,48 @@ class JobApiService {
   Future<void> updateJobPlanningStepComplete(String jobNumber, int stepNo, String status) async {
     try {
       await _jobApi.updateJobPlanningStepComplete(jobNumber, stepNo, status);
+
+      final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
+      if (status == 'start') {
+        final postBody = {
+          'jobStepId': stepDetails!['id'],
+          'jobNrcJobNo': jobNumber,
+          'status': 'in_progress',
+        };
+        switch (stepNo) {
+          case 2:
+            print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to Printing');
+            await _jobApi.postPrintingDetails(postBody);
+            break;
+          case 3:
+            print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to Corrugation');
+            await _jobApi.postCorrugationDetails(postBody);
+            break;
+          case 4:
+            print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to Flute Lamination');
+            await _jobApi.postFluteLaminationDetails(postBody);
+            break;
+          case 5:
+            print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to Punching');
+            await _jobApi.postPunchingDetails(postBody);
+            break;
+          case 6:
+            print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to Flap Pasting');
+            await _jobApi.postFlapPastingDetails(postBody);
+            break;
+          case 7:
+            print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to QC');
+            await _jobApi.postQCDetails(postBody);
+            break;
+          case 8:
+            print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to Dispatch');
+            await _jobApi.postDispatchDetails(postBody);
+            break;
+          default:
+          // Do nothing for unknown step
+            break;
+        }
+      }
     } catch (e) {
       print('Error updating job planning step: $e');
       rethrow;
@@ -107,6 +149,11 @@ class JobApiService {
     } else {
       await _jobApi.updateJobPlanningStepComplete(jobNumber, stepNo, status);
     }
+  }
+
+  /// Generic method to update any fields for a job planning step
+  Future<void> updateJobPlanningStepFields(String jobNumber, int stepNo, Map<String, dynamic> body) async {
+    await _jobApi.updateJobPlanningStepFields(jobNumber, stepNo, body);
   }
 
   /// Complete Paper Store work
@@ -151,25 +198,25 @@ class JobApiService {
   Future<void> postStepDetails(StepType stepType, String jobNumber, Map<String, String> formData, int stepNo) async {
     switch (stepType) {
       case StepType.printing:
-        await _postPrintingDetails(jobNumber, formData, stepNo);
+        await _postPrintingDetails(jobNumber, formData, stepNo); // uses PUT
         break;
       case StepType.corrugation:
-        await _postCorrugationDetails(jobNumber, formData, stepNo);
+        await _postCorrugationDetails(jobNumber, formData, stepNo); // uses PUT
         break;
       case StepType.fluteLamination:
-        await _postFluteLaminationDetails(jobNumber, formData, stepNo);
+        await _postFluteLaminationDetails(jobNumber, formData, stepNo); // uses PUT
         break;
       case StepType.punching:
-        await _postPunchingDetails(jobNumber, formData, stepNo);
+        await _postPunchingDetails(jobNumber, formData, stepNo); // uses PUT
         break;
       case StepType.flapPasting:
-        await _postFlapPastingDetails(jobNumber, formData, stepNo);
+        await _postFlapPastingDetails(jobNumber, formData, stepNo); // uses PUT
         break;
       case StepType.qc:
-        await _postQCDetails(jobNumber, formData, stepNo);
+        await _postQCDetails(jobNumber, formData, stepNo); // uses PUT
         break;
       case StepType.dispatch:
-        await _postDispatchDetails(jobNumber, formData, stepNo);
+        await _postDispatchDetails(jobNumber, formData, stepNo); // uses PUT
         break;
       default:
         break;
@@ -202,7 +249,7 @@ class JobApiService {
     };
     print("Printing Details");
     print(body);
-    await _jobApi.postPrintingDetails(body);
+    await _jobApi.putPrintingDetails(body,jobNumber);
   }
 
   Future<void> _postCorrugationDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
@@ -234,7 +281,7 @@ class JobApiService {
     print("Corrugation Details Body:");
     print(body);
 
-    await _jobApi.postCorrugationDetails(body);
+    await _jobApi.putCorrugationDetails(body,jobNumber);
   }
 
 
@@ -263,7 +310,7 @@ class JobApiService {
       "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
     };
 
-    await _jobApi.postFluteLaminationDetails(body);
+    await _jobApi.putFluteLaminationDetails(body,jobNumber);
   }
 
   Future<void> _postPunchingDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
@@ -289,7 +336,7 @@ class JobApiService {
       "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
       "remarks": formData['Remarks'] ?? '',
     };
-    await _jobApi.postPunchingDetails(body);
+    await _jobApi.putPunchingDetails(body,jobNumber);
   }
 
   Future<void> _postQCDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
@@ -309,12 +356,13 @@ class JobApiService {
       "status": "accept",
       "date": DateTime.now().toUtc().toIso8601String(),
       "checkedBy": formData['Checked By'] ?? '',
-      "passQuantity": int.tryParse(formData['Pass Quantity'] ?? '0') ?? 0,
-      "rejectQuantity": int.tryParse(formData['Reject Quantity'] ?? '0') ?? 0,
+      "passQty": int.tryParse(formData['Pass Quantity'] ?? '0') ?? 0,
+      "rejectedQty": int.tryParse(formData['Reject Quantity'] ?? '0') ?? 0,
       "reasonForRejection": formData['Reason for Rejection'] ?? '',
       "remarks": formData['Remarks'] ?? '',
     };
-    await _jobApi.postQCDetails(body);
+    print(body);
+    await _jobApi.putQCDetails(body,jobNumber);
   }
 
   Future<void> _postFlapPastingDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
@@ -341,7 +389,7 @@ class JobApiService {
       "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
       "remarks": formData['Remarks'] ?? '',
     };
-    await _jobApi.postFlapPastingDetails(body);
+    await _jobApi.putFlapPastingDetails(body,jobNumber);
   }
 
   Future<void> _postDispatchDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
@@ -357,16 +405,47 @@ class JobApiService {
     print("FlapPasting job step number is $jobStepId");
     final body = {
       "jobNrcJobNo": jobNumber,
-      "jobStepId": stepNo,
+      "jobStepId": jobStepId,
       "status": "accept",
-      "date": formData['Date'] ?? DateTime.now().toIso8601String(),
+      "date": DateTime.now().toUtc().toIso8601String(),
       "operatorName": formData['Operator Name'] ?? '',
       "noOfBoxes": int.tryParse(formData['No of Boxes'] ?? '0') ?? 0,
       "dispatchNo": formData['Dispatch No'] ?? '',
-      "dispatchDate": formData['Dispatch Date'] ?? '',
+      "dispatchDate": DateTime.now().toUtc().toIso8601String(),
       "balanceQty": int.tryParse(formData['Balance Qty'] ?? '0') ?? 0,
       "remarks": formData['Remarks'] ?? '',
     };
-    await _jobApi.postDispatchDetails(body);
+    await _jobApi.putDispatchDetails(body,jobNumber);
+  }
+
+  /// Helper to get step status by type
+  Future<String?> getStepStatusByType(StepType stepType, String jobNumber) async {
+    switch (stepType) {
+      case StepType.printing:
+        final details = await _jobApi.getPrintingDetails(jobNumber);
+        print("this is the status for particular post");
+        print(details?['data'][0]['status']);
+        return details?['data'][0]['status'];
+      case StepType.corrugation:
+        final details = await _jobApi.getCorrugationDetails(jobNumber);
+        return details?['data'][0]['status'];
+      case StepType.fluteLamination:
+        final details = await _jobApi.getFluteLaminationDetails(jobNumber);
+        return details?['data'][0]['status'];
+      case StepType.punching:
+        final details = await _jobApi.getPunchingDetails(jobNumber);
+        return details?['data'][0]['status'];
+      case StepType.flapPasting:
+        final details = await _jobApi.getFlapPastingDetails(jobNumber);
+        return details?['data'][0]['status'];
+      case StepType.qc:
+        final details = await _jobApi.getQCDetails(jobNumber);
+        return details?['data'][0]['status'];
+      case StepType.dispatch:
+        final details = await _jobApi.getDispatchDetails(jobNumber);
+        return details?['data'][0]['status'];
+      default:
+        return null;
+    }
   }
 }

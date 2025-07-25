@@ -398,6 +398,55 @@ class JobApi {
     }
   }
 
+  Future<void> updateJobPlanningStepStartDateOnly(String jobNumber, int stepNo, String startDate) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('accessToken');
+      print('[updateJobPlanningStepStartDateOnly] Token: $token');
+      print('[updateJobPlanningStepStartDateOnly] jobNumber: $jobNumber, stepNo: $stepNo, startDate: $startDate');
+      final url = '${AppStrings.baseUrl}/api/job-planning/${jobNumber}/steps/$stepNo';
+      final body = {
+        'startDate': startDate
+      };
+      print('[updateJobPlanningStepStartDateOnly] URL: $url');
+      print('[updateJobPlanningStepStartDateOnly] Body: $body');
+      final response = await dio.patch(url, data: body, options: Options(
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ),
+      );
+      print('[updateJobPlanningStepStartDateOnly] Response:  [32m${response.statusCode} ${response.data} [0m');
+    } catch (e) {
+      print('[updateJobPlanningStepStartDateOnly] Error: $e');
+      throw e;
+    }
+  }
+
+  Future<void> updateJobPlanningStepFields(String jobNumber, int stepNo, Map<String, dynamic> body) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('accessToken');
+      print('[updateJobPlanningStepFields] Token: $token');
+      print('[updateJobPlanningStepFields] jobNumber: $jobNumber, stepNo: $stepNo, body: $body');
+      final url = '${AppStrings.baseUrl}/api/job-planning/${jobNumber}/steps/$stepNo';
+      print('[updateJobPlanningStepFields] URL: $url');
+      print('[updateJobPlanningStepFields] Body: $body');
+      final response = await dio.patch(url, data: body, options: Options(
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ),
+      );
+      print('[updateJobPlanningStepFields] Response:  [32m${response.statusCode} ${response.data} [0m');
+    } catch (e) {
+      print('[updateJobPlanningStepFields] Error: $e');
+      throw e;
+    }
+  }
+
   Future<Map<String, dynamic>?> _postWithAuth(String endpoint, Map<String, dynamic> body) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
@@ -468,8 +517,8 @@ class JobApi {
     print("${AppStrings.baseUrl}/api$endpoint");
     print("this is the url");
     print(AppStrings.baseUrl);
-    print('[_postWithAuth] Endpoint: $endpoint');
-    print('[_postWithAuth] Token: $token');
+    print('[_getWithAuth] Endpoint: $endpoint');
+    print('[_getWithAuth] Token: $token');
     try {
       final response = await Dio().get(
         '${AppStrings.baseUrl}/api$endpoint',
@@ -480,13 +529,13 @@ class JobApi {
           },
         ),
       );
-      print('[_postWithAuth] Response: ${response.statusCode} ${response.data}');
+      print('[_getWithAuth] Response: ${response.statusCode} ${response.data}');
       return response.data;
     } on DioException catch (e) {
-      print('[_postWithAuth] Error posting to $endpoint: ${e.message}');
+      print('[_getWithAuth] Error posting to $endpoint: ${e.message}');
       if (e.response != null) {
-        print('[_postWithAuth] Status code: ${e.response?.statusCode}');
-        print('[_postWithAuth] Response: ${e.response?.data}');
+        print('[_getWithAuth] Status code: ${e.response?.statusCode}');
+        print('[_getWithAuth] Response: ${e.response?.data}');
       }
       rethrow;
     }
@@ -501,7 +550,7 @@ class JobApi {
   }
 
   Future<Map<String, dynamic>?> getFluteLaminationDetails(String jobNumber) {
-    return _getWithAuth('/flute-laminate-board-conversion/by-job/SEE25-07-01');
+    return _getWithAuth('/flute-laminate-board-conversion/by-job/$jobNumber');
   }
 
   Future<Map<String, dynamic>?> getPunchingDetails(String jobNumber) {
@@ -520,32 +569,34 @@ class JobApi {
     return _getWithAuth('/dispatch-process/by-job/$jobNumber');
   }
 
-  Future<Map<String, dynamic>?> putPrintingDetails(Map<String, dynamic> body) {
-    return _postWithAuth('/printing-details/', body);
+  Future<Map<String, dynamic>?> putPrintingDetails(Map<String, dynamic> body,String jobNumber) {
+    return _putWithAuth('/printing-details/$jobNumber', body);
   }
 
-  Future<Map<String, dynamic>?> putCorrugationDetails(Map<String, dynamic> body) {
-    return _postWithAuth('/corrugation', body);
+  Future<Map<String, dynamic>?> putCorrugationDetails(Map<String, dynamic> body,String jobNumber) {
+    return _putWithAuth('/corrugation/$jobNumber', body);
   }
 
-  Future<Map<String, dynamic>?> putFluteLaminationDetails(Map<String, dynamic> body) {
-    return _postWithAuth('/flute-laminate-board-conversion/', body);
+  Future<Map<String, dynamic>?> putFluteLaminationDetails(Map<String, dynamic> body,String jobNumber) {
+    return _putWithAuth('/flute-laminate-board-conversion/$jobNumber', body);
   }
 
-  Future<Map<String, dynamic>?> putPunchingDetails(Map<String, dynamic> body) {
-    return _postWithAuth('/punching/', body);
+  Future<Map<String, dynamic>?> putPunchingDetails(Map<String, dynamic> body,String jobNumber) {
+    return _putWithAuth('/punching/$jobNumber', body);
   }
 
-  Future<Map<String, dynamic>?> putFlapPastingDetails(Map<String, dynamic> body) {
-    return _postWithAuth('/side-flap-pasting/', body);
+  Future<Map<String, dynamic>?> putFlapPastingDetails(Map<String, dynamic> body,String jobNumber) {
+    return _putWithAuth('/side-flap-pasting/$jobNumber', body);
   }
 
-  Future<Map<String, dynamic>?> putQCDetails(Map<String, dynamic> body) {
-    return _postWithAuth('/quality-dept/', body);
+  Future<Map<String, dynamic>?> putQCDetails(Map<String, dynamic> body,String jobNumber) {
+    print("this is Put for QC");
+    print(body);
+    return _putWithAuth('/quality-dept/$jobNumber', body);
   }
 
-  Future<Map<String, dynamic>?> putDispatchDetails(Map<String, dynamic> body) {
-    return _postWithAuth('/dispatch-process/', body);
+  Future<Map<String, dynamic>?> putDispatchDetails(Map<String, dynamic> body,String jobNumber) {
+    return _putWithAuth('/dispatch-process/$jobNumber', body);
   }
 
   Future<Map<String, dynamic>?> postPrintingDetails(Map<String, dynamic> body) {
