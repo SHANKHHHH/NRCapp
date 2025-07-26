@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../../../constants/colors.dart';
+import '../../../constants/strings.dart';
 import '../../../data/models/Job.dart';
 import '../../../data/models/WorkStepAssignment.dart';
 import '../../../data/models/purchase_order.dart';
@@ -67,6 +68,7 @@ class _WorkDetailsScreenState extends State<WorkDetailsScreen> {
       final jobApi = JobApi(dio);
       print(widget.nrcJobNo);
       final job = await jobApi.getJobByNrcJobNo(widget.nrcJobNo);
+      print('jobDetails: ' + job.toString()); // Debug print
       setState(() {
         jobDetails = job;
         _jobLoading = false;
@@ -96,9 +98,49 @@ class _WorkDetailsScreenState extends State<WorkDetailsScreen> {
               ? Center(child: Text(_error!))
               : _jobError != null
                   ? Center(child: Text(_jobError!))
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.all(16),
-                      child: _buildUnifiedCard(context),
+                  : Column(
+                      children: [
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              children: [
+                                _buildUnifiedCard(context),
+                                if (jobDetails != null)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 8),
+                                    child: Text('Current Status: '
+                                        + (jobDetails?['status']?.toString() ?? 'N/A'),
+                                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        // Always show buttons for testing
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              ElevatedButton(
+                                onPressed: () async {
+                                  await _updateJobStatus('Active');
+                                },
+                                child: const Text('Active'),
+                              ),
+                              const SizedBox(width: 16),
+                              ElevatedButton(
+                                onPressed: () async {
+                                  await _updateJobStatus('Hold');
+                                },
+                                child: const Text('Hold'),
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
     );
   }
@@ -107,85 +149,116 @@ class _WorkDetailsScreenState extends State<WorkDetailsScreen> {
     if (jobPlanning == null) {
       return const Center(child: Text('No job planning details found.'));
     }
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: EdgeInsets.zero,
-      color: Colors.white,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Job Details Section
-            if (jobDetails != null && jobDetails!.isNotEmpty) ...[
+    final status = jobDetails?['status']?.toString() ?? 'N/A';
+    return GestureDetector(
+      onTap: () {
+        if (status.toUpperCase() == 'HOLD') {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Work on Hold'),
+              content: const Text('This Work is in Hold. Please Contact Admin.'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+      },
+      child: Card(
+        elevation: 4,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: EdgeInsets.zero,
+        color: Colors.white,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Show status at the top
+              Row(
+                children: [
+                  const Text('Status: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text(status, style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: status.toUpperCase() == 'HOLD' ? Colors.orange : Colors.green,
+                  )),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // Job Details Section
+              if (jobDetails != null && jobDetails!.isNotEmpty) ...[
+                _buildSectionHeader(
+                  icon: Icons.work,
+                  title: 'JOB DETAILS',
+                  color: Colors.blue,
+                ),
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _jobDetailsExpanded = !_jobDetailsExpanded;
+                    });
+                  },
+                  child: Row(
+                    children: [
+                      Text(
+                        _jobDetailsExpanded ? 'Hide Details' : 'Show Details',
+                        style: TextStyle(
+                          color: Colors.blue,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Icon(
+                        _jobDetailsExpanded ? Icons.expand_less : Icons.expand_more,
+                        color: Colors.blue,
+                      ),
+                    ],
+                  ),
+                ),
+                if (_jobDetailsExpanded)
+                  ...jobDetails!.entries.map((entry) => _buildKeyValueRow(entry.key, entry.value?.toString() ?? '')),
+                const SizedBox(height: 16),
+              ],
+              const Center(
+                child: Text(
+                  'WORK ASSIGNMENT DETAILS',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Divider(height: 1, color: Colors.grey),
+              const SizedBox(height: 16),
+
+              // Job Planning Section
               _buildSectionHeader(
-                icon: Icons.work,
-                title: 'JOB DETAILS',
+                icon: Icons.confirmation_number,
+                title: 'JOB PLANNING',
                 color: Colors.blue,
               ),
-              GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _jobDetailsExpanded = !_jobDetailsExpanded;
-                  });
-                },
-                child: Row(
-                  children: [
-                    Text(
-                      _jobDetailsExpanded ? 'Hide Details' : 'Show Details',
-                      style: TextStyle(
-                        color: Colors.blue,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Icon(
-                      _jobDetailsExpanded ? Icons.expand_less : Icons.expand_more,
-                      color: Colors.blue,
-                    ),
-                  ],
-                ),
+              _buildKeyValueRow('Job Plan ID', jobPlanning!['jobPlanId'].toString()),
+              _buildKeyValueRow('NRC Job No', jobPlanning!['nrcJobNo'] ?? ''),
+              _buildKeyValueRow('Job Demand', jobPlanning!['jobDemand'] ?? ''),
+              _buildKeyValueRow('Created At', jobPlanning!['createdAt'] ?? ''),
+              _buildKeyValueRow('Updated At', jobPlanning!['updatedAt'] ?? ''),
+
+              // Steps Section
+              _buildSectionHeader(
+                icon: Icons.assignment,
+                title: 'WORK STEPS',
+                color: Colors.green,
               ),
-              if (_jobDetailsExpanded)
-                ...jobDetails!.entries.map((entry) => _buildKeyValueRow(entry.key, entry.value?.toString() ?? '')),
-              const SizedBox(height: 16),
+              if (jobPlanning!['steps'] != null && jobPlanning!['steps'] is List)
+                ...((jobPlanning!['steps'] as List).map((step) => _buildStepItem(step)).toList()),
             ],
-            const Center(
-              child: Text(
-                'WORK ASSIGNMENT DETAILS',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Divider(height: 1, color: Colors.grey),
-            const SizedBox(height: 16),
-
-            // Job Planning Section
-            _buildSectionHeader(
-              icon: Icons.confirmation_number,
-              title: 'JOB PLANNING',
-              color: Colors.blue,
-            ),
-            _buildKeyValueRow('Job Plan ID', jobPlanning!['jobPlanId'].toString()),
-            _buildKeyValueRow('NRC Job No', jobPlanning!['nrcJobNo'] ?? ''),
-            _buildKeyValueRow('Job Demand', jobPlanning!['jobDemand'] ?? ''),
-            _buildKeyValueRow('Created At', jobPlanning!['createdAt'] ?? ''),
-            _buildKeyValueRow('Updated At', jobPlanning!['updatedAt'] ?? ''),
-
-            // Steps Section
-            _buildSectionHeader(
-              icon: Icons.assignment,
-              title: 'WORK STEPS',
-              color: Colors.green,
-            ),
-            if (jobPlanning!['steps'] != null && jobPlanning!['steps'] is List)
-              ...((jobPlanning!['steps'] as List).map((step) => _buildStepItem(step)).toList()),
-          ],
+          ),
         ),
       ),
     );
@@ -348,5 +421,12 @@ class _WorkDetailsScreenState extends State<WorkDetailsScreen> {
 
   String _formatDate(DateTime date) {
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  Future<void> _updateJobStatus(String status) async {
+    await JobApi(Dio(BaseOptions(baseUrl: '${AppStrings.baseUrl}/api')))
+        .updateJobStatus(widget.nrcJobNo, status.toUpperCase());
+    await _fetchJobDetails(); // Refresh details
+    setState(() {}); // Update UI
   }
 }

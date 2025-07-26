@@ -19,6 +19,7 @@ class _WorkScreenState extends State<WorkScreen> {
   List<Map<String, dynamic>> jobPlannings = [];
   bool _isLoading = true;
   String? _error;
+  Map<String, String> jobStatuses = {}; // nrcJobNo -> status
 
   @override
   void initState() {
@@ -35,8 +36,22 @@ class _WorkScreenState extends State<WorkScreen> {
       final dio = Dio();
       final jobApi = JobApi(dio);
       final plannings = await jobApi.getAllJobPlannings();
+
+      // Fetch statuses for each job
+      Map<String, String> statuses = {};
+      for (final planning in plannings) {
+        final nrcJobNo = planning['nrcJobNo'];
+        final jobs = await jobApi.getJobsByNo(nrcJobNo);
+        print("this is Jobs");
+        print(jobs);
+        if (jobs.isNotEmpty && jobs[0].status != null) {
+          statuses[nrcJobNo] = jobs[0].status.toString().toUpperCase();
+        }
+      }
+
       setState(() {
         jobPlannings = plannings;
+        jobStatuses = statuses;
         _isLoading = false;
       });
     } catch (e) {
@@ -56,6 +71,22 @@ class _WorkScreenState extends State<WorkScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: _isLoading
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2.5,
+                    ),
+                  )
+                : const Icon(Icons.refresh),
+            onPressed: _isLoading ? null : _fetchAllJobPlannings,
+            tooltip: 'Reload',
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -75,28 +106,52 @@ class _WorkScreenState extends State<WorkScreen> {
   }
 
   Widget _buildSummaryCard(BuildContext context, Map<String, dynamic> jobPlanning) {
+    print(jobStatuses);
+    print('this is Jon Status');
+    final nrcJobNo = jobPlanning['nrcJobNo'];
+    final status = jobStatuses[nrcJobNo] ?? '';
+    final dio = Dio();
+    final jobApi = JobApi(dio);
+    final planning = jobApi.getJobPlanningStepsByNrcJobNo(jobPlanning['nrcJobNo']);
+    final isHold = status == 'HOLD';
     return GestureDetector(
       onTap: () async {
-        // Fetch job planning steps and navigate to JobTimelinePage
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => const Center(child: CircularProgressIndicator()),
-        );
-        final dio = Dio();
-        final jobApi = JobApi(dio);
-        final planning = await jobApi.getJobPlanningStepsByNrcJobNo(jobPlanning['nrcJobNo']);
-        Navigator.of(context).pop(); // Remove loader
-        final steps = planning?['steps'] ?? [];
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => JobTimelinePage(
-              jobNumber: jobPlanning['nrcJobNo'],
-              assignedSteps: steps,
+        if (isHold) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Work on Hold'),
+              content: const Text('This Work is in hold, Contact to Admin'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('OK'),
+                ),
+              ],
             ),
-          ),
-        );
+          );
+        } else {
+          // Fetch job planning steps and navigate to JobTimelinePage
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => const Center(child: CircularProgressIndicator()),
+          );
+          final dio = Dio();
+          final jobApi = JobApi(dio);
+          final planning = await jobApi.getJobPlanningStepsByNrcJobNo(jobPlanning['nrcJobNo']);
+          Navigator.of(context).pop(); // Remove loader
+          final steps = planning?['steps'] ?? [];
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => JobTimelinePage(
+                jobNumber: jobPlanning['nrcJobNo'],
+                assignedSteps: steps,
+              ),
+            ),
+          );
+        }
       },
       child: Card(
         elevation: 4,
