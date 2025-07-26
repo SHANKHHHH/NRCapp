@@ -10,7 +10,7 @@ class UserRoleManager {
 
   Future<void> loadUserRole() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    _userRole = prefs.getString('userRole') ?? 'Guest'; // Default to 'Guest'
+    _userRole = prefs.getString('userRole'); // Default to 'Guest'
   }
 
   String? get userRole => _userRole;

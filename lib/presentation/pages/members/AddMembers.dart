@@ -123,7 +123,7 @@ class _CreateIDState extends State<CreateID> {
                     ),
                     value: selectedRole,
                     items: [
-                      'Admin',
+                      'admin',
                       'Planner',
                       'Production Head',
                       'Dispatch Executive',

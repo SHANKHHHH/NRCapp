@@ -1,8 +1,11 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/services/auth_service.dart';
+import 'package:dio/dio.dart';
 
 class AuthRepository {
   static const _tokenKey = 'accessToken';
+  static const _userIdKey = 'userId';
+  static const _userRoleKey = 'userRole';
   final AuthService _authService;
 
   AuthRepository(this._authService);
@@ -13,6 +16,11 @@ class AuthRepository {
       if (response.data['success'] == true && response.data['acessToken'] != null) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_tokenKey, response.data['acessToken']);
+        // Save user id as well
+        if (response.data['data'] != null && response.data['data']['id'] != null) {
+          await prefs.setString(_userIdKey, response.data['data']['id']);
+        }
+        // Remove saving user role here
         return true;
       }
       return false;
@@ -27,8 +35,46 @@ class AuthRepository {
     return prefs.getString(_tokenKey);
   }
 
+  Future<String?> getUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_userIdKey);
+  }
+
+  Future<String?> getUserRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_userRoleKey);
+  }
+
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
+    await prefs.remove(_userIdKey);
+    await prefs.remove(_userRoleKey);
+  }
+
+  Future<Map<String, dynamic>?> checkUserValidAndGetData(String id, String accessToken) async {
+    try {
+      final dio = Dio();
+      final response = await dio.get(
+        'https://nrc-backend-his4.onrender.com/api/auth/users/$id',
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $accessToken',
+          },
+        ),
+      );
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        // Save user role if present
+        if (response.data['data'] != null && response.data['data']['role'] != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(_userRoleKey, response.data['data']['role']);
+        }
+        return response.data['data'];
+      }
+      return null;
+    } catch (e) {
+      print('User validation error: $e');
+      return null;
+    }
   }
 } 

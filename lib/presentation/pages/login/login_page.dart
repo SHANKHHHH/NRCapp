@@ -26,18 +26,43 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     print('LoginScreen initialized');
+    _checkExistingSession();
+  }
+
+  void _checkExistingSession() async {
+    setState(() { _isLoading = true; });
+    String? userId = await _authRepository.getUserId();
+    String? accessToken = await _authRepository.getAccessToken();
+    if (userId != null && accessToken != null) {
+      final userData = await _authRepository.checkUserValidAndGetData(userId, accessToken);
+      if (userData != null && userData['role'] != null) {
+        await userRoleManager.setUserRole(userData['role']);
+        setState(() { _isLoading = false; });
+        if (mounted) context.pushReplacement('/home');
+        return;
+      }
+    }
+    setState(() { _isLoading = false; });
   }
 
   void _performLogin() async {
     if (_formKey.currentState!.validate()) {
       setState(() { _isLoading = true; });
-      // Set role as constant 'Admin'
-      await userRoleManager.setUserRole('Admin');
+      // Remove hardcoded role setting
+      // await userRoleManager.setUserRole('admin');
 
       bool success = await _authRepository.login(
         id: _empIdController.text,
         password: _passwordController.text,
       );
+
+      // Save role after login if present
+      if (success) {
+        String? role = await _authRepository.getUserRole();
+        if (role != null) {
+          await userRoleManager.setUserRole(role);
+        }
+      }
 
       setState(() { _isLoading = false; });
 

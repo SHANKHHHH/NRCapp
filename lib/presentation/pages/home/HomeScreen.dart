@@ -23,7 +23,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _loadUserRole() async {
-    _userRole = UserRoleManager().userRole ?? 'Guest'; // Retrieve user role from UserRoleManager
+    _userRole = UserRoleManager().userRole!; // Retrieve user role from UserRoleManager
     print('User Role in HomeScreen: $_userRole');
   }
 
@@ -46,7 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 24),
-          if (_userRole == 'Admin')...[
+          if (_userRole == 'admin')...[
             Expanded(
               child: ElevatedButton(
                 onPressed: () => context.push('/create-id'),
@@ -64,7 +64,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             ],
 
-            if (_userRole == 'Planner' || _userRole == 'Admin') ...[
+            if (_userRole == 'Planner' || _userRole == 'admin') ...[
               ElevatedButton.icon(
                 onPressed: () {
                   context.push('/all-Jobs');
@@ -174,7 +174,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ],
-            if (_userRole == 'Planner' || _userRole == 'Admin') ...[
+            if (_userRole == 'Planner' || _userRole == 'admin') ...[
               Row(
                 children: [
                   Expanded(
@@ -211,7 +211,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ],
-            if (_userRole == 'Admin') ...[
+            if (_userRole == 'admin') ...[
               _buildDepartmentCards(),
               const SizedBox(height: 28),
             ],

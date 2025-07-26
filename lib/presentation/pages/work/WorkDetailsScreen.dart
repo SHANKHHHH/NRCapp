@@ -157,7 +157,7 @@ class _WorkDetailsScreenState extends State<WorkDetailsScreen> {
             context: context,
             builder: (context) => AlertDialog(
               title: const Text('Work on Hold'),
-              content: const Text('This Work is in Hold. Please Contact Admin.'),
+              content: const Text('This Work is in Hold. Please Contact admin.'),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
