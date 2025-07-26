@@ -195,35 +195,35 @@ class JobApiService {
   }
 
   /// Post step details for different step types
-  Future<void> postStepDetails(StepType stepType, String jobNumber, Map<String, String> formData, int stepNo) async {
+  Future<void> putStepDetails(StepType stepType, String jobNumber, Map<String, String> formData, int stepNo) async {
     switch (stepType) {
       case StepType.printing:
-        await _postPrintingDetails(jobNumber, formData, stepNo); // uses PUT
+        await _putPrintingDetails(jobNumber, formData, stepNo); // uses PUT
         break;
       case StepType.corrugation:
-        await _postCorrugationDetails(jobNumber, formData, stepNo); // uses PUT
+        await _putCorrugationDetails(jobNumber, formData, stepNo); // uses PUT
         break;
       case StepType.fluteLamination:
-        await _postFluteLaminationDetails(jobNumber, formData, stepNo); // uses PUT
+        await _putFluteLaminationDetails(jobNumber, formData, stepNo); // uses PUT
         break;
       case StepType.punching:
-        await _postPunchingDetails(jobNumber, formData, stepNo); // uses PUT
+        await _putPunchingDetails(jobNumber, formData, stepNo); // uses PUT
         break;
       case StepType.flapPasting:
-        await _postFlapPastingDetails(jobNumber, formData, stepNo); // uses PUT
+        await _putFlapPastingDetails(jobNumber, formData, stepNo); // uses PUT
         break;
       case StepType.qc:
-        await _postQCDetails(jobNumber, formData, stepNo); // uses PUT
+        await _putQCDetails(jobNumber, formData, stepNo); // uses PUT
         break;
       case StepType.dispatch:
-        await _postDispatchDetails(jobNumber, formData, stepNo); // uses PUT
+        await _putDispatchDetails(jobNumber, formData, stepNo); // uses PUT
         break;
       default:
         break;
     }
   }
 
-  Future<void> _postPrintingDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
+  Future<void> _putPrintingDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
 
     final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
 
@@ -250,7 +250,7 @@ class JobApiService {
     await _jobApi.putPrintingDetails(body,jobNumber);
   }
 
-  Future<void> _postCorrugationDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
+  Future<void> _putCorrugationDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
     print("Comes to Corrugation");
     final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
 
@@ -283,7 +283,7 @@ class JobApiService {
   }
 
 
-  Future<void> _postFluteLaminationDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
+  Future<void> _putFluteLaminationDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
     print("Comes to FluteLamination");
     final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
 
@@ -311,7 +311,7 @@ class JobApiService {
     await _jobApi.putFluteLaminationDetails(body,jobNumber);
   }
 
-  Future<void> _postPunchingDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
+  Future<void> _putPunchingDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
     print("Comes to Punching");
     final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
 
@@ -337,7 +337,7 @@ class JobApiService {
     await _jobApi.putPunchingDetails(body,jobNumber);
   }
 
-  Future<void> _postQCDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
+  Future<void> _putQCDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
     print("Comes to Quality Control");
     final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
 
@@ -363,7 +363,7 @@ class JobApiService {
     await _jobApi.putQCDetails(body,jobNumber);
   }
 
-  Future<void> _postFlapPastingDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
+  Future<void> _putFlapPastingDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
     print("Comes to FlapPasting");
     final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
 
@@ -390,7 +390,7 @@ class JobApiService {
     await _jobApi.putFlapPastingDetails(body,jobNumber);
   }
 
-  Future<void> _postDispatchDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
+  Future<void> _putDispatchDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
     print("Comes to FlapPasting");
     final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
 

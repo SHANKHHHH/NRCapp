@@ -3,9 +3,11 @@ import 'package:nrc/presentation/pages/job/AllJobs.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/Job.dart';
 import '../../data/models/purchase_order.dart';
+import '../pages/dashboard/DispatchBoard.dart';
 import '../pages/dashboard/PlanningDashboard.dart';
 import '../pages/dashboard/PrintingManagerBoard.dart';
 import '../pages/dashboard/ProductionBoard.dart';
+import '../pages/dashboard/QualityBoard.dart';
 import '../pages/home/HomeScreen.dart';
 import '../pages/job/JobInputPage.dart';
 import '../pages/job/job_list_page.dart';
@@ -30,6 +32,8 @@ final GoRouter router = GoRouter(
     GoRoute(path: '/planning-dashboard', builder: (context, state) => const PlanningDashboard()),
     GoRoute(path: '/production-dashboard', builder: (context, state) => ProductionBoard()),
     GoRoute(path: '/printing-dashboard', builder: (context, state) => PrintingManagerBoard()),
+    GoRoute(path: '/dispatch-dashboard', builder: (context, state) => DispatchBoard()),
+    GoRoute(path: '/qc-dashboard', builder: (context, state) => QualityBoard()),
     GoRoute(
       path: '/add-po',
       builder: (context, state) => PurchaseOrderInput(job: state.extra as Job),

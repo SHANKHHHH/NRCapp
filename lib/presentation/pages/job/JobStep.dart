@@ -474,7 +474,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       final stepNo = StepDataManager.getStepNumber(step.type);
 
       // Post step details to backend first
-      await _apiService.postStepDetails(step.type, widget.jobNumber!, formData, stepNo);
+      await _apiService.putStepDetails(step.type, widget.jobNumber!, formData, stepNo);
 
       // Then update job planning step status to 'stop' with end date
       await _apiService.updateJobPlanningStepComplete(widget.jobNumber!, stepNo, "stop");
