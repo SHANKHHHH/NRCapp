@@ -189,7 +189,9 @@ class ReviewStepWidget extends StatelessWidget {
         // ✅ Done Button
         Center(
           child: ElevatedButton(
-            onPressed: () => _submitJobPlanning(context),
+            onPressed: () {
+              Navigator.pop(context); // Just close or proceed, no backend call
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,
@@ -240,47 +242,5 @@ class ReviewStepWidget extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  // ✅ Submission Logic
-  void _submitJobPlanning(BuildContext context) async {
-    try {
-      final dio = Dio();
-      final url = '${AppStrings.baseUrl}/api/job-planning/';
-
-      final payload = {
-        "nrcJobNo": selectedJob?.nrcJobNo ?? 'UNKNOWN',
-        "jobDemand": selectedDemand ?? 'low',
-        "steps": selectedWorkStepAssignments.asMap().entries.map((entry) {
-          final index = entry.key;
-          final assignment = entry.value;
-          return {
-            "stepNo": index + 1,
-            "stepName": getBackendStepName(assignment.workStep.step),
-            "machineDetails": assignment.selectedMachine?.machineCode ?? 'Not Required',
-          };
-        }).toList(),
-      };
-
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('accessToken');
-      final response = await dio.post(
-          url,
-          data: payload,
-        options: Options(
-          headers: {
-            if (token != null) 'Authorization': 'Bearer $token',
-          },
-        ),
-      );
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        DialogManager.showSuccessMessage(context, "Job planning submitted successfully.");
-      } else {
-        DialogManager.showErrorMessage(context, "Failed to submit. Status: ${response.statusCode}");
-      }
-    } catch (e) {
-      DialogManager.showErrorMessage(context, "Error: ${e.toString()}");
-    }
   }
 }

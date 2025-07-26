@@ -1,16 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../../data/datasources/job_api.dart';
 import '../../../data/models/Job.dart';
 import '../../../data/models/Machine.dart';
 import '../../../data/models/WorkStep.dart';
 import '../../../data/models/WorkStepAssignment.dart';
 import '../../../data/models/WorkStepData.dart';
+import '../process/DialogManager.dart';
 import 'DemandStepWidget.dart';
 import 'MachineSelectionWidget.dart';
 import '../work/WorkScreen.dart';
 import 'ReviewStepWidget.dart';
 import 'WorkStepSelectionWidget.dart';
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../../constants/colors.dart';
+import '../../../constants/strings.dart';
 
 class AssignWorkSteps extends StatefulWidget {
   final Job? job;
@@ -491,111 +496,7 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
                     Expanded(
                       child: ElevatedButton(
                         onPressed: () async {
-                          // Show loader dialog
-                          showDialog(
-                            context: context,
-                            barrierDismissible: false,
-                            builder: (context) => Center(child: CircularProgressIndicator()),
-                          );
-                          // Build the request body
-                          String getBackendStepName(String step) {
-                            switch (step.toLowerCase()) {
-                              case 'paperstore': return 'PaperStore';
-                              case 'printing': return 'PrintingDetails';
-                              case 'corrugation': return 'Corrugation';
-                              case 'flutelamination': return 'FluteLaminateBoardConversion';
-                              case 'punching': return 'Punching';
-                              case 'flappasting': return 'SideFlapPasting';
-                              case 'qc': return 'QualityDept';
-                              case 'dispatch': return 'DispatchProcess';
-                              default: return step;
-                            }
-                          }
-                          final body = {
-                            "nrcJobNo": widget.job?.nrcJobNo,
-                            "jobDemand": selectedDemand,
-                            "steps": selectedWorkStepAssignments.asMap().entries.map((entry) {
-                              final i = entry.key;
-                              final assignment = entry.value;
-                              return {
-                                "stepNo": i + 1,
-                                "stepName": getBackendStepName(assignment.workStep.step),
-                                "machineDetail": assignment.selectedMachine?.description ?? "",
-                              };
-                            }).toList(),
-                          };
-                          final dio = Dio();
-                          final jobApi = JobApi(dio);
-                          bool success = false;
-                          try {
-                            await jobApi.submitJobPlanning(body);
-                            success = true;
-                          } catch (e) {
-                            success = false;
-                          }
-                          Navigator.of(context).pop(); // Remove loader
-                          showDialog(
-                            context: context,
-                            barrierDismissible: false,
-                            builder: (context) => Dialog(
-                              backgroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                              child: Container(
-                                padding: const EdgeInsets.all(24),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      width: 80,
-                                      height: 80,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: Colors.blue.shade100,
-                                      ),
-                                      child: Icon(
-                                        success ? Icons.check_circle : Icons.error,
-                                        color: Colors.blue,
-                                        size: 50,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 20),
-                                    Text(
-                                      success ? 'Work is Set. Now Click on Ok Button' : 'Failed to set work. Please try again.',
-                                      style: TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.blue,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                    const SizedBox(height: 24),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: ElevatedButton(
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.blue,
-                                          foregroundColor: Colors.white,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(10),
-                                          ),
-                                        ),
-                                        onPressed: () {
-                                          Navigator.of(context).popUntil((route) => route.isFirst);
-                                          // Optionally, pushReplacement to HomePage if you have a named route or widget
-                                          // Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => HomePage()));
-                                        },
-                                        child: const Text('Ok'),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
+                          await _submitJobPlanning(context);
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green.shade600,
@@ -649,5 +550,65 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
       selectedWorkStepAssignments.clear();
     });
     _animationController.forward();
+  }
+
+  String getBackendStepName(String step) {
+    switch (step.toLowerCase()) {
+      case 'paperstore': return 'PaperStore';
+      case 'printing': return 'PrintingDetails';
+      case 'corrugation': return 'Corrugation';
+      case 'flutelamination': return 'FluteLaminateBoardConversion';
+      case 'punching': return 'Punching';
+      case 'flappasting': return 'SideFlapPasting';
+      case 'qc': return 'QualityDept';
+      case 'dispatch': return 'DispatchProcess';
+      default: return step;
+    }
+  }
+
+  Future<void> _submitJobPlanning(BuildContext context) async {
+    // Show loader dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      final dio = Dio();
+      final url = '${AppStrings.baseUrl}/api/job-planning/';
+      final payload = {
+        "nrcJobNo": widget.job?.nrcJobNo ?? 'UNKNOWN',
+        "jobDemand": selectedDemand?.toLowerCase() ?? 'low',
+        "steps": selectedWorkStepAssignments.asMap().entries.map((entry) {
+          final index = entry.key;
+          final assignment = entry.value;
+          return {
+            "stepNo": index + 1,
+            "stepName": getBackendStepName(assignment.workStep.step),
+            "machineDetails": assignment.selectedMachine?.machineCode ?? 'Not Required',
+          };
+        }).toList(),
+      };
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('accessToken');
+      final response = await dio.post(
+        url,
+        data: payload,
+        options: Options(
+          headers: {
+            if (token != null) 'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      Navigator.of(context).pop(); // Dismiss loader
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        context.go('/home');
+      } else {
+        DialogManager.showErrorMessage(context, "Failed to submit. Status:  {response.statusCode}");
+      }
+    } catch (e) {
+      Navigator.of(context).pop(); // Dismiss loader
+      DialogManager.showErrorMessage(context, "Error:  {e.toString()}");
+    }
   }
 }

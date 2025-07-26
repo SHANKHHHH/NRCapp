@@ -179,7 +179,7 @@ class JobApiService {
       'sheetSize': jobDetails['boardSize'] ?? '',
       'required': int.tryParse(jobDetails['noUps']?.toString() ?? '0') ?? 0,
       'available': int.tryParse(formData['available'] ?? '0') ?? 0,
-      'issuedDate': DateTime.now().toUtc().toIso8601String()+'Z',
+      'issuedDate': DateTime.now().toUtc().toIso8601String(),
       'mill': formData['mill'] ?? '',
       'extraMargin': formData['extraMargin'] ?? '',
       'gsm': jobDetails['fluteType'] ?? '',
@@ -241,11 +241,9 @@ class JobApiService {
       "status": "accept",
       "postPrintingFinishingOkQty": int.tryParse(formData['Quantity OK'] ?? '0') ?? 0,
       "date": DateTime.now().toUtc().toIso8601String(),
-      "operatorName": formData['Operator Name'] ?? '',
-      "colorsUsed": formData['Colors Used'] ?? '',
+      "oprName": formData['Operator Name'] ?? '',
       "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
       "machine": formData['Machine'] ?? '',
-      "remarks": formData['Remarks'] ?? '',
     };
     print("Printing Details");
     print(body);
