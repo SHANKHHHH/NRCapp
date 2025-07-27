@@ -302,7 +302,7 @@ class _DispatchBoardState extends State<DispatchBoard>
                 height: 50,
                 margin: const EdgeInsets.symmetric(horizontal: 16),
                 child: TabBar(
-                  controller: _tabController,
+          controller: _tabController,
                   isScrollable: true,
                   indicatorColor: Colors.blueAccent,
                   indicatorWeight: 3,
@@ -386,7 +386,7 @@ class _DispatchBoardState extends State<DispatchBoard>
               icon: const Icon(Icons.refresh),
               label: const Text('Retry'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueAccent,
+        backgroundColor: Colors.blueAccent,
                 foregroundColor: Colors.white,
               ),
             ),

@@ -654,4 +654,30 @@ class JobApi {
     }
   }
 
+  Future<List<Map<String, dynamic>>> getActivityLogs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    print('[getActivityLogs] Token: $token');
+    try {
+      final response = await dio.get(
+        '${AppStrings.baseUrl}/api/activity-logs',
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            if (token != null) 'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      print('[getActivityLogs] Response: ${response.statusCode} ${response.data}');
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        final logs = response.data['data'] as List;
+        return logs.cast<Map<String, dynamic>>();
+      }
+      return [];
+    } catch (e) {
+      print('[getActivityLogs] Error: $e');
+      return [];
+    }
+  }
+
 }
