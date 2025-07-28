@@ -124,10 +124,11 @@ class _CreateIDState extends State<CreateID> {
                     value: selectedRole,
                     items: [
                       'admin',
-                      'Planner',
-                      'Production Head',
-                      'Dispatch Executive',
-                      'QC Manager'
+                      'planner',
+                      'printer',
+                      'production_head',
+                      'dispatch_executive',
+                      'qc_manager'
                     ]
                         .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                         .toList(),

@@ -8,6 +8,7 @@ import '../../../data/datasources/job_api.dart';
 import '../../../data/models/Job.dart';
 import '../../../data/models/WorkStepAssignment.dart';
 import '../../../data/models/job_step_models.dart';
+import '../../routes/UserRoleManager.dart';
 import '../process/JobApiService.dart';
 import '../process/JobTimelineUI.dart';
 import '../process/PaperStoreFormManager.dart';
@@ -26,32 +27,53 @@ class JobTimelinePage extends StatefulWidget {
 }
 
 class _JobTimelinePageState extends State<JobTimelinePage> {
-  late List<StepData> steps;
+  List<StepData> steps = []; // Initialize with empty list
   int currentActiveStep = 0;
   Map<String, dynamic>? jobDetails;
   bool _jobLoading = false;
   String? _jobError;
   late final JobApiService _apiService;
+  String? _userRole;
 
   @override
   void initState() {
     super.initState();
     _apiService = JobApiService(JobApi(DioService.instance));
+    _loadUserRoleAndInitializeSteps();
+  }
+
+  Future<void> _loadUserRoleAndInitializeSteps() async {
+    // Load user role from UserRoleManager
+    final userRoleManager = UserRoleManager();
+    await userRoleManager.loadUserRole();
+    _userRole = userRoleManager.userRole;
+
+    print('User Role in JobTimelinePage: $_userRole');
+
     _initializeSteps();
     _initializeStepsWithBackendSync();
   }
 
   void _initializeSteps() {
-    steps = StepDataManager.initializeSteps(widget.assignedSteps);
-    if (steps.length > 1) {
-      currentActiveStep = 1;
-    }
+    setState(() {
+      steps = StepDataManager.initializeSteps(widget.assignedSteps, userRole: _userRole);
+      if (steps.length > 1) {
+        currentActiveStep = 1;
+      }
+    });
+    print('Initialized ${steps.length} steps for user role: $_userRole');
   }
 
   Future<void> _initializeStepsWithBackendSync() async {
     if (widget.jobNumber == null) return;
 
     print('Starting backend sync for ${steps.length} steps...');
+
+    // Check if user has any steps available for their role
+    if (steps.isEmpty || steps.length <= 1) {
+      print('No steps available for user role: $_userRole');
+      return;
+    }
 
     // Sync all steps with backend
     for (int i = 1; i < steps.length; i++) {
@@ -68,6 +90,12 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
   void _determineCurrentActiveStep() {
     setState(() {
+      // Check if user has any steps available for their role
+      if (steps.isEmpty || steps.length <= 1) {
+        print('No steps available for user role: $_userRole');
+        return;
+      }
+
       // First priority: Find any step that is currently 'started' (in progress)
       for (int i = 1; i < steps.length; i++) {
         if (steps[i].status == StepStatus.started) {
@@ -106,7 +134,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       final stepNo = StepDataManager.getStepNumber(step.type);
       final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
       final stepStatus = await _apiService.getStepStatusByType(step.type, widget.jobNumber!);
-      
+
       dynamic planningStatus;
       if (stepDetails is List && stepDetails!.isEmpty) {
         planningStatus = null;
@@ -536,6 +564,12 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   Future<void> _refreshStepStatuses() async {
     if (widget.jobNumber == null) return;
 
+    // Check if user has any steps available for their role
+    if (steps.isEmpty || steps.length <= 1) {
+      print('No steps available for user role: $_userRole');
+      return;
+    }
+
     for (int i = 1; i < steps.length; i++) {
       await _syncStepWithBackend(steps[i], i);
     }
@@ -600,22 +634,70 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             children: [
-              JobTimelineUI.buildProgressIndicator(steps),
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: steps.length,
-                itemBuilder: (context, index) {
-                  final step = steps[index];
-                  return StepItemWidget(
-                    step: step,
-                    index: index,
-                    isActive: _isStepActive(step),
-                    jobNumber: widget.jobNumber,
-                    onTap: () => _handleStepTap(step),
-                  );
-                },
-              ),
+              // Show loading indicator while initializing
+              if (_userRole == null)
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  margin: const EdgeInsets.all(16),
+                  child: const Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              // Show message if no steps available for user role
+              else if (steps.length <= 1)
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  margin: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.orange[50],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.orange[200]!),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        color: Colors.orange[700],
+                        size: 48,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'No Steps Available',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange[700],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'No steps are available for your role: $_userRole\nPlease contact your administrator.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.orange[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                JobTimelineUI.buildProgressIndicator(steps),
+              if (steps.length > 1)
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: steps.length,
+                  itemBuilder: (context, index) {
+                    final step = steps[index];
+                    return StepItemWidget(
+                      step: step,
+                      index: index,
+                      isActive: _isStepActive(step),
+                      jobNumber: widget.jobNumber,
+                      onTap: () => _handleStepTap(step),
+                    );
+                  },
+                ),
               const SizedBox(height: 40),
             ],
           ),

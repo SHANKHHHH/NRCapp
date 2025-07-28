@@ -137,8 +137,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _logout() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.remove('userRole'); // Clear the user role
-    _userRole = 'Guest'; // Reset the local variable
+    await prefs.remove('userRole');
+    await prefs.remove('accessToken');
+    await prefs.remove('userId');
+
+    print('All authentication data cleared during logout');
     context.pushReplacement('/'); // Navigate back to the login screen
   }
 
@@ -899,13 +902,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                           const SizedBox(height: 2),
-                          Text(
-                            log['user']?['name'] ?? log['userId'] ?? 'Unknown user',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey[600],
-                            ),
-                          ),
                         ],
                       ),
                     ),
@@ -924,6 +920,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
 
   Widget _buildActiveMemberCount() {
     return Container(

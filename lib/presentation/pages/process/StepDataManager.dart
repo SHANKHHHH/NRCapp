@@ -14,6 +14,56 @@ class StepDataManager {
     'DispatchProcess',
   ];
 
+  // Role-based step filtering
+  static List<StepType> getStepsForRole(String? userRole) {
+    switch (userRole?.toLowerCase()) {
+      case 'production_head':
+      case 'production head':
+        return [
+          StepType.corrugation,
+          StepType.fluteLamination,
+          StepType.punching,
+          StepType.flapPasting,
+        ];
+      case 'printer':
+        return [StepType.printing];
+      case 'qc_manager':
+      case 'qc manager':
+        return [StepType.qc];
+      case 'dispatch_executive':
+      case 'dispatch executive':
+        return [StepType.dispatch];
+      case 'admin':
+        return [
+          StepType.paperStore,
+          StepType.printing,
+          StepType.corrugation,
+          StepType.fluteLamination,
+          StepType.punching,
+          StepType.flapPasting,
+          StepType.qc,
+          StepType.dispatch,
+        ];
+      default:
+      // For unknown roles, return all steps
+        return [
+          StepType.paperStore,
+          StepType.printing,
+          StepType.corrugation,
+          StepType.fluteLamination,
+          StepType.punching,
+          StepType.flapPasting,
+          StepType.qc,
+          StepType.dispatch,
+        ];
+    }
+  }
+
+  static bool isStepAllowedForRole(StepType stepType, String? userRole) {
+    final allowedSteps = getStepsForRole(userRole);
+    return allowedSteps.contains(stepType);
+  }
+
   static String getDisplayName(String stepName) {
     switch (stepName) {
       case 'PaperStore': return 'Paper Store';
@@ -121,7 +171,7 @@ class StepDataManager {
     }
   }
 
-  static List<StepData> initializeSteps(List<dynamic>? assignedSteps) {
+  static List<StepData> initializeSteps(List<dynamic>? assignedSteps, {String? userRole}) {
     List<StepData> steps = [
       StepData(
         type: StepType.jobAssigned,
@@ -142,9 +192,16 @@ class StepDataManager {
       for (final stepMap in sortedSteps) {
         final stepName = stepMap['stepName'] ?? '';
         final displayName = getDisplayName(stepName);
+        final stepType = getStepTypeFromString(stepName);
+
+        // Filter steps based on user role
+        if (userRole != null && !isStepAllowedForRole(stepType, userRole)) {
+          continue; // Skip this step if not allowed for the user's role
+        }
+
         steps.add(
           StepData(
-            type: getStepTypeFromString(stepName),
+            type: stepType,
             title: displayName,
             description: getStepDescription(displayName),
           ),
