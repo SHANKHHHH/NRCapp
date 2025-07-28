@@ -273,6 +273,11 @@ class _WorkActionFormState extends State<WorkActionForm> {
           'End Time': _endTime?.toString() ?? DateTime.now().toString(),
         };
 
+        // Debug print to see what's being sent
+        print('WorkActionForm - Form Data being sent:');
+        print('Qty Sheet: ${_qtyController.text}');
+        print('Full formData: $formData');
+
         // Call the onComplete callback which will handle the specific step post operation
         widget.onComplete(formData);
 

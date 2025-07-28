@@ -9,7 +9,7 @@ import 'WorkDetailsScreen.dart';
 import '../../../data/datasources/job_api.dart';
 
 class WorkScreen extends StatefulWidget {
-  const WorkScreen({Key? key}) : super(key: key);
+  const  WorkScreen({Key? key}) : super(key: key);
 
   @override
   State<WorkScreen> createState() => _WorkScreenState();

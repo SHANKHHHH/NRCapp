@@ -235,11 +235,15 @@ class JobApiService {
 
     print(jobNumber);
     print(stepNo);
+    print('JobApiService - Printing formData received:');
+    print('Qty Sheet: ${formData['Qty Sheet']}');
+    print('Full formData: $formData');
+    
     final body = {
       "jobNrcJobNo": jobNumber,
       "jobStepId": jobStepId,
       "status": "accept",
-      "postPrintingFinishingOkQty": int.tryParse(formData['Quantity OK'] ?? '0') ?? 0,
+      "postPrintingFinishingOkQty": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
       "date": DateTime.now().toUtc().toIso8601String(),
       "oprName": formData['Operator Name'] ?? '',
       "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
@@ -261,6 +265,9 @@ class JobApiService {
 
     final jobStepId = stepDetails['id'];
     print("Corrugation job step number is $jobStepId");
+    print('JobApiService - Corrugation formData received:');
+    print('Qty Sheet: ${formData['Qty Sheet']}');
+    print('Full formData: $formData');
 
     final body = {
       "jobStepId": jobStepId,
@@ -269,7 +276,7 @@ class JobApiService {
       "date": DateTime.now().toUtc().toIso8601String(),
       "operatorName": formData['Operator Name'] ?? '',
       "machineNo": formData['Machine No'] ?? '',
-      "sheetsCount": int.tryParse(formData['Sheets Count'] ?? '0') ?? 0,
+      "sheetsCount": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
       "size": formData['Size'] ?? '',
       "gsm": formData['GSM'] ?? '',
       "fluteType": formData['Flute Type'] ?? '',
@@ -294,6 +301,10 @@ class JobApiService {
 
     final jobStepId = stepDetails['id'];
     print("Corrugation job step number is $jobStepId");
+    print('JobApiService - FluteLamination formData received:');
+    print('Qty Sheet: ${formData['Qty Sheet']}');
+    print('Full formData: $formData');
+    
     final body = {
       "jobNrcJobNo": jobNumber,
       "jobStepId": jobStepId,
@@ -302,7 +313,7 @@ class JobApiService {
       "shift": formData['Shift'] ?? '',                  // New
       "operatorName": formData['Operator Name'] ?? '',
       "film": formData['Film Type'] ?? '',               // Changed key from 'filmType' to 'film'
-      "okQty": int.tryParse(formData['OK Quantity'] ?? '0') ?? 0, // Changed key from okQuantity to okQty
+      "okQty": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0, // Use Qty Sheet from form
       "qcCheckSignBy": formData['QC Sign By'] ?? '',     // New
       "adhesive": formData['Adhesive'] ?? '',
       "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
@@ -322,6 +333,10 @@ class JobApiService {
 
     final jobStepId = stepDetails['id'];
     print("Punching job step number is $jobStepId");
+    print('JobApiService - Punching formData received:');
+    print('Qty Sheet: ${formData['Qty Sheet']}');
+    print('Full formData: $formData');
+    
     final body = {
       "jobNrcJobNo": jobNumber,
       "jobStepId": jobStepId,
@@ -329,7 +344,7 @@ class JobApiService {
       "date": DateTime.now().toUtc().toIso8601String(),
       "operatorName": formData['Operator Name'] ?? '',
       "machine": formData['Machine'] ?? '',
-      "okQty": int.tryParse(formData['OK Quantity'] ?? '0') ?? 0,
+      "okQty": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
       "die": formData['Die Used'] ?? '',
       "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
       "remarks": formData['Remarks'] ?? '',
@@ -348,13 +363,17 @@ class JobApiService {
 
     final jobStepId = stepDetails['id'];
     print("Quality Control job step number is $jobStepId");
+    print('JobApiService - QC formData received:');
+    print('Qty Sheet: ${formData['Qty Sheet']}');
+    print('Full formData: $formData');
+    
     final body = {
       "jobNrcJobNo": jobNumber,
       "jobStepId": jobStepId,
       "status": "accept",
       "date": DateTime.now().toUtc().toIso8601String(),
       "checkedBy": formData['Checked By'] ?? '',
-      "passQty": int.tryParse(formData['Pass Quantity'] ?? '0') ?? 0,
+      "passQty": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
       "rejectedQty": int.tryParse(formData['Reject Quantity'] ?? '0') ?? 0,
       "reasonForRejection": formData['Reason for Rejection'] ?? '',
       "remarks": formData['Remarks'] ?? '',
@@ -447,7 +466,6 @@ class JobApiService {
     }
   }
 
-  /// Get step details methods
   Future<Map<String, dynamic>?> getPrintingDetails(String jobNumber) async {
     return await _jobApi.getPrintingDetails(jobNumber);
   }
@@ -474,5 +492,25 @@ class JobApiService {
 
   Future<Map<String, dynamic>?> getDispatchDetails(String jobNumber) async {
     return await _jobApi.getDispatchDetails(jobNumber);
+  }
+
+  /// Get all job plannings
+  Future<List<Map<String, dynamic>>> getAllJobPlannings() async {
+    try {
+      return await _jobApi.getAllJobPlannings();
+    } catch (e) {
+      print('Error getting all job plannings: $e');
+      return [];
+    }
+  }
+
+  /// Get job planning steps by job number
+  Future<Map<String, dynamic>?> getJobPlanningStepsByNrcJobNo(String jobNumber) async {
+    try {
+      return await _jobApi.getJobPlanningStepsByNrcJobNo(jobNumber);
+    } catch (e) {
+      print('Error getting job planning steps: $e');
+      return null;
+    }
   }
 }

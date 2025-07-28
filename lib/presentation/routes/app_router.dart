@@ -1,5 +1,6 @@
 import 'package:go_router/go_router.dart';
 import 'package:nrc/presentation/pages/job/AllJobs.dart';
+import 'package:nrc/presentation/pages/work/WorkScreen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/Job.dart';
 import '../../data/models/purchase_order.dart';
@@ -34,6 +35,7 @@ final GoRouter router = GoRouter(
     GoRoute(path: '/printing-dashboard', builder: (context, state) => PrintingManagerBoard()),
     GoRoute(path: '/dispatch-dashboard', builder: (context, state) => DispatchBoard()),
     GoRoute(path: '/qc-dashboard', builder: (context, state) => QualityBoard()),
+    GoRoute(path: '/work-screen', builder: (context, state) => WorkScreen()),
     GoRoute(
       path: '/add-po',
       builder: (context, state) => PurchaseOrderInput(job: state.extra as Job),

@@ -492,6 +492,11 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
   Future<void> _handleWorkFormComplete(StepData step, Map<String, String> formData) async {
     try {
+      // Debug print to see what's being received
+      print('JobStep - Received formData:');
+      print('Qty Sheet: ${formData['Qty Sheet']}');
+      print('Full formData: $formData');
+
       showDialog(
         context: context,
         barrierDismissible: false,

@@ -75,7 +75,7 @@ class JobDetailScreen extends StatelessWidget {
                     ),
                     onPressed: () {
                       Navigator.of(context, rootNavigator: true).pop(); // Close success dialog
-                      context.go('/all-Jobs'); // ✅ GoRouter navigation
+                      context.go('/home'); // Navigate to main home page with bottom navigation
                     },
                     child: const Text(
                       'OK',
@@ -97,7 +97,7 @@ class JobDetailScreen extends StatelessWidget {
           content: Text('Failed to update job: $e'),
           actions: [
             TextButton(
-              onPressed: () => context.go('/all-Jobs'), // ✅ GoRouter fallback
+              onPressed: () => context.go('/home'), // Navigate to home page instead of all-Jobs
               child: const Text('OK'),
             ),
           ],
