@@ -27,7 +27,7 @@ class StepItemWidget extends StatelessWidget {
         (step.status == StepStatus.pending && isActive) ||
         step.status == StepStatus.started ||
         step.status == StepStatus.inProgress ||
-        (step.status == StepStatus.completed && step.formData.isNotEmpty);
+        step.status == StepStatus.completed;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),

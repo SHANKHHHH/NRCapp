@@ -98,7 +98,7 @@ class StepStatusHelper {
       return Icons.play_arrow;
     } else if (step.status == StepStatus.started || step.status == StepStatus.inProgress) {
       return Icons.edit;
-    } else if (step.status == StepStatus.completed && step.formData.isNotEmpty) {
+    } else if (step.status == StepStatus.completed) {
       return Icons.visibility;
     } else if (step.type == StepType.jobAssigned) {
       return Icons.info_outline;

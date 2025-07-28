@@ -446,4 +446,33 @@ class JobApiService {
         return null;
     }
   }
+
+  /// Get step details methods
+  Future<Map<String, dynamic>?> getPrintingDetails(String jobNumber) async {
+    return await _jobApi.getPrintingDetails(jobNumber);
+  }
+
+  Future<Map<String, dynamic>?> getCorrugationDetails(String jobNumber) async {
+    return await _jobApi.getCorrugationDetails(jobNumber);
+  }
+
+  Future<Map<String, dynamic>?> getFluteLaminationDetails(String jobNumber) async {
+    return await _jobApi.getFluteLaminationDetails(jobNumber);
+  }
+
+  Future<Map<String, dynamic>?> getPunchingDetails(String jobNumber) async {
+    return await _jobApi.getPunchingDetails(jobNumber);
+  }
+
+  Future<Map<String, dynamic>?> getFlapPastingDetails(String jobNumber) async {
+    return await _jobApi.getFlapPastingDetails(jobNumber);
+  }
+
+  Future<Map<String, dynamic>?> getQCDetails(String jobNumber) async {
+    return await _jobApi.getQCDetails(jobNumber);
+  }
+
+  Future<Map<String, dynamic>?> getDispatchDetails(String jobNumber) async {
+    return await _jobApi.getDispatchDetails(jobNumber);
+  }
 }

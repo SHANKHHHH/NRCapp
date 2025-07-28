@@ -283,9 +283,9 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     } else if (step.status == StepStatus.started || step.status == StepStatus.inProgress) {
       print('Showing work form for ${step.title}');
       _showWorkForm(step);
-    } else if (step.status == StepStatus.completed && step.formData.isNotEmpty) {
+    } else if (step.status == StepStatus.completed) {
       print('Showing completed step details for ${step.title}');
-      DialogManager.showCompletedStepDetails(context, step);
+      _showCompletedStepDetails(step);
     } else {
       print('Step ${step.title} is not available. Status: ${step.status}, Active: $isActive');
       DialogManager.showErrorMessage(
@@ -597,6 +597,152 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     Navigator.of(context).pop();
 
     DialogManager.showJobDetailsDialog(context, widget.jobNumber, jobDetails);
+  }
+
+  void _showCompletedStepDetails(StepData step) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: true,
+      builder: (context) => JobTimelineUI.buildLoadingDialog('Loading step details...'),
+    );
+
+    try {
+      Map<String, dynamic>? stepDetails;
+      
+      switch (step.type) {
+        case StepType.printing:
+          stepDetails = await _apiService.getPrintingDetails(widget.jobNumber!);
+          break;
+        case StepType.corrugation:
+          stepDetails = await _apiService.getCorrugationDetails(widget.jobNumber!);
+          break;
+        case StepType.fluteLamination:
+          stepDetails = await _apiService.getFluteLaminationDetails(widget.jobNumber!);
+          break;
+        case StepType.punching:
+          stepDetails = await _apiService.getPunchingDetails(widget.jobNumber!);
+          break;
+        case StepType.flapPasting:
+          stepDetails = await _apiService.getFlapPastingDetails(widget.jobNumber!);
+          break;
+        case StepType.qc:
+          stepDetails = await _apiService.getQCDetails(widget.jobNumber!);
+          break;
+        case StepType.dispatch:
+          stepDetails = await _apiService.getDispatchDetails(widget.jobNumber!);
+          break;
+        case StepType.paperStore:
+          stepDetails = await _apiService.getPaperStoreStepByJob(widget.jobNumber!);
+          break;
+        default:
+          stepDetails = null;
+      }
+
+      if (mounted) Navigator.pop(context); // Close loading dialog
+
+      if (stepDetails != null) {
+        // Handle different response structures
+        Map<String, dynamic> details;
+        if (stepDetails['data'] != null && stepDetails['data'] is List && stepDetails['data'].isNotEmpty) {
+          // Standard response structure with data array
+          details = stepDetails['data'][0];
+        } else if (stepDetails['data'] != null && stepDetails['data'] is Map) {
+          // Direct data object
+          details = stepDetails['data'];
+        } else if (step.type == StepType.paperStore && stepDetails is Map) {
+          // Paper Store specific - data is directly in the response
+          details = stepDetails;
+        } else {
+          details = {};
+        }
+        
+        if (details.isNotEmpty) {
+          _showStepDetailsDialog(step, details);
+        } else {
+          DialogManager.showErrorMessage(context, 'No details found for ${step.title}');
+        }
+      } else {
+        DialogManager.showErrorMessage(context, 'No details found for ${step.title}');
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context); // Close loading dialog
+      DialogManager.showErrorMessage(context, 'Failed to load ${step.title} details: ${e.toString()}');
+    }
+  }
+
+  void _showStepDetailsDialog(StepData step, Map<String, dynamic> details) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.info_outline, color: AppColors.maincolor),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '${step.title} Details',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Job Number: ${widget.jobNumber}',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 16),
+              ...details.entries.map((entry) {
+                if (entry.key == 'id' || entry.key == 'jobStepId' || entry.key == 'jobNrcJobNo') {
+                  return const SizedBox.shrink(); // Skip internal fields
+                }
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 120,
+                        child: Text(
+                          '${_formatFieldName(entry.key)}:',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          '${entry.value ?? 'N/A'}',
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatFieldName(String fieldName) {
+    // Convert camelCase or snake_case to Title Case
+    return fieldName
+        .replaceAll('_', ' ')
+        .split(' ')
+        .map((word) => word.isNotEmpty ? '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}' : '')
+        .join(' ');
   }
 
   @override
