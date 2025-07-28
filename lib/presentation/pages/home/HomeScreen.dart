@@ -17,7 +17,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  late String _userRole;
+  late String _userRole = 'Guest';
 
   // Status Overview state
   int totalOrders = 0;
@@ -390,10 +390,7 @@ class _HomeScreenState extends State<HomeScreen> {
             if (_userRole == 'admin') ...[
               _buildDepartmentCards(),
               const SizedBox(height: 28),
-            ],
-            _buildQuickStatus(),
-            const SizedBox(height: 28),
-            _buildLiveUpdates(),
+            ], _buildLiveUpdates(),
             const SizedBox(height: 28),
             _buildStatusOverview(),
             const SizedBox(height: 28),
@@ -552,70 +549,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildQuickStatus() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Quick Status',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildStatusItem('Total Stock', Icons.inventory_2_outlined, Colors.grey),
-              _buildStatusItem('Production', Icons.precision_manufacturing, Colors.orange),
-              _buildStatusItem('Quality Issues', Icons.warning_outlined, Colors.green),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusItem(String label, IconData icon, Color color) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: color, size: 24),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: Colors.black87,
-          ),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
 
   Widget _buildLiveUpdates() {
     return Container(
