@@ -10,6 +10,23 @@ class JobApi {
 
   JobApi(this.dio);
 
+  /// Helper function to format date in the correct format with milliseconds
+  /// This preserves the local time but formats it as UTC for database storage
+  String _formatDateWithMilliseconds() {
+    final now = DateTime.now();
+    // Get the current local time components
+    final year = now.year.toString().padLeft(4, '0');
+    final month = now.month.toString().padLeft(2, '0');
+    final day = now.day.toString().padLeft(2, '0');
+    final hour = now.hour.toString().padLeft(2, '0');
+    final minute = now.minute.toString().padLeft(2, '0');
+    final second = now.second.toString().padLeft(2, '0');
+    final millisecond = now.millisecond.toString().padLeft(3, '0');
+    
+    // Format as if it were UTC time (this preserves the local time values)
+    return '${year}-${month}-${day}T${hour}:${minute}:${second}.${millisecond}Z';
+  }
+
   Future<List<JobModel>> getJobs() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
@@ -635,7 +652,7 @@ class JobApi {
       print('[updateJobPlanningStepComplete] jobNumber: $jobNumber, stepNo: $stepNo, status: $status');
       final url = '${AppStrings.baseUrl}/api/job-planning/${jobNumber}/steps/$stepNo';
       final body = {
-        'endDate': DateTime.now().toUtc().toIso8601String(),
+        'endDate': _formatDateWithMilliseconds(),
         'status': status
       };
       print('[updateJobPlanningStepComplete] URL: $url');

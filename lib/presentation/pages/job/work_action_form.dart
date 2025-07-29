@@ -44,6 +44,23 @@ class _WorkActionFormState extends State<WorkActionForm> {
   bool _isLoading = false;
   late JobApi _job;
 
+  /// Helper function to format date in the correct format with milliseconds
+  /// This preserves the local time but formats it as UTC for database storage
+  String _formatDateWithMilliseconds() {
+    final now = DateTime.now();
+    // Get the current local time components
+    final year = now.year.toString().padLeft(4, '0');
+    final month = now.month.toString().padLeft(2, '0');
+    final day = now.day.toString().padLeft(2, '0');
+    final hour = now.hour.toString().padLeft(2, '0');
+    final minute = now.minute.toString().padLeft(2, '0');
+    final second = now.second.toString().padLeft(2, '0');
+    final millisecond = now.millisecond.toString().padLeft(3, '0');
+    
+    // Format as if it were UTC time (this preserves the local time values)
+    return '${year}-${month}-${day}T${hour}:${minute}:${second}.${millisecond}Z';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -81,29 +98,23 @@ class _WorkActionFormState extends State<WorkActionForm> {
             _isPauseDisabled = false;
             _isStopDisabled = true;
           }
-          else if (endDate != null && status == 'start') {
-            // Only Stop enabled
-            _status = 'stopped';
-            _startTime = DateTime.tryParse(startDate);
-            _endTime = DateTime.tryParse(endDate);
-            _isStartDisabled = true;
-            _isPauseDisabled = true;
-            _isStopDisabled = true;
-          } else if (status == 'stop') {
-            // All disabled, show Ended Time
+          else if (status == 'stop') {
+            // Work is completed - all disabled, show Ended Time
             _status = 'stop';
             _startTime = DateTime.tryParse(startDate);
             _endTime = DateTime.tryParse(endDate);
             _isStartDisabled = true;
             _isPauseDisabled = true;
             _isStopDisabled = true;
-          } else if (startDate != null) {
+          } else if (startDate != null && status == 'start') {
+            // Work is started but not stopped yet - user needs to click stop
             _status = 'start';
             _startTime = DateTime.tryParse(startDate);
             _isStartDisabled = true;
             _isPauseDisabled = false;
-            _isStopDisabled = false;
+            _isStopDisabled = false; // Stop button should be enabled
           } else {
+            // No work started yet
             _isStartDisabled = false;
             _isPauseDisabled = false;
             _isStopDisabled = false;
@@ -135,7 +146,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
       await widget.apiService!.updateJobPlanningStepFields(
         widget.jobNumber!,
         widget.stepNo!,
-        {'startDate': DateTime.now().toUtc().toIso8601String()},
+        {'startDate': _formatDateWithMilliseconds()},
       );
 
       // Set local start time
@@ -221,7 +232,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
       await widget.apiService!.updateJobPlanningStepFields(
         widget.jobNumber!,
         widget.stepNo!,
-        {'endDate': DateTime.now().toUtc().toIso8601String()},
+        {'endDate': _formatDateWithMilliseconds()},
       );
 
       setState(() {

@@ -6,6 +6,23 @@ class JobApiService {
 
   JobApiService(this._jobApi);
 
+  /// Helper function to format date in the correct format with milliseconds
+  /// This preserves the local time but formats it as UTC for database storage
+  String _formatDateWithMilliseconds() {
+    final now = DateTime.now();
+    // Get the current local time components
+    final year = now.year.toString().padLeft(4, '0');
+    final month = now.month.toString().padLeft(2, '0');
+    final day = now.day.toString().padLeft(2, '0');
+    final hour = now.hour.toString().padLeft(2, '0');
+    final minute = now.minute.toString().padLeft(2, '0');
+    final second = now.second.toString().padLeft(2, '0');
+    final millisecond = now.millisecond.toString().padLeft(3, '0');
+    
+    // Format as if it were UTC time (this preserves the local time values)
+    return '${year}-${month}-${day}T${hour}:${minute}:${second}.${millisecond}Z';
+  }
+
   /// Get step details from job planning
   Future<Map<String, dynamic>?> getJobPlanningStepDetails(String jobNumber, int stepNo) async {
     try {
@@ -79,7 +96,7 @@ class JobApiService {
       'sheetSize': jobDetails['boardSize'] ?? '',
       'required': int.tryParse(jobDetails['noUps']?.toString() ?? '0') ?? 0,
       'gsm': jobDetails['fluteType'] ?? '',
-      'issuedDate': DateTime.now().toUtc().toIso8601String(),
+      'issuedDate': _formatDateWithMilliseconds(),
     };
 
     await _jobApi.postPaperStore(body);
@@ -179,7 +196,7 @@ class JobApiService {
       'sheetSize': jobDetails['boardSize'] ?? '',
       'required': int.tryParse(jobDetails['noUps']?.toString() ?? '0') ?? 0,
       'available': int.tryParse(formData['available'] ?? '0') ?? 0,
-      'issuedDate': DateTime.now().toUtc().toIso8601String(),
+      'issuedDate': _formatDateWithMilliseconds(),
       'mill': formData['mill'] ?? '',
       'extraMargin': formData['extraMargin'] ?? '',
       'gsm': jobDetails['fluteType'] ?? '',
@@ -244,7 +261,7 @@ class JobApiService {
       "jobStepId": jobStepId,
       "status": "accept",
       "postPrintingFinishingOkQty": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
-      "date": DateTime.now().toUtc().toIso8601String(),
+      "date": _formatDateWithMilliseconds(),
       "oprName": formData['Operator Name'] ?? '',
       "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
       "machine": formData['Machine'] ?? '',
@@ -270,18 +287,22 @@ class JobApiService {
     print('Full formData: $formData');
 
     final body = {
-      "jobStepId": jobStepId,
-      "jobNrcJobNo": jobNumber,
-      "status": "accept",
-      "date": DateTime.now().toUtc().toIso8601String(),
-      "operatorName": formData['Operator Name'] ?? '',
-      "machineNo": formData['Machine No'] ?? '',
-      "sheetsCount": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
-      "size": formData['Size'] ?? '',
-      "gsm": formData['GSM'] ?? '',
-      "fluteType": formData['Flute Type'] ?? '',
-      "remarks": formData['Remarks'] ?? '',
+    "jobStepId": jobStepId,
+    "jobNrcJobNo": jobNumber,
+    "status": "accept",
+    "date": _formatDateWithMilliseconds(),
+    "shift": formData['Shift'] ?? '',
+    "oprName": formData['Operator Name'] ?? '',
+    "machineNo": formData['Machine No'] ?? '',
+    "noOfSheets": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
+    "size": formData['Size'] ?? '',
+    "gsm1": formData['GSM 1'] ?? '',
+    "gsm2": formData['GSM 2'] ?? '',
+    "flute": formData['Flute Type'] ?? '',
+    "remarks": formData['Remarks'] ?? '',
+    "qcCheckSignBy": formData['QC Check Sign By'] ?? '',
     };
+
 
     print("Corrugation Details Body:");
     print(body);
@@ -309,7 +330,7 @@ class JobApiService {
       "jobNrcJobNo": jobNumber,
       "jobStepId": jobStepId,
       "status": "accept",
-      "date": DateTime.now().toUtc().toIso8601String(),
+      "date": _formatDateWithMilliseconds(),
       "shift": formData['Shift'] ?? '',                  // New
       "operatorName": formData['Operator Name'] ?? '',
       "film": formData['Film Type'] ?? '',               // Changed key from 'filmType' to 'film'
@@ -341,7 +362,7 @@ class JobApiService {
       "jobNrcJobNo": jobNumber,
       "jobStepId": jobStepId,
       "status": "accept",
-      "date": DateTime.now().toUtc().toIso8601String(),
+      "date": _formatDateWithMilliseconds(),
       "operatorName": formData['Operator Name'] ?? '',
       "machine": formData['Machine'] ?? '',
       "okQty": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
@@ -371,7 +392,7 @@ class JobApiService {
       "jobNrcJobNo": jobNumber,
       "jobStepId": jobStepId,
       "status": "accept",
-      "date": DateTime.now().toUtc().toIso8601String(),
+      "date": _formatDateWithMilliseconds(),
       "checkedBy": formData['Checked By'] ?? '',
       "passQty": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
       "rejectedQty": int.tryParse(formData['Reject Quantity'] ?? '0') ?? 0,
@@ -397,7 +418,7 @@ class JobApiService {
       "jobNrcJobNo": jobNumber,
       "jobStepId": jobStepId,
       "status": "accept",
-      "date": DateTime.now().toUtc().toIso8601String(),
+      "date": _formatDateWithMilliseconds(),
       "shift": '',
       "operatorName": formData['Operator Name'] ?? '',
       "machineNo": formData['Machine No'] ?? '',
@@ -424,11 +445,11 @@ class JobApiService {
       "jobNrcJobNo": jobNumber,
       "jobStepId": jobStepId,
       "status": "accept",
-      "date": DateTime.now().toUtc().toIso8601String(),
+      "date": _formatDateWithMilliseconds(),
       "operatorName": formData['Operator Name'] ?? '',
       "noOfBoxes": int.tryParse(formData['No of Boxes'] ?? '0') ?? 0,
       "dispatchNo": formData['Dispatch No'] ?? '',
-      "dispatchDate": DateTime.now().toUtc().toIso8601String(),
+      "dispatchDate": _formatDateWithMilliseconds(),
       "balanceQty": int.tryParse(formData['Balance Qty'] ?? '0') ?? 0,
       "remarks": formData['Remarks'] ?? '',
     };

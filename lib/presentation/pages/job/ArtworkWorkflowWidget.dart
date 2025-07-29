@@ -268,7 +268,7 @@ class _ArtworkWorkflowWidgetState extends State<ArtworkWorkflowWidget> {
                           ],
                         )
                       : Text(
-                          controller.text.isEmpty ? 'Select Date' : controller.text,
+                          controller.text.isEmpty ? 'Select Date' : _formatDateForDisplay(controller.text),
                           style: TextStyle(
                             color: controller.text.isEmpty ? Colors.grey[500] : Colors.black87,
                             fontSize: 13,
@@ -407,6 +407,16 @@ class _ArtworkWorkflowWidgetState extends State<ArtworkWorkflowWidget> {
     final minute = date.minute.toString().padLeft(2, '0');
     final second = date.second.toString().padLeft(2, '0');
     return '$year-$month-${day}T$hour:$minute:${second}z';
+  }
+
+  String _formatDateForDisplay(String isoDate) {
+    if (isoDate.isEmpty) return '';
+    try {
+      final date = DateTime.parse(isoDate);
+      return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} at ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return isoDate; // Return original if parsing fails
+    }
   }
 
   Future<void> _pickAndUploadImage() async {

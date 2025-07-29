@@ -181,11 +181,11 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
             _buildJobDetailRow(Icons.attach_money, 'Latest Rate', job.latestRate?.toString() ?? ''),
             _buildJobDetailRow(Icons.money_off, 'Previous Rate', job.preRate?.toString() ?? ''),
             _buildJobDetailRow(Icons.straighten, 'Dimensions', (job.length != null && job.width != null && job.height != null) ? '${job.length} x ${job.width} x ${job.height}' : ''),
-            _buildJobDetailRow(Icons.check, 'Artwork Received Date', job.artworkReceivedDate ?? ''),
-            _buildJobDetailRow(Icons.check, 'Artwork Approval Date', job.artworkApprovalDate ?? ''),
-            _buildJobDetailRow(Icons.check, 'Shade Card Approval Date', job.shadeCardApprovalDate ?? ''),
-            _buildJobDetailRow(Icons.calendar_today, 'Created At', job.createdAt ?? ''),
-            _buildJobDetailRow(Icons.update, 'Updated At', job.updatedAt ?? ''),
+            _buildJobDetailRow(Icons.check, 'Artwork Received Date', _formatDateForDisplay(job.artworkReceivedDate ?? '')),
+            _buildJobDetailRow(Icons.check, 'Artwork Approval Date', _formatDateForDisplay(job.artworkApprovalDate ?? '')),
+            _buildJobDetailRow(Icons.check, 'Shade Card Approval Date', _formatDateForDisplay(job.shadeCardApprovalDate ?? '')),
+            _buildJobDetailRow(Icons.calendar_today, 'Created At', _formatDateForDisplay(job.createdAt ?? '')),
+            _buildJobDetailRow(Icons.update, 'Updated At', _formatDateForDisplay(job.updatedAt ?? '')),
             if (job.purchaseOrder != null)
               _buildJobDetailRow(Icons.assignment, 'Purchase Order', 'Available'),
             if (job.hasPoAdded)
@@ -265,7 +265,7 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
               ),
               const SizedBox(height: 20),
               // PO Date (read-only)
-              _buildJobDetailRow(Icons.calendar_today, 'PO Date', DateTime.now().toIso8601String()),
+              _buildJobDetailRow(Icons.calendar_today, 'PO Date', _formatDateForDisplay(DateTime.now().toIso8601String())),
               const SizedBox(height: 16),
               // Delivery Date
               _buildDateFormField(
@@ -399,24 +399,60 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
     required IconData icon,
     String? Function(String?)? validator,
   }) {
-    return TextFormField(
-      controller: controller,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon),
-        suffixIcon: IconButton(
-          icon: const Icon(Icons.calendar_today),
-          onPressed: () => _selectDate(controller),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: Colors.grey[700],
+          ),
         ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.grey[50],
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey[300]!),
+          ),
+          child: ListTile(
+            leading: Icon(icon, color: Colors.blue[600]),
+            title: Text(
+              controller.text.isEmpty ? 'Select Date' : _formatDateForDisplay(controller.text),
+              style: TextStyle(
+                color: controller.text.isEmpty ? Colors.grey[500] : Colors.black87,
+                fontSize: 14,
+              ),
+            ),
+            trailing: IconButton(
+              icon: Icon(Icons.calendar_today, color: Colors.blue[600]),
+              onPressed: () => _selectDate(controller),
+            ),
+            onTap: () => _selectDate(controller),
+          ),
         ),
-        filled: true,
-        fillColor: Colors.grey[50],
-      ),
-      readOnly: true,
-      validator: validator,
-      onTap: () => _selectDate(controller),
+        if (validator != null && controller.text.isNotEmpty)
+          Builder(
+            builder: (context) {
+              final validationResult = validator(controller.text);
+              if (validationResult != null) {
+                return Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    validationResult,
+                    style: TextStyle(
+                      color: Colors.red[600],
+                      fontSize: 12,
+                    ),
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+      ],
     );
   }
 
@@ -517,6 +553,16 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
     final minute = date.minute.toString().padLeft(2, '0');
     final second = date.second.toString().padLeft(2, '0');
     return '$year-$month-${day}T$hour:$minute:${second}z';
+  }
+
+  String _formatDateForDisplay(String isoDate) {
+    if (isoDate.isEmpty) return '';
+    try {
+      final date = DateTime.parse(isoDate);
+      return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} at ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return isoDate; // Return original if parsing fails
+    }
   }
 
   void _savePurchaseOrder() async {

@@ -389,16 +389,44 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         stepNo: stepNo,
         apiService: _apiService,
         onComplete: (formData) async {
-          // Format date into proper UTC ISO string with .000Z
+          // Format date into proper UTC ISO string with milliseconds
+          /// This preserves the local time but formats it as UTC for database storage
           String formatUtcDateToFixedIso(dynamic value) {
             if (value is DateTime) {
-              final utc = value.toUtc();
-              return "${utc.toIso8601String().split('.').first}.000Z";
+              // For DateTime objects, use the local time components
+              final year = value.year.toString().padLeft(4, '0');
+              final month = value.month.toString().padLeft(2, '0');
+              final day = value.day.toString().padLeft(2, '0');
+              final hour = value.hour.toString().padLeft(2, '0');
+              final minute = value.minute.toString().padLeft(2, '0');
+              final second = value.second.toString().padLeft(2, '0');
+              final millisecond = value.millisecond.toString().padLeft(3, '0');
+              
+              return '${year}-${month}-${day}T${hour}:${minute}:${second}.${millisecond}Z';
             } else if (value is String) {
-              final utc = DateTime.parse(value).toUtc();
-              return "${utc.toIso8601String().split('.').first}.000Z";
+              // For string dates, parse and use local time components
+              final parsed = DateTime.parse(value);
+              final year = parsed.year.toString().padLeft(4, '0');
+              final month = parsed.month.toString().padLeft(2, '0');
+              final day = parsed.day.toString().padLeft(2, '0');
+              final hour = parsed.hour.toString().padLeft(2, '0');
+              final minute = parsed.minute.toString().padLeft(2, '0');
+              final second = parsed.second.toString().padLeft(2, '0');
+              final millisecond = parsed.millisecond.toString().padLeft(3, '0');
+              
+              return '${year}-${month}-${day}T${hour}:${minute}:${second}.${millisecond}Z';
             }
-            return DateTime.now().toUtc().toIso8601String();
+            // For current time - preserve local time
+            final now = DateTime.now();
+            final year = now.year.toString().padLeft(4, '0');
+            final month = now.month.toString().padLeft(2, '0');
+            final day = now.day.toString().padLeft(2, '0');
+            final hour = now.hour.toString().padLeft(2, '0');
+            final minute = now.minute.toString().padLeft(2, '0');
+            final second = now.second.toString().padLeft(2, '0');
+            final millisecond = now.millisecond.toString().padLeft(3, '0');
+            
+            return '${year}-${month}-${day}T${hour}:${minute}:${second}.${millisecond}Z';
           }
 
           // Ensure your formData uses formatted date
