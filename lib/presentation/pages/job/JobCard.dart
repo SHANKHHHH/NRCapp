@@ -542,16 +542,9 @@ class EnhancedJobCard extends StatelessWidget {
         );
 
       case JobStatus.active:
-        final allArtworkDatesFilled =
-            (job.artworkReceivedDate?.isNotEmpty ?? false) &&
-                (job.artworkApprovalDate?.isNotEmpty ?? false) &&
-                (job.shadeCardApprovalDate?.isNotEmpty ?? false);
-
-        if (!allArtworkDatesFilled) {
-          return const SizedBox.shrink();
-        }
-
-        return _buildPurchaseOrderButton(context);
+        // For active jobs, don't show any status action buttons
+        // The purchase order button will be shown separately below
+        return const SizedBox.shrink();
 
       default:
         return const SizedBox.shrink();
@@ -787,8 +780,20 @@ class EnhancedJobCard extends StatelessWidget {
 
   bool _shouldShowStatusControls() {
     final jobStatus = _convertStringToJobStatus(job.status);
-    return jobStatus == JobStatus.active ||
-        jobStatus == JobStatus.workingStarted ||
+    
+    // Don't show status controls for active jobs if artwork workflow is complete
+    // because the purchase order button will be shown separately
+    if (jobStatus == JobStatus.active) {
+      final allArtworkDatesFilled =
+          (job.artworkReceivedDate?.isNotEmpty ?? false) &&
+              (job.artworkApprovalDate?.isNotEmpty ?? false) &&
+              (job.shadeCardApprovalDate?.isNotEmpty ?? false);
+      
+      // Only show status controls for active jobs if artwork workflow is incomplete
+      return !allArtworkDatesFilled;
+    }
+    
+    return jobStatus == JobStatus.workingStarted ||
         jobStatus == JobStatus.hold;
   }
 

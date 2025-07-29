@@ -9,10 +9,8 @@ import '../../../constants/colors.dart';
 import 'package:dio/dio.dart';
 import '../../../data/datasources/job_api.dart';
 
-
 class PurchaseOrderInput extends StatefulWidget {
   final Job job;
-
   final PurchaseOrder? existingPo;
 
   const PurchaseOrderInput({
@@ -77,35 +75,57 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
     super.dispose();
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
         Scaffold(
+          backgroundColor: Colors.grey[50],
           appBar: AppBar(
-            title: const Text('Add Purchase Order'),
+            title: const Text(
+              'Purchase Order',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.5,
+              ),
+            ),
             backgroundColor: AppColors.maincolor,
             foregroundColor: Colors.white,
             elevation: 0,
             leading: IconButton(
-              icon: const Icon(Icons.arrow_back),
+              icon: const Icon(Icons.arrow_back_ios, size: 20),
               onPressed: () => GoRouter.of(context).pop(),
+            ),
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(4),
+              child: Container(
+                height: 4,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppColors.maincolor.withOpacity(0.3),
+                      Colors.transparent,
+                    ],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                ),
+              ),
             ),
           ),
           body: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Job Details Card
                 _buildJobDetailsCard(),
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
 
                 // Purchase Order Form
                 _buildPurchaseOrderForm(),
 
-                const SizedBox(height: 30),
+                const SizedBox(height: 32),
 
                 // Action Buttons
                 _buildActionButtons(),
@@ -115,9 +135,37 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
         ),
         if (_isLoading)
           Container(
-            color: Colors.black.withOpacity(0.3),
-            child: const Center(
-              child: CircularProgressIndicator(),
+            color: Colors.black.withOpacity(0.4),
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Creating Purchase Order...',
+                      style: TextStyle(
+                        color: Colors.grey[700],
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
       ],
@@ -135,92 +183,395 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
         if (pendingValidity <= 70) {
           validityColor = Colors.green;
         } else if (pendingValidity <= 140) {
-          validityColor = Colors.yellow[700]!;
+          validityColor = Colors.orange;
         } else {
           validityColor = Colors.red;
         }
       }
     }
-    return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          gradient: LinearGradient(
-            colors: [Colors.blue[50]!, Colors.blue[100]!],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+        ],
+      ),
+      child: Column(
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.blue[50]!, Colors.blue[100]!],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
+            ),
+            child: Row(
               children: [
-                Icon(Icons.work, color: Colors.blue[700], size: 24),
-                const SizedBox(width: 8),
-                Text(
-                  'Job Details',
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[600],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.work_outline,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Job Information',
                   style: TextStyle(
                     fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue[700],
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            _buildJobDetailRow(Icons.confirmation_number, 'Job Number', job.nrcJobNo),
-            _buildJobDetailRow(Icons.person, 'Customer', job.customerName),
-            _buildJobDetailRow(Icons.category, 'Style/SKU', job.styleItemSKU),
-            _buildJobDetailRow(Icons.settings, 'Flute Type', job.fluteType),
-            _buildJobDetailRow(Icons.aspect_ratio, 'Board Size', job.boardSize ?? ''),
-            _buildJobDetailRow(Icons.format_list_numbered, 'No. of Ups', job.noUps ?? ''),
-            _buildJobDetailRow(Icons.attach_money, 'Latest Rate', job.latestRate?.toString() ?? ''),
-            _buildJobDetailRow(Icons.money_off, 'Previous Rate', job.preRate?.toString() ?? ''),
-            _buildJobDetailRow(Icons.straighten, 'Dimensions', (job.length != null && job.width != null && job.height != null) ? '${job.length} x ${job.width} x ${job.height}' : ''),
-            _buildJobDetailRow(Icons.check, 'Artwork Received Date', _formatDateForDisplay(job.artworkReceivedDate ?? '')),
-            _buildJobDetailRow(Icons.check, 'Artwork Approval Date', _formatDateForDisplay(job.artworkApprovalDate ?? '')),
-            _buildJobDetailRow(Icons.check, 'Shade Card Approval Date', _formatDateForDisplay(job.shadeCardApprovalDate ?? '')),
-            _buildJobDetailRow(Icons.calendar_today, 'Created At', _formatDateForDisplay(job.createdAt ?? '')),
-            _buildJobDetailRow(Icons.update, 'Updated At', _formatDateForDisplay(job.updatedAt ?? '')),
-            if (job.purchaseOrder != null)
-              _buildJobDetailRow(Icons.assignment, 'Purchase Order', 'Available'),
-            if (job.hasPoAdded)
-              _buildJobDetailRow(Icons.assignment_turned_in, 'PO Status', 'Added'),
-            // Pending Validity Indicator
-            if (job.shadeCardApprovalDate != null && job.shadeCardApprovalDate!.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Row(
-                  children: [
-                    Icon(Icons.circle, color: validityColor, size: 16),
-                    const SizedBox(width: 8),
-                    Text('$pendingValidity days since Shade Card Approval', style: TextStyle(color: validityColor, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-          ],
-        ),
+          ),
+          // Content
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                _buildJobDetailRow(Icons.tag, 'Job Number', job.nrcJobNo),
+                _buildJobDetailRow(Icons.person_outline, 'Customer', job.customerName),
+                _buildJobDetailRow(Icons.style, 'Style/SKU', job.styleItemSKU),
+                _buildJobDetailRow(Icons.category_outlined, 'Flute Type', job.fluteType),
+                _buildJobDetailRow(Icons.aspect_ratio, 'Board Size', job.boardSize ?? ''),
+                _buildJobDetailRow(Icons.format_list_numbered_outlined, 'No. of Ups', job.noUps ?? ''),
+                _buildJobDetailRow(Icons.attach_money, 'Latest Rate', job.latestRate?.toString() ?? ''),
+                _buildJobDetailRow(Icons.money_off_outlined, 'Previous Rate', job.preRate?.toString() ?? ''),
+                _buildJobDetailRow(Icons.straighten, 'Dimensions', (job.length != null && job.width != null && job.height != null) ? '${job.length} x ${job.width} x ${job.height}' : ''),
+                _buildJobDetailRow(Icons.check_circle_outline, 'Artwork Received', _formatDateForDisplay(job.artworkReceivedDate ?? '')),
+                _buildJobDetailRow(Icons.check_circle_outline, 'Artwork Approved', _formatDateForDisplay(job.artworkApprovalDate ?? '')),
+                _buildJobDetailRow(Icons.palette_outlined, 'Shade Card Approved', _formatDateForDisplay(job.shadeCardApprovalDate ?? '')),
+                _buildJobDetailRow(Icons.schedule, 'Created At', _formatDateForDisplay(job.createdAt ?? '')),
+                _buildJobDetailRow(Icons.update, 'Updated At', _formatDateForDisplay(job.updatedAt ?? '')),
+                if (job.purchaseOrder != null)
+                  _buildJobDetailRow(Icons.assignment_outlined, 'Purchase Order', 'Available'),
+                if (job.hasPoAdded)
+                  _buildJobDetailRow(Icons.assignment_turned_in_outlined, 'PO Status', 'Added'),
+
+                // Validity Status
+                if (job.shadeCardApprovalDate != null && job.shadeCardApprovalDate!.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(top: 16),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: validityColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: validityColor.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.schedule, color: validityColor, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '$pendingValidity days since Shade Card Approval',
+                            style: TextStyle(
+                              color: validityColor,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildJobDetailRow(IconData icon, String label, String value) {
+    if (value.isEmpty) return const SizedBox.shrink();
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: Colors.grey[600]),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 2,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPurchaseOrderForm() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.orange[50]!, Colors.orange[100]!],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.orange[600],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.add_business,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Purchase Order Details',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Form Content
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // PO Date (read-only)
+                  _buildInfoRow(Icons.calendar_today_outlined, 'PO Date', _formatDateForDisplay(DateTime.now().toIso8601String())),
+                  const SizedBox(height: 20),
+
+                  // Form Fields Grid
+                  _buildDateFormField(
+                    controller: _deliverDateController,
+                    label: 'Delivery Date',
+                    icon: Icons.local_shipping_outlined,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please select delivery date';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+
+                  _buildDateFormField(
+                    controller: _dispatchDateController,
+                    label: 'Dispatch Date',
+                    icon: Icons.schedule_outlined,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please select dispatch date';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+
+                  _buildDateFormField(
+                    controller: _nrcDeliveryDateController,
+                    label: 'NRC Delivery Date',
+                    icon: Icons.event_outlined,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please select NRC delivery date';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: _buildNumberFormField(
+                          controller: _totalPoController,
+                          label: 'Total PO Quantity',
+                          icon: Icons.inventory_outlined,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter total PO quantity';
+                            }
+                            if (int.tryParse(value) == null) {
+                              return 'Please enter a valid number';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildTextFormField(
+                          controller: _unitController,
+                          label: 'Unit',
+                          icon: Icons.straighten,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter unit';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  _buildNumberFormField(
+                    controller: _noOfSheetsController,
+                    label: 'Number of Sheets',
+                    icon: Icons.format_list_numbered_outlined,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please enter number of sheets';
+                      }
+                      if (int.tryParse(value) == null) {
+                        return 'Please enter a valid number';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Validity Status
+                  Builder(
+                    builder: (context) {
+                      int pendingValidity = 0;
+                      Color validityColor = Colors.grey;
+                      final job = widget.job;
+                      if (job.shadeCardApprovalDate != null && job.shadeCardApprovalDate!.isNotEmpty) {
+                        final shadeCardDate = DateTime.tryParse(job.shadeCardApprovalDate!);
+                        if (shadeCardDate != null) {
+                          pendingValidity = DateTime.now().difference(shadeCardDate).inDays;
+                          if (pendingValidity <= 70) {
+                            validityColor = Colors.green;
+                          } else if (pendingValidity <= 140) {
+                            validityColor = Colors.orange;
+                          } else {
+                            validityColor = Colors.red;
+                          }
+                        }
+                      }
+                      return Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: validityColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: validityColor.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.schedule, color: validityColor, size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '$pendingValidity days since Shade Card Approval',
+                                style: TextStyle(
+                                  color: validityColor,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: Colors.blue[600]),
-          const SizedBox(width: 8),
+          Icon(icon, size: 18, color: Colors.grey[600]),
+          const SizedBox(width: 12),
           Text(
             '$label: ',
             style: TextStyle(
               fontSize: 14,
-              color: Colors.grey[700],
               fontWeight: FontWeight.w500,
+              color: Colors.grey[600],
             ),
           ),
           Expanded(
@@ -238,161 +589,6 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
     );
   }
 
-  Widget _buildPurchaseOrderForm() {
-    return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.add_business, color: Colors.orange[700], size: 24),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Purchase Order Information',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange[700],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              // PO Date (read-only)
-              _buildJobDetailRow(Icons.calendar_today, 'PO Date', _formatDateForDisplay(DateTime.now().toIso8601String())),
-              const SizedBox(height: 16),
-              // Delivery Date
-              _buildDateFormField(
-                controller: _deliverDateController,
-                label: 'Delivery Date',
-                icon: Icons.local_shipping,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please select delivery date';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              // Dispatch Date
-              _buildDateFormField(
-                controller: _dispatchDateController,
-                label: 'Dispatch Date',
-                icon: Icons.schedule,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please select dispatch date';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              // NRC Delivery Date
-              _buildDateFormField(
-                controller: _nrcDeliveryDateController,
-                label: 'NRC Delivery Date',
-                icon: Icons.calendar_today,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please select NRC delivery date';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              // Total PO Quantity
-              _buildNumberFormField(
-                controller: _totalPoController,
-                label: 'Total PO Quantity',
-                icon: Icons.inventory,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter total PO quantity';
-                  }
-                  if (int.tryParse(value) == null) {
-                    return 'Please enter a valid number';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              // Unit
-              TextFormField(
-                controller: _unitController,
-                decoration: InputDecoration(
-                  labelText: 'Unit',
-                  prefixIcon: Icon(Icons.straighten),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  filled: true,
-                  fillColor: Colors.grey[50],
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter unit';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              // No of Sheets
-              _buildNumberFormField(
-                controller: _noOfSheetsController,
-                label: 'No. of Sheets',
-                icon: Icons.format_list_numbered,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter number of sheets';
-                  }
-                  if (int.tryParse(value) == null) {
-                    return 'Please enter a valid number';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              // Pending Validity (read-only)
-              Builder(
-                builder: (context) {
-                  int pendingValidity = 0;
-                  Color validityColor = Colors.grey;
-                  final job = widget.job;
-                  if (job.shadeCardApprovalDate != null && job.shadeCardApprovalDate!.isNotEmpty) {
-                    final shadeCardDate = DateTime.tryParse(job.shadeCardApprovalDate!);
-                    if (shadeCardDate != null) {
-                      pendingValidity = DateTime.now().difference(shadeCardDate).inDays;
-                      if (pendingValidity <= 70) {
-                        validityColor = Colors.green;
-                      } else if (pendingValidity <= 140) {
-                        validityColor = Colors.yellow[700]!;
-                      } else {
-                        validityColor = Colors.red;
-                      }
-                    }
-                  }
-                  return Row(
-                    children: [
-                      Icon(Icons.circle, color: validityColor, size: 16),
-                      const SizedBox(width: 8),
-                      Text('$pendingValidity days since Shade Card Approval', style: TextStyle(color: validityColor, fontWeight: FontWeight.bold)),
-                    ],
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildDateFormField({
     required TextEditingController controller,
     required String label,
@@ -404,33 +600,45 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
       children: [
         Text(
           label,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Colors.grey[700],
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
           ),
         ),
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
             color: Colors.grey[50],
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.grey[300]!),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey[200]!),
           ),
-          child: ListTile(
-            leading: Icon(icon, color: Colors.blue[600]),
-            title: Text(
-              controller.text.isEmpty ? 'Select Date' : _formatDateForDisplay(controller.text),
-              style: TextStyle(
-                color: controller.text.isEmpty ? Colors.grey[500] : Colors.black87,
-                fontSize: 14,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => _selectDate(controller),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Icon(icon, color: Colors.grey[600], size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        controller.text.isEmpty ? 'Select Date' : _formatDateForDisplay(controller.text),
+                        style: TextStyle(
+                          color: controller.text.isEmpty ? Colors.grey[500] : Colors.black87,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    Icon(Icons.calendar_today, color: Colors.grey[400], size: 18),
+                  ],
+                ),
               ),
             ),
-            trailing: IconButton(
-              icon: Icon(Icons.calendar_today, color: Colors.blue[600]),
-              onPressed: () => _selectDate(controller),
-            ),
-            onTap: () => _selectDate(controller),
           ),
         ),
         if (validator != null && controller.text.isNotEmpty)
@@ -445,6 +653,7 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
                     style: TextStyle(
                       color: Colors.red[600],
                       fontSize: 12,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 );
@@ -462,53 +671,165 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
     required IconData icon,
     String? Function(String?)? validator,
   }) {
-    return TextFormField(
-      controller: controller,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
         ),
-        filled: true,
-        fillColor: Colors.grey[50],
-      ),
-      keyboardType: TextInputType.number,
-      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-      validator: validator,
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          decoration: InputDecoration(
+            prefixIcon: Icon(icon, color: Colors.grey[600], size: 20),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[200]!),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[200]!),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.blue[600]!, width: 2),
+            ),
+            filled: true,
+            fillColor: Colors.grey[50],
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          ),
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          validator: validator,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTextFormField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    String? Function(String?)? validator,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          decoration: InputDecoration(
+            prefixIcon: Icon(icon, color: Colors.grey[600], size: 20),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[200]!),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[200]!),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.blue[600]!, width: 2),
+            ),
+            filled: true,
+            fillColor: Colors.grey[50],
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          ),
+          validator: validator,
+        ),
+      ],
     );
   }
 
   Widget _buildActionButtons() {
     return Column(
       children: [
-        SizedBox(
+        Container(
           width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: _savePurchaseOrder,
-            icon: const Icon(Icons.save),
-            label: const Text('Save Purchase Order'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green[600],
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+          height: 54,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.green[600]!, Colors.green[500]!],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.green.withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: _savePurchaseOrder,
+              child: const Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.save_outlined, color: Colors.white, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'Save Purchase Order',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
         ),
-        const SizedBox(height: 12),
-        SizedBox(
+        const SizedBox(height: 16),
+        Container(
           width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: () => GoRouter.of(context).pop(),
-            icon: const Icon(Icons.cancel),
-            label: const Text('Cancel'),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+          height: 54,
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey[300]!),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => GoRouter.of(context).pop(),
+              child: Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.close_outlined, color: Colors.grey[600], size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Cancel',
+                      style: TextStyle(
+                        color: Colors.grey[700],
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -603,28 +924,88 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
               barrierDismissible: false,
               builder: (context) => AlertDialog(
                 backgroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                title: Row(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                contentPadding: EdgeInsets.zero,
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.check_circle, color: Colors.blue, size: 32),
-                    SizedBox(width: 8),
-                    Text('PO Created', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Colors.green[50]!, Colors.green[100]!],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(20),
+                          topRight: Radius.circular(20),
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.green[600],
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.check,
+                              color: Colors.white,
+                              size: 32,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Success!',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Purchase Order has been created successfully!',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.black54,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green[600],
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
+                          ),
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                          },
+                          child: const Text(
+                            'OK',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-                content: const Text('Purchase Order has been created successfully!'),
-                actions: [
-                  TextButton(
-                    style: TextButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                    },
-                    child: const Text('OK'),
-                  ),
-                ],
               ),
             );
             context.pop(true);
@@ -638,8 +1019,24 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error:  ${e.toString()}'),
-            backgroundColor: Colors.red,
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Error: ${e.toString()}',
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red[600],
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            margin: const EdgeInsets.all(16),
           ),
         );
       }
