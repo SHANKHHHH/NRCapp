@@ -103,7 +103,13 @@ class _HomeScreenState extends State<HomeScreen> {
       final planningList = await _jobApi!.getAllJobPlannings();
       print('Planning List: ' + planningList.toString());
       totalOrders = planningList.length;
-      completedOrders = 0;
+      
+      // Fetch completed jobs using getCompletedJobs endpoint
+      print('Fetching completed jobs...');
+      final completedJobsList = await _jobApi!.getCompletedJobs();
+      completedOrders = completedJobsList.length;
+      print('Completed Jobs Count: $completedOrders');
+      
       inProgress = 0;
       for (var job in planningList) {
         if (job['steps'] is List) {
@@ -112,12 +118,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 (step) => step['stepName'] == 'DispatchProcess',
             orElse: () => null,
           );
-          if (dispatchStep != null) {
-            if (dispatchStep['status'] == 'stop') {
-              completedOrders++;
-            } else {
-              inProgress++;
-            }
+          if (dispatchStep != null && dispatchStep['status'] != 'stop') {
+            inProgress++;
           }
         }
       }
@@ -277,6 +279,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
                 icon: const Icon(Icons.list_alt),
                 label: const Text('Jobs'),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: () {
+                  context.push('/completed-jobs');
+                },
+                icon: const Icon(Icons.check_circle),
+                label: const Text('Completed Jobs'),
               ),
             ],
             ElevatedButton.icon(

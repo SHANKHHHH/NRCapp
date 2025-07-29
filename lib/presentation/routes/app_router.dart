@@ -20,6 +20,7 @@ import '../pages/purchaseorder/PoAssignDetailsPage.dart';
 import '../pages/purchaseorder/PurchaseOrderInput.dart';
 import 'UserRoleManager.dart';
 import '../pages/job/PendingJobsWorkPage.dart';
+import '../pages/job/CompletedJobsPage.dart';
 
 final UserRoleManager userRoleManager = UserRoleManager();
 
@@ -78,6 +79,10 @@ final GoRouter router = GoRouter(
           : <Map<String, dynamic>>[];
         return PendingJobsWorkPage(nrcJobNo: nrcJobNo, pendingFields: pendingFields);
       },
+    ),
+    GoRoute(
+      path: '/completed-jobs',
+      builder: (context, state) => const CompletedJobsPage(),
     ),
   ],
 );

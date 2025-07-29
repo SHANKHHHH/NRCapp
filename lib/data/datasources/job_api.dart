@@ -708,4 +708,30 @@ class JobApi {
     }
   }
 
+  Future<List<Map<String, dynamic>>> getCompletedJobs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    print('[getCompletedJobs] Token: $token');
+    try {
+      final response = await dio.get(
+        'https://nrc-backend-his4.onrender.com/api/completed-jobs',
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            if (token != null) 'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      print('[getCompletedJobs] Response: ${response.statusCode} ${response.data}');
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        final completedJobs = response.data['data'] as List;
+        return completedJobs.cast<Map<String, dynamic>>();
+      }
+      return [];
+    } catch (e) {
+      print('[getCompletedJobs] Error: $e');
+      return [];
+    }
+  }
+
 }

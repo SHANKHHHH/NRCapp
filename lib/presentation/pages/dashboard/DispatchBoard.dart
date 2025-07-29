@@ -20,6 +20,7 @@ class _DispatchBoardState extends State<DispatchBoard>
   String? error;
   List<_DispatchJobInfo> allDispatchJobs = [];
   List<_DispatchJobInfo> filteredJobs = [];
+  int completedJobsCount = 0;
 
   String searchQuery = '';
   String selectedFilter = 'All';
@@ -105,6 +106,16 @@ class _DispatchBoardState extends State<DispatchBoard>
         }
         return 0;
       });
+
+      // Fetch completed jobs count
+      try {
+        final completedJobsList = await jobApi.getCompletedJobs();
+        completedJobsCount = completedJobsList.length;
+        print('Completed Jobs Count: $completedJobsCount');
+      } catch (e) {
+        print('Error fetching completed jobs count: $e');
+        completedJobsCount = 0;
+      }
 
       setState(() {
         allDispatchJobs = jobs;
@@ -475,7 +486,7 @@ class _DispatchBoardState extends State<DispatchBoard>
         Expanded(child: _buildStatItem('Total', filteredJobs.length, Colors.blue)),
         Expanded(child: _buildStatItem('In Progress', stats['start'] ?? 0, Colors.orange)),
         Expanded(child: _buildStatItem('Planned', stats['planned'] ?? 0, Colors.blue)),
-        Expanded(child: _buildStatItem('Completed', stats['stop'] ?? 0, Colors.green)),
+        Expanded(child: _buildStatItem('Completed', completedJobsCount, Colors.green)),
       ],
     );
   }
