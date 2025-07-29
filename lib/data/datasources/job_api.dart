@@ -651,10 +651,21 @@ class JobApi {
       print('[updateJobPlanningStepComplete] Token: $token');
       print('[updateJobPlanningStepComplete] jobNumber: $jobNumber, stepNo: $stepNo, status: $status');
       final url = '${AppStrings.baseUrl}/api/job-planning/${jobNumber}/steps/$stepNo';
-      final body = {
-        'endDate': _formatDateWithMilliseconds(),
-        'status': status
-      };
+      
+      Map<String, dynamic> body;
+      if (status == 'start') {
+        // When starting, only set startDate
+        body = {
+          'startDate': _formatDateWithMilliseconds(),
+          'status': status
+        };
+      } else {
+        // For other statuses, just update the status
+        body = {
+          'status': status
+        };
+      }
+      
       print('[updateJobPlanningStepComplete] URL: $url');
       print('[updateJobPlanningStepComplete] Body: $body');
       final response = await dio.patch(url, data: body, options: Options(

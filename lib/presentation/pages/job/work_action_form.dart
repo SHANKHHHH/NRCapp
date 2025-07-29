@@ -91,16 +91,9 @@ class _WorkActionFormState extends State<WorkActionForm> {
         final endDate = stepDetails['endDate'];
         final status = stepDetails['status'];
         setState(() {
-          if (status == 'start' && startDate == null){
-            _startTime = DateTime.tryParse(startDate);
-            _endTime = DateTime.tryParse(endDate);
-            _isStartDisabled = false;
-            _isPauseDisabled = false;
-            _isStopDisabled = true;
-          }
-          else if (status == 'stop') {
+          if (status == 'stop' || endDate != null) {
             // Work is completed - all disabled, show Ended Time
-            _status = 'stop';
+            _status = 'stopped';
             _startTime = DateTime.tryParse(startDate);
             _endTime = DateTime.tryParse(endDate);
             _isStartDisabled = true;
