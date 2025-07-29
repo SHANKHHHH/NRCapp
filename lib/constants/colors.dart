@@ -7,6 +7,7 @@ class AppColors {
   static const Color backgroundPinkWhite = Color(0xFFF6F9FF);
   static const Color lightGrey = Color(0xFFF5F5F5);
   static const Color darkGrey = Color(0xFF757575);
+  static const Color lightWhite = Color(0xFF275273);
 
   static const translucentBlack = Color.fromARGB(97, 0, 0, 0);
   static const white = Colors.white;

@@ -243,7 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             const Text(
               'Menu',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.white),
             ),
             const SizedBox(height: 24),
             if (_userRole == 'admin')...[
@@ -251,14 +251,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: ElevatedButton(
                   onPressed: () => context.push('/create-id'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.white,
+                    backgroundColor: AppColors.maincolor,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),
                   child: const Text(
                     'Add New Account',
-                    style: TextStyle(color: AppColors.maincolor),
+                    style: TextStyle(color: AppColors.white),
                   ),
                 ),
               ),
@@ -269,32 +269,50 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: () {
                   context.push('/all-Jobs');
                 },
-                icon: const Icon(Icons.add),
-                label: const Text('Create New Job'),
+                icon: const Icon(Icons.add,color: AppColors.white),
+                label: const Text('Create New Job',style: TextStyle(color: AppColors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.maincolor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
               ),
               const SizedBox(height: 12),
               ElevatedButton.icon(
                 onPressed: () {
                   context.push('/job-list', extra: _userRole);
                 },
-                icon: const Icon(Icons.list_alt),
-                label: const Text('Jobs'),
+                icon: const Icon(Icons.list_alt,color: AppColors.white),
+                label: const Text('Jobs',style: TextStyle(color: AppColors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.maincolor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
               ),
               const SizedBox(height: 12),
               ElevatedButton.icon(
                 onPressed: () {
                   context.push('/completed-jobs');
                 },
-                icon: const Icon(Icons.check_circle),
-                label: const Text('Completed Jobs'),
+                icon: const Icon(Icons.check_circle,color: AppColors.white),
+                label: const Text('Completed Jobs',style: TextStyle(color: AppColors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.maincolor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
               ),
             ],
             ElevatedButton.icon(
               onPressed: _logout,
-              icon: const Icon(Icons.logout, color: AppColors.maincolor,),
-              label: const Text('Logout',style: TextStyle(color: AppColors.maincolor)),
+              icon: const Icon(Icons.logout, color: AppColors.white,),
+              label: const Text('Logout',style: TextStyle(color: AppColors.white)),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.white,
+                backgroundColor: AppColors.maincolor,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(4),
                 ),
