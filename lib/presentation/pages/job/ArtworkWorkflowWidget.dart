@@ -4,6 +4,8 @@ import '../../../data/models/Job.dart';
 import 'package:go_router/go_router.dart';
 import '../../../data/datasources/job_api.dart';
 import '../../../core/services/dio_service.dart';
+import 'dart:io';
+import 'dart:convert';
 
 class ArtworkWorkflowWidget extends StatefulWidget {
   final Job job;
@@ -177,14 +179,25 @@ class _ArtworkWorkflowWidgetState extends State<ArtworkWorkflowWidget> {
                 if (_artworkImageUrl != null && _artworkImageUrl!.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(left: 12),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: Image.network(
-                        _artworkImageUrl!,
-                        width: 40,
-                        height: 40,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => Icon(Icons.broken_image, color: Colors.grey),
+                    child: GestureDetector(
+                      onTap: () => _showImagePreview(),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: _artworkImageUrl!.startsWith('data:')
+                            ? Image.memory(
+                                base64Decode(_artworkImageUrl!.split(',')[1]),
+                                width: 40,
+                                height: 40,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) => Icon(Icons.broken_image, color: Colors.grey),
+                              )
+                            : Image.network(
+                                _artworkImageUrl!,
+                                width: 40,
+                                height: 40,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) => Icon(Icons.broken_image, color: Colors.grey),
+                              ),
                       ),
                     ),
                   ),
@@ -421,30 +434,42 @@ class _ArtworkWorkflowWidgetState extends State<ArtworkWorkflowWidget> {
 
   Future<void> _pickAndUploadImage() async {
     final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1024, // Limit image size
+      maxHeight: 1024,
+      imageQuality: 80, // Compress image
+    );
+    
     if (pickedFile != null) {
       setState(() {
         _isUploadingImage = true;
       });
+      
       try {
-        // Simulate upload and get a mock URL
-        final imageUrl = await _mockUploadImage(pickedFile.path);
+        // Convert image to base64 for storage
+        final imageUrl = await _uploadImageAsBase64(pickedFile.path);
+        
         setState(() {
           _artworkImageUrl = imageUrl;
         });
+        
+        // Update job with the image URL
         await _jobApi.updateJobField(widget.job.nrcJobNo, {'imageURL': imageUrl});
         widget.onJobUpdate(widget.job.copyWith(imageURL: imageUrl));
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Artwork image uploaded!'),
+            content: Text('Artwork image uploaded successfully!'),
             backgroundColor: Colors.green[600],
             behavior: SnackBarBehavior.floating,
           ),
         );
       } catch (e) {
+        print('Upload error: $e');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to upload image'),
+            content: Text('Failed to upload image: ${e.toString()}'),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
           ),
@@ -457,10 +482,106 @@ class _ArtworkWorkflowWidgetState extends State<ArtworkWorkflowWidget> {
     }
   }
 
-  Future<String> _mockUploadImage(String path) async {
-    // Simulate a network upload delay
-    await Future.delayed(Duration(seconds: 2));
-    // Return a mock image URL (in real app, upload to server and get URL)
-    return 'https://via.placeholder.com/150?text=Artwork';
+  Future<String> _uploadImageAsBase64(String imagePath) async {
+    try {
+      // Read the image file
+      final file = File(imagePath);
+      final bytes = await file.readAsBytes();
+      
+      // Convert to base64
+      final base64String = base64Encode(bytes);
+      
+      // Get file extension
+      final extension = imagePath.split('.').last.toLowerCase();
+      final mimeType = _getMimeType(extension);
+      
+      // Create data URL
+      final dataUrl = 'data:$mimeType;base64,$base64String';
+      
+      return dataUrl;
+    } catch (e) {
+      throw Exception('Failed to process image: $e');
+    }
+  }
+
+  String _getMimeType(String extension) {
+    switch (extension.toLowerCase()) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      default:
+        return 'image/jpeg';
+    }
+  }
+
+  // Alternative method using a reliable image hosting service
+  Future<String> _uploadToImageHostingService(String imagePath) async {
+    try {
+      final file = File(imagePath);
+      final bytes = await file.readAsBytes();
+      
+
+      final base64String = base64Encode(bytes);
+      final extension = imagePath.split('.').last.toLowerCase();
+      final mimeType = _getMimeType(extension);
+      
+      return 'data:$mimeType;base64,$base64String';
+    } catch (e) {
+      throw Exception('Failed to upload image: $e');
+    }
+  }
+
+  void _showImagePreview() {
+    if (_artworkImageUrl == null || _artworkImageUrl!.isEmpty) return;
+    
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Artwork Preview',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: Icon(Icons.close),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: _artworkImageUrl!.startsWith('data:')
+                    ? Image.memory(
+                        base64Decode(_artworkImageUrl!.split(',')[1]),
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) => Icon(Icons.broken_image, size: 100, color: Colors.grey),
+                      )
+                    : Image.network(
+                        _artworkImageUrl!,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) => Icon(Icons.broken_image, size: 100, color: Colors.grey),
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
