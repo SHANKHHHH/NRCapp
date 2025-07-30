@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:dio/dio.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nrc/constants/strings.dart';
+import '../../../constants/colors.dart';
 import '../../../data/models/job_model.dart';
 import '../../../data/datasources/job_api.dart';
 
@@ -36,7 +37,7 @@ class JobDetailScreen extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.maincolor),
                 strokeWidth: 3,
               ),
               SizedBox(height: 24),
@@ -122,7 +123,7 @@ class JobDetailScreen extends StatelessWidget {
                     width: double.infinity,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
+                        backgroundColor: AppColors.maincolor,
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -209,7 +210,7 @@ class JobDetailScreen extends StatelessWidget {
                     width: double.infinity,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
+                        backgroundColor: AppColors.maincolor,
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -253,11 +254,11 @@ class JobDetailScreen extends StatelessWidget {
             letterSpacing: -0.3,
           ),
         ),
-        backgroundColor: Colors.blue,
+        backgroundColor: AppColors.maincolor,
         foregroundColor: Colors.white,
         elevation: 0,
         systemOverlayStyle: const SystemUiOverlayStyle(
-          statusBarColor: Colors.blue,
+          statusBarColor: AppColors.maincolor,
           statusBarIconBrightness: Brightness.light,
         ),
       ),
@@ -320,7 +321,7 @@ class JobDetailScreen extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: Colors.blue,
+                    color: AppColors.maincolor,
                     letterSpacing: 0.3,
                   ),
                 ),
@@ -661,7 +662,7 @@ class JobDetailScreen extends StatelessWidget {
           children: [
             Icon(
               Icons.work_rounded,
-              color: Colors.blue,
+              color: AppColors.maincolor,
               size: 24,
             ),
             SizedBox(width: 12),
@@ -671,7 +672,7 @@ class JobDetailScreen extends StatelessWidget {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: Colors.blue,
+                color: AppColors.maincolor,
                 letterSpacing: 0.3,
               ),
             ),

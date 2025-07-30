@@ -110,7 +110,7 @@ class _WorkScreenState extends State<WorkScreen> {
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
         title: const Text('Work Assignment'),
-        backgroundColor: Colors.blue,
+        backgroundColor: AppColors.maincolor,
         foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
@@ -301,7 +301,7 @@ class _WorkScreenState extends State<WorkScreen> {
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: Colors.blue[600],
+                            color: AppColors.maincolor,
                             letterSpacing: 1.2,
                           ),
                         ),
@@ -310,7 +310,7 @@ class _WorkScreenState extends State<WorkScreen> {
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
-                            color: Colors.blue[700],
+                            color: AppColors.maincolor,
                           ),
                         ),
                       ],
@@ -340,7 +340,7 @@ class _WorkScreenState extends State<WorkScreen> {
                             color: Colors.blue[50],
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Icon(Icons.chevron_right, color: Colors.blue[600], size: 20),
+                          child: Icon(Icons.chevron_right, color: AppColors.maincolor, size: 20),
                         ),
                       ],
                     ),
@@ -386,7 +386,7 @@ class _WorkScreenState extends State<WorkScreen> {
                       );
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
+                      backgroundColor: AppColors.maincolor,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -400,16 +400,6 @@ class _WorkScreenState extends State<WorkScreen> {
                         fontWeight: FontWeight.w600,
                         fontSize: 16,
                       ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(16),
                     ),
                   ),
                 ),

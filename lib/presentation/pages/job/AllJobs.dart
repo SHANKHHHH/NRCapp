@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:dio/dio.dart';
+import 'package:nrc/constants/colors.dart';
 import 'package:nrc/constants/strings.dart';
 import '../../../data/models/job_model.dart';
 import '../../../data/datasources/job_api.dart';
@@ -257,7 +258,7 @@ class _AllJobsScreenState extends State<AllJobsScreen> {
             letterSpacing: -0.3,
           ),
         ),
-        backgroundColor: Colors.blue,
+        backgroundColor: AppColors.maincolor,
         foregroundColor: Colors.white,
         elevation: 0,
         systemOverlayStyle: const SystemUiOverlayStyle(

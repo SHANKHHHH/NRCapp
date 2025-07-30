@@ -243,7 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             const Text(
               'Menu',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.white),
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.maincolor),
             ),
             const SizedBox(height: 24),
             if (_userRole == 'admin')...[

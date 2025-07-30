@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nrc/constants/colors.dart';
 
 import '../home/HomeScreen.dart';
 import '../notification/NotificationsScreen.dart';
@@ -77,7 +78,7 @@ class _MainScaffoldState extends State<MainScaffold> {
             ],
             currentIndex: _selectedIndex,
             onTap: _onItemTapped,
-            selectedItemColor: Colors.blueAccent,
+            selectedItemColor: AppColors.maincolor,
             unselectedItemColor: Colors.grey,
             selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
             unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),

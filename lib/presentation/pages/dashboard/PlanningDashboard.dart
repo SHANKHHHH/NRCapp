@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 import '../../../constants/colors.dart';
 import 'package:dio/dio.dart';
 import '../../../data/datasources/job_api.dart';
-import '../../../data/models/job_model.dart';
 import '../../../constants/strings.dart';
 import '../../pages/job/PendingJobsWorkPage.dart';
 import '../../pages/job/AllRecentActivitiesPage.dart';

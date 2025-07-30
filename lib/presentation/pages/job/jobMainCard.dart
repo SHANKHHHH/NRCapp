@@ -1,3 +1,4 @@
+import '../../../constants/colors.dart';
 import '../../../data/models/job_model.dart';
 import 'package:flutter/material.dart';
 
@@ -44,7 +45,7 @@ class JobMainCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.blue,
+                        color: AppColors.maincolor,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -129,7 +130,7 @@ class JobMainCard extends StatelessWidget {
           ),
           child: Icon(
             icon,
-            color: Colors.blue,
+            color: AppColors.maincolor,
             size: 18,
           ),
         ),
@@ -171,7 +172,7 @@ class JobMainCard extends StatelessWidget {
       case 'completed':
       case 'done':
         statusColor = Colors.blue.withOpacity(0.2);
-        textColor = Colors.blue;
+        textColor = AppColors.maincolor;
         break;
       case 'pending':
       case 'in progress':
@@ -185,7 +186,7 @@ class JobMainCard extends StatelessWidget {
         break;
       default:
         statusColor = Colors.blue.withOpacity(0.1);
-        textColor = Colors.blue;
+        textColor = AppColors.maincolor;
     }
 
     return Container(
