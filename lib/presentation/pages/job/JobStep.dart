@@ -34,6 +34,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   String? _jobError;
   late final JobApiService _apiService;
   String? _userRole;
+  bool _isInitializing = true; // New loading state
+  String _loadingMessage = 'Initializing...'; // Loading message for user feedback
 
   @override
   void initState() {
@@ -43,6 +45,11 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   }
 
   Future<void> _loadUserRoleAndInitializeSteps() async {
+    setState(() {
+      _isInitializing = true;
+      _loadingMessage = 'Loading user role...';
+    });
+
     // Load user role from UserRoleManager
     final userRoleManager = UserRoleManager();
     await userRoleManager.loadUserRole();
@@ -50,8 +57,16 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
     print('User Role in JobTimelinePage: $_userRole');
 
+    setState(() {
+      _loadingMessage = 'Initializing steps...';
+    });
+
     _initializeSteps();
-    _initializeStepsWithBackendSync();
+    await _initializeStepsWithBackendSync();
+
+    setState(() {
+      _isInitializing = false;
+    });
   }
 
   void _initializeSteps() {
@@ -75,12 +90,25 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       return;
     }
 
-    // Sync all steps with backend
+    setState(() {
+      _loadingMessage = 'Syncing with backend...';
+    });
+
+    // Create a list of futures for parallel execution
+    List<Future<void>> syncFutures = [];
+    
     for (int i = 1; i < steps.length; i++) {
-      await _syncStepWithBackend(steps[i], i);
+      syncFutures.add(_syncStepWithBackend(steps[i], i));
     }
 
+    // Execute all sync operations in parallel
+    await Future.wait(syncFutures);
+
     print('Backend sync completed. Determining current active step...');
+
+    setState(() {
+      _loadingMessage = 'Finalizing...';
+    });
 
     // After syncing all steps, determine the current active step
     _determineCurrentActiveStep();
@@ -389,11 +417,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         stepNo: stepNo,
         apiService: _apiService,
         onComplete: (formData) async {
-          // Format date into proper UTC ISO string with milliseconds
-          /// This preserves the local time but formats it as UTC for database storage
+
+
           String formatUtcDateToFixedIso(dynamic value) {
             if (value is DateTime) {
-              // For DateTime objects, use the local time components
               final year = value.year.toString().padLeft(4, '0');
               final month = value.month.toString().padLeft(2, '0');
               final day = value.day.toString().padLeft(2, '0');
@@ -404,7 +431,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
               
               return '${year}-${month}-${day}T${hour}:${minute}:${second}.${millisecond}Z';
             } else if (value is String) {
-              // For string dates, parse and use local time components
               final parsed = DateTime.parse(value);
               final year = parsed.year.toString().padLeft(4, '0');
               final month = parsed.month.toString().padLeft(2, '0');
@@ -814,12 +840,18 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           child: Column(
             children: [
               // Show loading indicator while initializing
-              if (_userRole == null)
+              if (_isInitializing)
                 Container(
                   padding: const EdgeInsets.all(20),
                   margin: const EdgeInsets.all(16),
-                  child: const Center(
-                    child: CircularProgressIndicator(),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        CircularProgressIndicator(),
+                        const SizedBox(height: 16),
+                        Text(_loadingMessage),
+                      ],
+                    ),
                   ),
                 )
               // Show message if no steps available for user role
