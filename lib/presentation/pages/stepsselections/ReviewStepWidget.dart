@@ -186,7 +186,7 @@ class ReviewStepWidget extends StatelessWidget {
                               ? 'Machine: Not assigned (Optional for urgent jobs)'
                               : 'Machine: Not assigned',
                           style: TextStyle(
-                            color: selectedDemand?.toLowerCase() == 'urgent' 
+                            color: selectedDemand?.toLowerCase() == 'urgent'
                                 ? Colors.orange 
                                 : Colors.red,
                           ),

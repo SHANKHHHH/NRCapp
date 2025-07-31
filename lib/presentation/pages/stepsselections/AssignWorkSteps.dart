@@ -575,11 +575,11 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
   String _mapDemandToBackend(String? demand) {
     switch (demand?.toLowerCase()) {
       case 'urgent':
-        return 'HIGH';
+        return 'high';
       case 'regular':
-        return 'MEDIUM';
+        return 'medium';
       default:
-        return 'MEDIUM';
+        return 'null';
     }
   }
 
@@ -599,15 +599,29 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
         "steps": selectedWorkStepAssignments.asMap().entries.map((entry) {
           final index = entry.key;
           final assignment = entry.value;
+          
+          List<dynamic> machineDetails;
+          if (assignment.selectedMachine != null) {
+            // Machine is assigned - send as array with machine object
+            machineDetails = [{
+              "machineId": assignment.selectedMachine!.id.toString(),
+              "unit": assignment.selectedMachine!.unit.toString(),
+              "machineCode": assignment.selectedMachine!.machineCode.toString(),
+              "machineType": assignment.selectedMachine!.machineType.toString(),
+            }];
+          } else {
+            machineDetails = [{
+              "status": selectedDemand?.toLowerCase() == 'urgent',
+              "machineId": null,
+              "unit": null,
+              "machineCode": null,
+              "machineType": "Not assigned",
+            }];
+          }
           return {
             "stepNo": index + 1,
             "stepName": getBackendStepName(assignment.workStep.step),
-            "machineDetails": assignment.selectedMachine != null ? {
-              "id": assignment.selectedMachine!.id,
-              "unit": assignment.selectedMachine!.unit,
-              "machineCode": assignment.selectedMachine!.machineCode,
-              "machineType": assignment.selectedMachine!.machineType,
-            } : 'Not Required',
+            "machineDetails": machineDetails,
           };
         }).toList(),
       };
