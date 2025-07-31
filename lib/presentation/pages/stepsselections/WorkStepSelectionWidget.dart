@@ -40,6 +40,9 @@ class _WorkStepSelectionWidgetState extends State<WorkStepSelectionWidget>
     }
 
     _animationController.forward();
+    
+    // Pre-select all work steps by default
+    _preSelectAllWorkSteps();
   }
 
   @override
@@ -54,6 +57,25 @@ class _WorkStepSelectionWidgetState extends State<WorkStepSelectionWidget>
   bool _isSelected(WorkStep workStep) {
     return widget.selectedWorkStepAssignments
         .any((assignment) => assignment.workStep.step == workStep.step);
+  }
+
+  void _preSelectAllWorkSteps() {
+    // Only pre-select if no work steps are currently selected
+    if (widget.selectedWorkStepAssignments.isEmpty) {
+      List<WorkStepAssignment> allAssignments = widget.workSteps
+          .map((workStep) => WorkStepAssignment(workStep: workStep))
+          .toList();
+      
+      // Start animations for all selected items
+      for (var workStep in widget.workSteps) {
+        _cardAnimations[workStep.step]?.forward();
+      }
+      
+      // Use addPostFrameCallback to defer the callback until after build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.onSelectionChanged(allAssignments);
+      });
+    }
   }
 
   void _toggleSelection(WorkStep workStep) {

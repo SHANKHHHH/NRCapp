@@ -21,15 +21,23 @@ class ReviewStepWidget extends StatelessWidget {
 
   Color _getDemandColor(String? demand) {
     switch (demand?.toLowerCase()) {
-      case 'high':
+      case 'urgent':
         return Colors.redAccent;
-      case 'medium':
-        return Colors.amber;
-      case 'low':
-        return Colors.green;
+      case 'regular':
+        return Colors.blue;
       default:
         return Colors.grey;
     }
+  }
+
+  bool _requiresMachine(String step) {
+    return [
+      'printing',
+      'corrugation',
+      'flutelamination',
+      'punching',
+      'flappasting',
+    ].contains(step.toLowerCase());
   }
 
   IconData _getStepIcon(String step) {
@@ -172,6 +180,17 @@ class ReviewStepWidget extends StatelessWidget {
                               Text('Remarks: ${assignment.selectedMachine!.remarks}'),
                           ],
                         )
+                      else if (_requiresMachine(assignment.workStep.step))
+                        Text(
+                          selectedDemand?.toLowerCase() == 'urgent' 
+                              ? 'Machine: Not assigned (Optional for urgent jobs)'
+                              : 'Machine: Not assigned',
+                          style: TextStyle(
+                            color: selectedDemand?.toLowerCase() == 'urgent' 
+                                ? Colors.orange 
+                                : Colors.red,
+                          ),
+                        )
                       else
                         const Text(
                           'Machine: Not required',
@@ -185,23 +204,6 @@ class ReviewStepWidget extends StatelessWidget {
           },
         ),
         const SizedBox(height: 20),
-
-        // ✅ Done Button
-        Center(
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context); // Just close or proceed, no backend call
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: const Text('Done'),
-          ),
-        ),
-        const SizedBox(height: 40),
       ],
     );
   }

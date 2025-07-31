@@ -18,7 +18,7 @@ class _DemandStepWidgetState extends State<DemandStepWidget>
     with TickerProviderStateMixin {
   late final Map<String, AnimationController> _animations;
 
-  final List<String> _demands = ['High', 'Medium', 'Low'];
+  final List<String> _demands = ['Urgent', 'Regular'];
 
   @override
   void initState() {
@@ -58,12 +58,10 @@ class _DemandStepWidgetState extends State<DemandStepWidget>
 
   IconData _getIcon(String demand) {
     switch (demand.toLowerCase()) {
-      case 'high':
+      case 'urgent':
         return Icons.priority_high;
-      case 'medium':
+      case 'regular':
         return Icons.schedule;
-      case 'low':
-        return Icons.low_priority;
       default:
         return Icons.help;
     }
@@ -71,27 +69,12 @@ class _DemandStepWidgetState extends State<DemandStepWidget>
 
   Color _getColor(String demand) {
     switch (demand.toLowerCase()) {
-      case 'high':
+      case 'urgent':
         return Colors.redAccent;
-      case 'medium':
-        return Colors.amber;
-      case 'low':
-        return Colors.green;
+      case 'regular':
+        return Colors.blue;
       default:
         return Colors.grey;
-    }
-  }
-
-  String _getDemandDescription(String demand) {
-    switch (demand) {
-      case 'High':
-        return 'Urgent production, priority scheduling';
-      case 'Medium':
-        return 'Standard production timeline';
-      case 'Low':
-        return 'Flexible timeline, can be scheduled as available';
-      default:
-        return '';
     }
   }
 
@@ -132,21 +115,9 @@ class _DemandStepWidgetState extends State<DemandStepWidget>
             ),
           ),
 
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Text(
-            'What is the demand level for this job?',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[700],
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-
         Wrap(
-          spacing: 12,
-          runSpacing: 12,
+          spacing: 20,
+          runSpacing: 20,
           children: _demands.map((demand) {
             final isSelected = widget.selectedDemand == demand;
             final color = _getColor(demand);
@@ -162,8 +133,7 @@ class _DemandStepWidgetState extends State<DemandStepWidget>
                     onTap: () => _onSelected(demand),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
-                      width: MediaQuery.of(context).size.width / 3.5,
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(50),
                       decoration: BoxDecoration(
                         color: isSelected ? color.withOpacity(0.1) : Colors.white,
                         border: Border.all(
@@ -196,16 +166,6 @@ class _DemandStepWidgetState extends State<DemandStepWidget>
                               fontWeight: FontWeight.w600,
                               color: isSelected ? color : Colors.grey[800],
                               fontSize: 14,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _getDemandDescription(demand),
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey[600],
-                              height: 1.3,
                             ),
                           ),
                         ],

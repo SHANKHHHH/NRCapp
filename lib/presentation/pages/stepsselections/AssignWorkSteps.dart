@@ -59,6 +59,11 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
       case 1:
         return selectedWorkStepAssignments.isNotEmpty;
       case 2:
+        // For urgent jobs, allow proceeding without machine selection
+        if (selectedDemand?.toLowerCase() == 'urgent') {
+          return true; // Allow urgent jobs to proceed without machines
+        }
+        // For regular jobs, require machine selection
         return selectedWorkStepAssignments.every((assignment) =>
         assignment.selectedMachine != null ||
             !_requiresMachine(assignment.workStep.step));
@@ -319,11 +324,12 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
           selectedWorkStepAssignments: selectedWorkStepAssignments,
           onSelectionChanged: _onWorkStepSelectionChanged,
         );
-      case 2:
-        return MachineSelectionWidget(
-          selectedWorkStepAssignments: selectedWorkStepAssignments,
-          onSelectionChanged: _onMachineSelectionChanged,
-        );
+             case 2:
+         return MachineSelectionWidget(
+           selectedWorkStepAssignments: selectedWorkStepAssignments,
+           onSelectionChanged: _onMachineSelectionChanged,
+           selectedDemand: selectedDemand,
+         );
       case 3:
         return ReviewStepWidget(
           selectedDemand: selectedDemand,
@@ -566,6 +572,17 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
     }
   }
 
+  String _mapDemandToBackend(String? demand) {
+    switch (demand?.toLowerCase()) {
+      case 'urgent':
+        return 'HIGH';
+      case 'regular':
+        return 'MEDIUM';
+      default:
+        return 'MEDIUM';
+    }
+  }
+
   Future<void> _submitJobPlanning(BuildContext context) async {
     // Show loader dialog
     showDialog(
@@ -578,17 +595,24 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
       final url = '${AppStrings.baseUrl}/api/job-planning/';
       final payload = {
         "nrcJobNo": widget.job?.nrcJobNo ?? 'UNKNOWN',
-        "jobDemand": selectedDemand?.toLowerCase() ?? 'low',
+        "jobDemand": _mapDemandToBackend(selectedDemand),
         "steps": selectedWorkStepAssignments.asMap().entries.map((entry) {
           final index = entry.key;
           final assignment = entry.value;
           return {
             "stepNo": index + 1,
             "stepName": getBackendStepName(assignment.workStep.step),
-            "machineDetails": assignment.selectedMachine?.machineCode ?? 'Not Required',
+            "machineDetails": assignment.selectedMachine != null ? {
+              "id": assignment.selectedMachine!.id,
+              "unit": assignment.selectedMachine!.unit,
+              "machineCode": assignment.selectedMachine!.machineCode,
+              "machineType": assignment.selectedMachine!.machineType,
+            } : 'Not Required',
           };
         }).toList(),
       };
+      print("this is the final Payload for machine");
+      print(payload);
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('accessToken');
       final response = await dio.post(
@@ -602,13 +626,15 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
       );
       Navigator.of(context).pop(); // Dismiss loader
       if (response.statusCode == 200 || response.statusCode == 201) {
+        print("uploaded");
+        print(payload);
         context.go('/home');
       } else {
         DialogManager.showErrorMessage(context, "Failed to submit. Status:  {response.statusCode}");
       }
     } catch (e) {
       Navigator.of(context).pop(); // Dismiss loader
-      DialogManager.showErrorMessage(context, "Error:  {e.toString()}");
+      DialogManager.showErrorMessage(context, "Error:  {e.toString()}"+e.toString());
     }
   }
 }

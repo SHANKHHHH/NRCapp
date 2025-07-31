@@ -7,11 +7,13 @@ import 'package:dio/dio.dart';
 class MachineSelectionWidget extends StatefulWidget {
   final List<WorkStepAssignment> selectedWorkStepAssignments;
   final VoidCallback onSelectionChanged;
+  final String? selectedDemand;
 
   const MachineSelectionWidget({
     Key? key,
     required this.selectedWorkStepAssignments,
     required this.onSelectionChanged,
+    this.selectedDemand,
   }) : super(key: key);
 
   @override
@@ -121,11 +123,43 @@ class _MachineSelectionWidgetState extends State<MachineSelectionWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
-          child: Text(
-            'Assign Machines to Work Steps',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Assign Machines to Work Steps',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              if (widget.selectedDemand?.toLowerCase() == 'urgent')
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Urgent job: Machine assignment is optional. You can assign machines later.',
+                            style: TextStyle(
+                              color: Colors.orange.shade700,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
         const SizedBox(height: 8),
