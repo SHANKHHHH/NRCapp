@@ -15,17 +15,38 @@ class WorkScreen extends StatefulWidget {
   State<WorkScreen> createState() => _WorkScreenState();
 }
 
-class _WorkScreenState extends State<WorkScreen> {
+class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
   List<Map<String, dynamic>> jobPlannings = [];
   List<Map<String, dynamic>> filteredJobPlannings = [];
   bool _isLoading = true;
   String? _error;
   Map<String, String> jobStatuses = {}; // nrcJobNo -> status
   final TextEditingController _searchController = TextEditingController();
+  late AnimationController _blinkController;
+  late Animation<double> _blinkAnimation;
+
+  String _formatJobDemand(String demand) {
+    switch (demand.toLowerCase()) {
+      case 'high':
+        return 'Urgent';
+      case 'medium':
+        return 'Regular';
+      default:
+        return demand;
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    _blinkController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+    _blinkAnimation = Tween<double>(begin: 0.0, end: 4.0).animate(
+      CurvedAnimation(parent: _blinkController, curve: Curves.easeInOut),
+    );
+    _blinkController.repeat(reverse: true);
     _fetchAllJobPlannings();
     _searchController.addListener(_filterJobs);
   }
@@ -33,6 +54,7 @@ class _WorkScreenState extends State<WorkScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _blinkController.dispose();
     super.dispose();
   }
 
@@ -333,15 +355,35 @@ class _WorkScreenState extends State<WorkScreen> {
                               ),
                             ),
                           ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Colors.blue[50],
-                            borderRadius: BorderRadius.circular(8),
+                        if (_formatJobDemand(jobPlanning['jobDemand'] ?? '').toLowerCase() == 'urgent')
+                          AnimatedBuilder(
+                            animation: _blinkAnimation,
+                            builder: (context, child) {
+                              return Container(
+                                margin: const EdgeInsets.only(right: 30),
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.red,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.red.withOpacity(_blinkAnimation.value * 1.0),
+                                      blurRadius: 8,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                                child: Text(
+                                  'U',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 18,
+                                  ),
+                                ),
+                              );
+                            },
                           ),
-                          child: Icon(Icons.chevron_right, color: AppColors.maincolor, size: 20),
-                        ),
                       ],
                     ),
                   ],
@@ -362,7 +404,7 @@ class _WorkScreenState extends State<WorkScreen> {
                 _buildSummaryItem(
                   icon: Icons.trending_up,
                   title: 'Job Demand',
-                  value: jobPlanning['jobDemand'] ?? '',
+                  value: _formatJobDemand(jobPlanning['jobDemand'] ?? ''),
                   color: Colors.purple,
                 ),
                 _buildSummaryItem(
