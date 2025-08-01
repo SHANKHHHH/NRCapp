@@ -1,3 +1,5 @@
+import 'package:nrc/data/models/Job.dart';
+
 import '../../../data/datasources/job_api.dart';
 import '../../../data/models/job_step_models.dart';
 
@@ -63,9 +65,9 @@ class JobApiService {
   }
 
   /// Fetch job details
-  Future<Map<String, dynamic>?> fetchJobDetails(String jobNumber) async {
+  Future<List<Job>?> fetchJobDetails(String jobNumber) async {
     try {
-      return await _jobApi.getJobByNrcJobNo(jobNumber);
+      return await _jobApi.getJobsByNo(jobNumber);
     } catch (e) {
       print('Error fetching job details: $e');
       return null;

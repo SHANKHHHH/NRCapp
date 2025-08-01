@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:nrc/constants/colors.dart';
 import 'package:nrc/core/services/dio_service.dart';
@@ -29,7 +31,7 @@ class JobTimelinePage extends StatefulWidget {
 class _JobTimelinePageState extends State<JobTimelinePage> {
   List<StepData> steps = []; // Initialize with empty list
   int currentActiveStep = 0;
-  Map<String, dynamic>? jobDetails;
+  dynamic jobDetails;
   bool _jobLoading = false;
   String? _jobError;
   late final JobApiService _apiService;
@@ -282,7 +284,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
     try {
       final details = await _apiService.fetchJobDetails(widget.jobNumber ?? '');
+      print("This is the details I want");
+      print(details?[0]);
       setState(() {
+        // Handle the case where details might be a List<Job> or a single Job
         jobDetails = details;
         _jobLoading = false;
       });
@@ -306,8 +311,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     print('Step ${step.title} - isActive: $isActive, status: ${step.status}');
 
     if (step.status == StepStatus.pending && isActive) {
-      print('Showing start work dialog for ${step.title}');
-      DialogManager.showStartWorkDialog(context, step, () => _startWork(step));
+      // Check machine assignment before allowing start
+      _checkMachineAssignmentAndStart(step);
     } else if (step.status == StepStatus.started || step.status == StepStatus.inProgress) {
       print('Showing work form for ${step.title}');
       _showWorkForm(step);
@@ -321,6 +326,560 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           '${step.title} is not available yet. Complete previous steps first.'
       );
     }
+  }
+
+  Future<void> _checkMachineAssignmentAndStart(StepData step) async {
+    // Exclude these steps from machine assignment check
+    final excludedSteps = [
+      StepType.paperStore,
+      StepType.qc,
+      StepType.dispatch,
+    ];
+
+    if (excludedSteps.contains(step.type)) {
+      print('Step ${step.title} is excluded from machine assignment check');
+      _showWorkDetailsDialog(step, null);
+      return;
+    }
+
+    try {
+      // Get step details to check machine assignment
+      final stepNo = StepDataManager.getStepNumber(step.type);
+      final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
+      
+      if (stepDetails != null && stepDetails is Map) {
+        final machineDetails = stepDetails['machineDetails'];
+        
+        if (machineDetails != null && machineDetails is List && machineDetails.isNotEmpty) {
+          final machineInfo = machineDetails[0];
+          
+          if (machineInfo is Map && machineInfo['machineType'] == 'Not assigned') {
+            // Machine not assigned - show dialog
+            _showMachineNotAssignedDialog(step);
+            return;
+          }
+          
+          // Machine is assigned - show work details dialog with machine info
+          _showWorkDetailsDialog(step, machineInfo);
+          return;
+        }
+      }
+      
+      // No machine details found - show work details dialog without machine info
+      print('No machine details found for ${step.title}');
+      _showWorkDetailsDialog(step, null);
+      
+    } catch (e) {
+      print('Error checking machine assignment for ${step.title}: $e');
+      // If there's an error checking, show work details dialog
+      _showWorkDetailsDialog(step, null);
+    }
+  }
+
+  void _showMachineNotAssignedDialog(StepData step) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning, color: Colors.orange),
+            const SizedBox(width: 8),
+            Text('Machine Not Assigned'),
+          ],
+        ),
+        content: Text(
+          'Machine has not been assigned to ${step.title} yet. Please contact your supervisor to assign a machine before starting work.',
+          style: TextStyle(fontSize: 16),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showWorkDetailsDialog(StepData step, Map<String, dynamic>? machineInfo) async {
+    // Fetch job details if not already loaded
+    if (jobDetails == null) {
+      await _fetchJobDetails();
+    }
+
+    // Get PO details
+    String poQuantity = 'N/A';
+    String customerName = 'N/A';
+    print("This is The Job Details");
+          print(jobDetails);
+      
+      if (jobDetails != null) {
+        // Check if jobDetails is a list and get the first item
+        final jobData = jobDetails is List ? (jobDetails as List)[0] : jobDetails;
+      print("this is the JobData"+jobData);
+      if (jobData != null && jobData.purchaseOrders != null) {
+        final purchaseOrders = jobData.purchaseOrders as List;
+        if (purchaseOrders.isNotEmpty) {
+          final po = purchaseOrders[0];
+          print('Purchase Order Data: $po');
+          poQuantity = '${po.totalPOQuantity ?? 'N/A'} ${po.unit ?? ''}';
+          customerName = po.customer ?? 'N/A';
+          print('Quantity: $poQuantity');
+          print('Customer: $customerName');
+        }
+      }
+    }
+
+    // Get artwork image
+    String? imageUrl;
+    if (jobDetails != null) {
+      final jobData = jobDetails is List ? (jobDetails as List)[0] : jobDetails;
+      imageUrl = jobData?.imageURL;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: Row(
+          children: [
+            Icon(Icons.work, color: Colors.blue),
+            const SizedBox(width: 8),
+            Text('Work Details - ${step.title}'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Job Information
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue[200]!),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.assignment, color: Colors.blue[700], size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Job Information',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text('Job Number: ${widget.jobNumber}'),
+                    Text('Customer: $customerName'),
+                    Text('Quantity: $poQuantity'),
+                    if (jobDetails != null) ...[
+                      Builder(
+                        builder: (context) {
+                          final jobData = jobDetails is List ? (jobDetails as List)[0] : jobDetails;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (jobData?.styleItemSKU != null)
+                                Text('Style: ${jobData.styleItemSKU}'),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              
+              // Machine Details (if available)
+              if (machineInfo != null)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green[200]!),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.build, color: Colors.green[700], size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Machine Details',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green[700],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text('Machine Code: ${machineInfo['machineCode'] ?? 'N/A'}'),
+                      Text('Machine Type: ${machineInfo['machineType'] ?? 'N/A'}'),
+                      Text('Unit: ${machineInfo['unit'] ?? 'N/A'}'),
+                    ],
+                  ),
+                ),
+              
+              if (machineInfo != null) const SizedBox(height: 16),
+              
+              // Artwork Image (if available)
+              if (imageUrl != null && imageUrl.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.purple[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.purple[200]!),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.image, color: Colors.purple[700], size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Artwork Reference',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.purple[700],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        height: 200,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey[300]!),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(
+                            base64Decode(imageUrl),
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                color: Colors.grey[200],
+                                child: Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.broken_image, color: Colors.grey[400]),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Image not available',
+                                        style: TextStyle(color: Colors.grey[600]),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              DialogManager.showStartWorkDialog(context, step, () => _startWork(step));
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+            ),
+            child: Text('Start Work'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showJobDetailsDialog() async {
+    // Fetch job details if not already loaded
+    if (jobDetails == null) {
+      await _fetchJobDetails();
+    }
+
+    // Get PO details
+    String poQuantity = 'N/A';
+    String customerName = 'N/A';
+    
+    if (jobDetails != null) {
+      // Check if jobDetails is a list and get the first item
+      final jobData = jobDetails is List ? (jobDetails as List)[0] : jobDetails;
+      print(jobData.toString());
+      if (jobData != null && jobData.purchaseOrders != null) {
+        final purchaseOrders = jobData.purchaseOrders as List;
+        if (purchaseOrders.isNotEmpty) {
+          final po = purchaseOrders[0];
+          poQuantity = '${po.totalPOQuantity ?? 'N/A'}';
+          customerName =  jobData.customerName ?? 'N/A';
+        }
+      }
+    }
+
+    // Get artwork image
+    String? imageUrl;
+    if (jobDetails != null) {
+      final jobData = jobDetails is List ? (jobDetails as List)[0] : jobDetails;
+      imageUrl = jobData?.imageURL;
+    }
+
+    // Get machine information for current active step only
+    Map<String, dynamic>? currentStepMachineInfo;
+    
+    try {
+      if (currentActiveStep > 0 && currentActiveStep < steps.length) {
+        final currentStep = steps[currentActiveStep];
+        final stepNo = StepDataManager.getStepNumber(currentStep.type);
+        final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
+        
+        if (stepDetails != null && stepDetails is Map) {
+          final machineDetails = stepDetails['machineDetails'];
+          
+          if (machineDetails != null && machineDetails is List && machineDetails.isNotEmpty) {
+            final machineInfo = machineDetails[0];
+            if (machineInfo is Map) {
+              currentStepMachineInfo = {
+                'stepTitle': currentStep.title,
+                'machineCode': machineInfo['machineCode'] ?? 'Not assigned',
+                'machineId': machineInfo['id'] ?? 'Not assigned',
+                'unit': machineInfo['unit'] ?? 'Not assigned',
+              };
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('Error fetching current step machine information: $e');
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: Row(
+          children: [
+            Icon(Icons.info_outline, color: Colors.blue),
+            const SizedBox(width: 8),
+            Text('Job Details'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Job Information
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue[200]!),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.assignment, color: Colors.blue[700], size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Job Information',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text('Job Number: ${widget.jobNumber}'),
+                    Text('Customer: $customerName'),
+                    Text('Quantity: $poQuantity'),
+                    if (jobDetails != null) ...[
+                      Builder(
+                        builder: (context) {
+                          final jobData = jobDetails is List ? (jobDetails as List)[0] : jobDetails;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (jobData?.styleItemSKU != null)
+                                Text('Style: ${jobData.styleItemSKU}'),
+                              if (jobData?.boxDimensions != null)
+                                Text('Dimensions: ${jobData.boxDimensions}'),
+                              if (jobData?.fluteType != null)
+                                Text('Flute Type: ${jobData.fluteType}'),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              
+              // Current Step Machine Information
+              if (currentStepMachineInfo != null)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green[200]!),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.build, color: Colors.green[700], size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Current Step Machine',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green[700],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${currentStepMachineInfo['stepTitle']}:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 12),
+                                                  child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Machine: ${currentStepMachineInfo['machineCode']}'),
+                              Text('ID: ${currentStepMachineInfo['machineId']}'),
+                              Text('Unit: ${currentStepMachineInfo['unit']}'),
+                            ],
+                          ),
+                      ),
+                    ],
+                  ),
+                ),
+              
+              if (currentStepMachineInfo != null) const SizedBox(height: 16),
+              
+              // Artwork Image (if available)
+              if (imageUrl != null && imageUrl.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.purple[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.purple[200]!),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.image, color: Colors.purple[700], size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Artwork Reference',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.purple[700],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        height: 200,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey[300]!),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(
+                            base64Decode(imageUrl),
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                color: Colors.grey[200],
+                                child: Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.broken_image, color: Colors.grey[400]),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Image not available',
+                                        style: TextStyle(color: Colors.grey[600]),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   bool _isStepActive(StepData step) {
@@ -900,15 +1459,46 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                   itemCount: steps.length,
                   itemBuilder: (context, index) {
                     final step = steps[index];
-                    return StepItemWidget(
-                      step: step,
-                      index: index,
-                      isActive: _isStepActive(step),
-                      jobNumber: widget.jobNumber,
-                      onTap: () => _handleStepTap(step),
+                    return Column(
+                      children: [
+                        StepItemWidget(
+                          step: step,
+                          index: index,
+                          isActive: _isStepActive(step),
+                          jobNumber: widget.jobNumber,
+                          onTap: () => _handleStepTap(step),
+                        ),
+                        // Show Step Details button right after the current active step
+                        if (index == currentActiveStep && index > 0)
+                          Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            child: ElevatedButton.icon(
+                              onPressed: () => _showJobDetailsDialog(),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                foregroundColor: Colors.blue[700],
+                                elevation: 2,
+                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: BorderSide(color: Colors.blue[200]!),
+                                ),
+                              ),
+                              icon: Icon(Icons.info_outline, size: 20),
+                              label: Text(
+                                'Step Details',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     );
                   },
                 ),
+              
               const SizedBox(height: 40),
             ],
           ),
