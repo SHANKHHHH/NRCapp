@@ -104,9 +104,17 @@ class JobApiService {
     await _jobApi.postPaperStore(body);
   }
   /// Update job planning step status and dates
-  Future<void> updateJobPlanningStepComplete(String jobNumber, int stepNo, String status) async {
+  Future<void> updateJobPlanningStepComplete(String jobNumber, int stepNo, String status, {String? user}) async {
     try {
-      await _jobApi.updateJobPlanningStepComplete(jobNumber, stepNo, status);
+      // If user is provided, update with user information
+      if (user != null && user.isNotEmpty) {
+        await _jobApi.updateJobPlanningStepFields(jobNumber, stepNo, {
+          'status': status,
+          'user': user,
+        });
+      } else {
+        await _jobApi.updateJobPlanningStepComplete(jobNumber, stepNo, status);
+      }
 
       final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
       if (status == 'start') {
@@ -400,6 +408,7 @@ class JobApiService {
       "rejectedQty": int.tryParse(formData['Reject Quantity'] ?? '0') ?? 0,
       "reasonForRejection": formData['Reason for Rejection'] ?? '',
       "remarks": formData['Remarks'] ?? '',
+      "user": formData['Emp Id'] ?? '',
     };
     print(body);
     await _jobApi.putQCDetails(body,jobNumber);
@@ -428,6 +437,7 @@ class JobApiService {
       "quantity": int.tryParse(formData['Quantity'] ?? '0') ?? 0,
       "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
       "remarks": formData['Remarks'] ?? '',
+      "user": formData['Emp Id'] ?? '',
     };
     await _jobApi.putFlapPastingDetails(body,jobNumber);
   }
@@ -454,6 +464,7 @@ class JobApiService {
       "dispatchDate": _formatDateWithMilliseconds(),
       "balanceQty": int.tryParse(formData['Balance Qty'] ?? '0') ?? 0,
       "remarks": formData['Remarks'] ?? '',
+      "user": formData['Emp Id'] ?? '',
     };
     await _jobApi.putDispatchDetails(body,jobNumber);
   }

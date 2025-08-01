@@ -40,6 +40,7 @@ class WorkActionForm extends StatefulWidget {
 class _WorkActionFormState extends State<WorkActionForm> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _qtyController = TextEditingController();
+  final TextEditingController _empIdController = TextEditingController();
   String _status = 'pending';
   DateTime? _startTime;
   DateTime? _endTime;
@@ -74,6 +75,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
   @override
   void dispose() {
     _qtyController.dispose();
+    _empIdController.dispose();
     super.dispose();
   }
 
@@ -274,6 +276,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
       try {
         final formData = <String, String>{
           'Qty Sheet': _qtyController.text,
+          'Emp Id': _empIdController.text,
           'Status': _status,
           'Start Time': _startTime?.toString() ?? '',
           'End Time': _endTime?.toString() ?? DateTime.now().toString(),
@@ -282,7 +285,23 @@ class _WorkActionFormState extends State<WorkActionForm> {
         // Debug print to see what's being sent
         print('WorkActionForm - Form Data being sent:');
         print('Qty Sheet: ${_qtyController.text}');
+        print('Emp Id: ${_empIdController.text}');
         print('Full formData: $formData');
+
+        // Update job planning step status to 'stop' with user information
+        if (widget.jobNumber != null && widget.stepNo != null && widget.apiService != null) {
+          try {
+            await widget.apiService!.updateJobPlanningStepComplete(
+              widget.jobNumber!,
+              widget.stepNo!,
+              "stop",
+              user: _empIdController.text,
+            );
+            print('Updated job planning step status to stop with user: ${_empIdController.text}');
+          } catch (e) {
+            print('Error updating job planning step status: $e');
+          }
+        }
 
         // Call the onComplete callback which will handle the specific step post operation
         widget.onComplete(formData);
@@ -477,6 +496,35 @@ class _WorkActionFormState extends State<WorkActionForm> {
                             }
                           }
                           
+                          return null;
+                        },
+                      ),
+                      // Emp Id field
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _empIdController,
+                        keyboardType: TextInputType.text,
+                        decoration: InputDecoration(
+                          labelText: 'Emp Id',
+                          labelStyle: TextStyle(color: AppColors.maincolor),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: AppColors.maincolor, width: 2),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                          hintText: 'Enter Employee ID',
+                          hintStyle: TextStyle(color: Colors.grey[500], fontSize: 12),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter Emp Id';
+                          }
                           return null;
                         },
                       ),

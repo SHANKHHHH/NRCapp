@@ -98,7 +98,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
     // Create a list of futures for parallel execution
     List<Future<void>> syncFutures = [];
-    
+
     for (int i = 1; i < steps.length; i++) {
       syncFutures.add(_syncStepWithBackend(steps[i], i));
     }
@@ -328,6 +328,52 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     }
   }
 
+  Future<void> _checkMachineAssignmentForPendingStep(StepData step) async {
+    // Exclude these steps from machine assignment check
+    final excludedSteps = [
+      StepType.paperStore,
+      StepType.qc,
+      StepType.dispatch,
+    ];
+
+    if (excludedSteps.contains(step.type)) {
+      print('Step ${step.title} is excluded from machine assignment check');
+      // Don't show work details dialog for pending active step
+      return;
+    }
+
+    try {
+      // Get step details to check machine assignment
+      final stepNo = StepDataManager.getStepNumber(step.type);
+      final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
+
+      if (stepDetails != null && stepDetails is Map) {
+        final machineDetails = stepDetails['machineDetails'];
+
+        if (machineDetails != null && machineDetails is List && machineDetails.isNotEmpty) {
+          final machineInfo = machineDetails[0];
+
+          if (machineInfo is Map && machineInfo['machineType'] == 'Not assigned') {
+            // Machine not assigned - show dialog
+            _showMachineNotAssignedDialog(step);
+            return;
+          }
+
+          // Machine is assigned - don't show work details dialog for pending active step
+          print('Machine is assigned for ${step.title}, but not showing work details dialog');
+          return;
+        }
+      }
+
+      // No machine details found - don't show work details dialog for pending active step
+      print('No machine details found for ${step.title}, but not showing work details dialog');
+
+    } catch (e) {
+      print('Error checking machine assignment for ${step.title}: $e');
+      // Don't show work details dialog for pending active step
+    }
+  }
+
   Future<void> _checkMachineAssignmentAndStart(StepData step) async {
     // Exclude these steps from machine assignment check
     final excludedSteps = [
@@ -338,7 +384,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
     if (excludedSteps.contains(step.type)) {
       print('Step ${step.title} is excluded from machine assignment check');
-      _showWorkDetailsDialog(step, null);
+      // Show start work dialog directly for excluded steps
+      DialogManager.showStartWorkDialog(context, step, () => _startWork(step));
       return;
     }
 
@@ -346,33 +393,33 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       // Get step details to check machine assignment
       final stepNo = StepDataManager.getStepNumber(step.type);
       final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
-      
+
       if (stepDetails != null && stepDetails is Map) {
         final machineDetails = stepDetails['machineDetails'];
-        
+
         if (machineDetails != null && machineDetails is List && machineDetails.isNotEmpty) {
           final machineInfo = machineDetails[0];
-          
+
           if (machineInfo is Map && machineInfo['machineType'] == 'Not assigned') {
             // Machine not assigned - show dialog
             _showMachineNotAssignedDialog(step);
             return;
           }
-          
-          // Machine is assigned - show work details dialog with machine info
-          _showWorkDetailsDialog(step, machineInfo);
+
+          // Machine is assigned - show start work dialog directly
+          DialogManager.showStartWorkDialog(context, step, () => _startWork(step));
           return;
         }
       }
-      
-      // No machine details found - show work details dialog without machine info
+
+      // No machine details found - show start work dialog directly
       print('No machine details found for ${step.title}');
-      _showWorkDetailsDialog(step, null);
-      
+      DialogManager.showStartWorkDialog(context, step, () => _startWork(step));
+
     } catch (e) {
       print('Error checking machine assignment for ${step.title}: $e');
-      // If there's an error checking, show work details dialog
-      _showWorkDetailsDialog(step, null);
+      // If there's an error checking, show start work dialog directly
+      DialogManager.showStartWorkDialog(context, step, () => _startWork(step));
     }
   }
 
@@ -411,11 +458,11 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     String poQuantity = 'N/A';
     String customerName = 'N/A';
     print("This is The Job Details");
-          print(jobDetails);
-      
-      if (jobDetails != null) {
-        // Check if jobDetails is a list and get the first item
-        final jobData = jobDetails is List ? (jobDetails as List)[0] : jobDetails;
+    print(jobDetails);
+
+    if (jobDetails != null) {
+      // Check if jobDetails is a list and get the first item
+      final jobData = jobDetails is List ? (jobDetails as List)[0] : jobDetails;
       print("this is the JobData: $jobData");
       if (jobData != null && jobData.purchaseOrders != null) {
         final purchaseOrders = jobData.purchaseOrders as List;
@@ -499,9 +546,9 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // Machine Details (if available)
               if (machineInfo != null)
                 Container(
@@ -535,9 +582,9 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                     ],
                   ),
                 ),
-              
+
               if (machineInfo != null) const SizedBox(height: 16),
-              
+
               // Artwork Image (if available)
               if (imageUrl != null && imageUrl.isNotEmpty)
                 Container(
@@ -634,7 +681,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     // Get PO details
     String poQuantity = 'N/A';
     String customerName = 'N/A';
-    
+
     if (jobDetails != null) {
       // Check if jobDetails is a list and get the first item
       final jobData = jobDetails is List ? (jobDetails as List)[0] : jobDetails;
@@ -658,16 +705,16 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
     // Get machine information for current active step only
     Map<String, dynamic>? currentStepMachineInfo;
-    
+
     try {
       if (currentActiveStep > 0 && currentActiveStep < steps.length) {
         final currentStep = steps[currentActiveStep];
         final stepNo = StepDataManager.getStepNumber(currentStep.type);
         final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
-        
+
         if (stepDetails != null && stepDetails is Map) {
           final machineDetails = stepDetails['machineDetails'];
-          
+
           if (machineDetails != null && machineDetails is List && machineDetails.isNotEmpty) {
             final machineInfo = machineDetails[0];
             if (machineInfo is Map) {
@@ -751,9 +798,9 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // Current Step Machine Information
               if (currentStepMachineInfo != null)
                 Container(
@@ -791,21 +838,21 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                       const SizedBox(height: 8),
                       Padding(
                         padding: const EdgeInsets.only(left: 12),
-                                                  child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Machine: ${currentStepMachineInfo['machineCode']}'),
-                              Text('ID: ${currentStepMachineInfo['machineId']}'),
-                              Text('Unit: ${currentStepMachineInfo['unit']}'),
-                            ],
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Machine: ${currentStepMachineInfo['machineCode']}'),
+                            Text('ID: ${currentStepMachineInfo['machineId']}'),
+                            Text('Unit: ${currentStepMachineInfo['unit']}'),
+                          ],
+                        ),
                       ),
                     ],
                   ),
                 ),
-              
+
               if (currentStepMachineInfo != null) const SizedBox(height: 16),
-              
+
               // Artwork Image (if available)
               if (imageUrl != null && imageUrl.isNotEmpty)
                 Container(
@@ -1002,7 +1049,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
               final minute = value.minute.toString().padLeft(2, '0');
               final second = value.second.toString().padLeft(2, '0');
               final millisecond = value.millisecond.toString().padLeft(3, '0');
-              
+
               return '${year}-${month}-${day}T${hour}:${minute}:${second}.${millisecond}Z';
             } else if (value is String) {
               final parsed = DateTime.parse(value);
@@ -1013,7 +1060,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
               final minute = parsed.minute.toString().padLeft(2, '0');
               final second = parsed.second.toString().padLeft(2, '0');
               final millisecond = parsed.millisecond.toString().padLeft(3, '0');
-              
+
               return '${year}-${month}-${day}T${hour}:${minute}:${second}.${millisecond}Z';
             }
             // For current time - preserve local time
@@ -1025,7 +1072,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
             final minute = now.minute.toString().padLeft(2, '0');
             final second = now.second.toString().padLeft(2, '0');
             final millisecond = now.millisecond.toString().padLeft(3, '0');
-            
+
             return '${year}-${month}-${day}T${hour}:${minute}:${second}.${millisecond}Z';
           }
 
@@ -1242,7 +1289,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
     try {
       Map<String, dynamic>? stepDetails;
-      
+
       switch (step.type) {
         case StepType.printing:
           stepDetails = await _apiService.getPrintingDetails(widget.jobNumber!);
@@ -1289,7 +1336,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         } else {
           details = {};
         }
-        
+
         if (details.isNotEmpty) {
           _showStepDetailsDialog(step, details);
         } else {
@@ -1513,7 +1560,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                     );
                   },
                 ),
-              
+
               const SizedBox(height: 40),
             ],
           ),
