@@ -306,6 +306,20 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: () {
+                  context.push('/edit-machines');
+                },
+                icon: const Icon(Icons.build,color: AppColors.white),
+                label: const Text('Edit Machines',style: TextStyle(color: AppColors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.maincolor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
             ],
             ElevatedButton.icon(
               onPressed: _logout,

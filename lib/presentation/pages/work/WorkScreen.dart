@@ -43,7 +43,7 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     );
-    _blinkAnimation = Tween<double>(begin: 0.0, end: 4.0).animate(
+    _blinkAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _blinkController, curve: Curves.easeInOut),
     );
     _blinkController.repeat(reverse: true);
@@ -360,16 +360,16 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
                             animation: _blinkAnimation,
                             builder: (context, child) {
                               return Container(
-                                margin: const EdgeInsets.only(right: 30),
-                                padding: const EdgeInsets.all(16),
+                                margin: const EdgeInsets.only(right: 8),
+                                padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
                                   color: Colors.red,
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(12),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.red.withOpacity(_blinkAnimation.value * 1.0),
-                                      blurRadius: 8,
-                                      spreadRadius: 2,
+                                      color: Colors.red.withOpacity(_blinkAnimation.value * 0.6),
+                                      blurRadius: 6,
+                                      spreadRadius: 1,
                                     ),
                                   ],
                                 ),
@@ -378,7 +378,7 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.bold,
-                                    fontSize: 18,
+                                    fontSize: 16,
                                   ),
                                 ),
                               );

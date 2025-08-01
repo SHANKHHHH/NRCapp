@@ -441,7 +441,7 @@ class JobApi {
     }
   }
 
-  Future<void> updateJobPlanningStepFields(String jobNumber, int stepNo, Map<String, dynamic> body) async {
+  Future<Response> updateJobPlanningStepFields(String jobNumber, int stepNo, Map<String, dynamic> body) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('accessToken');
@@ -457,7 +457,8 @@ class JobApi {
         },
       ),
       );
-      print('[updateJobPlanningStepFields] Response:  [32m${response.statusCode} ${response.data} [0m');
+      print('[updateJobPlanningStepFields] Response: ${response.statusCode} ${response.data}');
+      return response;
     } catch (e) {
       print('[updateJobPlanningStepFields] Error: $e');
       throw e;
@@ -733,5 +734,4 @@ class JobApi {
       return [];
     }
   }
-
 }

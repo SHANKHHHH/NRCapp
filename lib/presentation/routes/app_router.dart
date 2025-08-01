@@ -3,6 +3,7 @@ import 'package:nrc/presentation/pages/job/AllJobs.dart';
 import 'package:nrc/presentation/pages/work/WorkScreen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/Job.dart';
+import '../../data/models/WorkStepAssignment.dart';
 import '../../data/models/purchase_order.dart';
 import '../pages/dashboard/DispatchBoard.dart';
 import '../pages/dashboard/PlanningDashboard.dart';
@@ -13,11 +14,13 @@ import '../pages/home/HomeScreen.dart';
 import '../pages/job/JobInputPage.dart';
 import '../pages/job/job_list_page.dart';
 import '../pages/login/login_page.dart';
+import '../pages/machines/EditMachinesPage.dart';
 import '../pages/main/MainHomePage.dart';
 import '../pages/members/AddMembers.dart';
 import '../pages/members/UserListPage.dart';
 import '../pages/purchaseorder/PoAssignDetailsPage.dart';
 import '../pages/purchaseorder/PurchaseOrderInput.dart';
+import '../pages/stepsselections/AssignWorkSteps.dart';
 import 'UserRoleManager.dart';
 import '../pages/job/PendingJobsWorkPage.dart';
 import '../pages/job/CompletedJobsPage.dart';
@@ -37,6 +40,7 @@ final GoRouter router = GoRouter(
     GoRoute(path: '/dispatch-dashboard', builder: (context, state) => DispatchBoard()),
     GoRoute(path: '/qc-dashboard', builder: (context, state) => QualityBoard()),
     GoRoute(path: '/work-screen', builder: (context, state) => WorkScreen()),
+    GoRoute(path: '/edit-machines', builder: (context, state) => EditMachinesPage()),
     GoRoute(
       path: '/add-po',
       builder: (context, state) => PurchaseOrderInput(job: state.extra as Job),
@@ -61,6 +65,19 @@ final GoRouter router = GoRouter(
       },
     ),
 
+    GoRoute(
+      path: '/assign-work-steps',
+      builder: (context, state) {
+        final extra = state.extra as Map<String, dynamic>?;
+        return AssignWorkSteps(
+          job: extra?['job'] as Job?,
+          jobPlanning: extra?['jobPlanning'] as Map<String, dynamic>?,
+          step: extra?['step'] as Map<String, dynamic>?,
+          assignment: extra?['assignment'] as WorkStepAssignment?,
+          isEditMode: extra?['isEditMode'] as bool? ?? false,
+        );
+      },
+    ),
 
     GoRoute(
       path: '/job-list',

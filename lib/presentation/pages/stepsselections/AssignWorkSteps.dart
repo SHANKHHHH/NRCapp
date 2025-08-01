@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'dart:convert';
 import '../../../data/datasources/job_api.dart';
 import '../../../data/models/Job.dart';
 import '../../../data/models/Machine.dart';
@@ -19,7 +20,19 @@ import '../../../constants/strings.dart';
 
 class AssignWorkSteps extends StatefulWidget {
   final Job? job;
-  const AssignWorkSteps({Key? key, this.job}) : super(key: key);
+  final Map<String, dynamic>? jobPlanning;
+  final Map<String, dynamic>? step;
+  final WorkStepAssignment? assignment;
+  final bool isEditMode;
+  
+  const AssignWorkSteps({
+    Key? key, 
+    this.job,
+    this.jobPlanning,
+    this.step,
+    this.assignment,
+    this.isEditMode = false,
+  }) : super(key: key);
 
   @override
   _AssignWorkStepsState createState() => _AssignWorkStepsState();
@@ -32,6 +45,7 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
   List<WorkStepAssignment> selectedWorkStepAssignments = [];
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
+  JobApi? _jobApi;
 
   @override
   void initState() {
@@ -44,6 +58,23 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
     _animationController.forward();
+    
+    // Initialize API
+    final dio = Dio();
+    _jobApi = JobApi(dio);
+    
+    // Handle edit mode
+    if (widget.isEditMode && widget.jobPlanning != null && widget.assignment != null) {
+      _initializeEditMode();
+    }
+  }
+
+  void _initializeEditMode() {
+    setState(() {
+      selectedDemand = widget.jobPlanning!['jobDemand'];
+      selectedWorkStepAssignments = [widget.assignment!];
+      currentStep = 2; // Go directly to machine selection step
+    });
   }
 
   @override
@@ -136,14 +167,96 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
     }
   }
 
+  Future<void> _updateMachineAssignment() async {
+    if (widget.isEditMode && widget.jobPlanning != null && widget.step != null) {
+      try {
+        final assignment = selectedWorkStepAssignments.first;
+        final jobNumber = widget.jobPlanning!['nrcJobNo'];
+        final stepNo = widget.step!['stepNo'];
+
+        print('--- Debug Info ---');
+        print('Job Number: $jobNumber');
+        print('Step No: $stepNo');
+        print('Assignment Step: ${assignment.workStep.step}');
+        print('Selected Machine: ${assignment.selectedMachine?.machineCode}');
+
+        // Prepare machineDetails list
+        List<Map<String, dynamic>> machineDetails = [];
+
+        if (assignment.selectedMachine != null) {
+          // Machine assigned
+          machineDetails.add({
+            'id': assignment.selectedMachine!.id.toString(),
+            'unit': assignment.selectedMachine!.unit.toString(),
+            'machineCode': assignment.selectedMachine!.machineCode.toString(),
+            'machineType': assignment.selectedMachine!.machineType.toString(),
+          });
+        } else {
+          // No machine assigned
+          machineDetails.add({
+            'id': '1',
+            'unit': null,
+            'machineCode': null,
+            'machineType': 'Not assigned',
+          });
+        }
+
+        // Prepare request body - match the structure used in _submitJobPlanning
+        Map<String, dynamic> updateData = {
+          'stepName': getBackendStepName(assignment.workStep.step),
+          'status':'planned',
+          'machineDetails': machineDetails,
+        };
+
+        print('=== UPDATE DATA BEING SENT ===');
+        print('Complete updateData: $updateData');
+        print('Step Name: ${getBackendStepName(assignment.workStep.step)}');
+        print('Status: planned');
+        print('Machine Details: $machineDetails');
+        print('JSON representation: ${jsonEncode(updateData)}');
+        print('=== END UPDATE DATA ===');
+
+        // Make the API call and capture response
+        final response = await _jobApi!.updateJobPlanningStepFields(jobNumber, stepNo, updateData);
+
+        print('API Response Status: ${response.statusCode}');
+        print('API Response Data: ${response.data}');
+
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Machine assignment updated successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // Navigate back with success
+        context.pop(true);
+      } catch (e, stackTrace) {
+        print('❌ Error updating machine assignment: $e');
+        print('StackTrace: $stackTrace');
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update machine assignment: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } else {
+      print('❗ Missing required data: isEditMode=${widget.isEditMode}, jobPlanning=${widget.jobPlanning}, step=${widget.step}');
+    }
+  }
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: const Text(
-          'Work Assignment',
-          style: TextStyle(
+        title: Text(
+          widget.isEditMode ? 'Edit Machine Assignment' : 'Work Assignment',
+          style: const TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 22,
           ),
@@ -164,11 +277,12 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
         child: Column(
           children: [
             // Progress Indicator - Fixed at top
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              color: Colors.white,
-              child: _buildProgressIndicator(),
-            ),
+            if (!widget.isEditMode)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                color: Colors.white,
+                child: _buildProgressIndicator(),
+              ),
 
             // Main Content - Scrollable
             Expanded(
@@ -198,8 +312,47 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
             ),
           ],
         ),
-        child: _buildNavigationButtons(),
+        child: widget.isEditMode 
+            ? _buildEditModeButtons()
+            : _buildNavigationButtons(),
       ),
+    );
+  }
+
+  Widget _buildEditModeButtons() {
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton(
+            onPressed: () => context.pop(),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              side: BorderSide(color: Colors.grey[400]!),
+            ),
+            child: const Text('Cancel', style: TextStyle(fontSize: 16)),
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          flex: 2,
+          child: ElevatedButton(
+            onPressed: _updateMachineAssignment,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              elevation: 2,
+            ),
+            child: const Text('Update Assignment', style: TextStyle(fontSize: 16)),
+          ),
+        ),
+      ],
     );
   }
 
@@ -252,6 +405,56 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
   }
 
   Widget _buildCurrentStepContent() {
+    if (widget.isEditMode) {
+      return Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.08),
+              spreadRadius: 0,
+              blurRadius: 20,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Edit Machine Assignment',
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Update machine assignment for this step',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey[600],
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 24),
+              MachineSelectionWidget(
+                selectedWorkStepAssignments: selectedWorkStepAssignments,
+                onSelectionChanged: _onMachineSelectionChanged,
+                selectedDemand: selectedDemand,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final stepTitles = [
       'Select Job Demand',
       'Choose Work Steps',
@@ -324,12 +527,12 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
           selectedWorkStepAssignments: selectedWorkStepAssignments,
           onSelectionChanged: _onWorkStepSelectionChanged,
         );
-             case 2:
-         return MachineSelectionWidget(
-           selectedWorkStepAssignments: selectedWorkStepAssignments,
-           onSelectionChanged: _onMachineSelectionChanged,
-           selectedDemand: selectedDemand,
-         );
+      case 2:
+        return MachineSelectionWidget(
+          selectedWorkStepAssignments: selectedWorkStepAssignments,
+          onSelectionChanged: _onMachineSelectionChanged,
+          selectedDemand: selectedDemand,
+        );
       case 3:
         return ReviewStepWidget(
           selectedDemand: selectedDemand,
@@ -612,7 +815,7 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
           } else {
             machineDetails = [{
               "status": selectedDemand?.toLowerCase() == 'urgent',
-              "machineId": null,
+              "machineId": 1,
               "unit": null,
               "machineCode": null,
               "machineType": "Not assigned",
