@@ -416,14 +416,14 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       if (jobDetails != null) {
         // Check if jobDetails is a list and get the first item
         final jobData = jobDetails is List ? (jobDetails as List)[0] : jobDetails;
-      print("this is the JobData"+jobData);
+      print("this is the JobData: $jobData");
       if (jobData != null && jobData.purchaseOrders != null) {
         final purchaseOrders = jobData.purchaseOrders as List;
         if (purchaseOrders.isNotEmpty) {
           final po = purchaseOrders[0];
           print('Purchase Order Data: $po');
           poQuantity = '${po.totalPOQuantity ?? 'N/A'} ${po.unit ?? ''}';
-          customerName = po.customer ?? 'N/A';
+          customerName = jobData.customerName ?? 'N/A';
           print('Quantity: $poQuantity');
           print('Customer: $customerName');
         }
