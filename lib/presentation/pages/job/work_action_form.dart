@@ -15,6 +15,7 @@ class WorkActionForm extends StatefulWidget {
   final String? jobNumber; // Add jobNumber parameter
   final int? stepNo; // Add stepNo parameter
   final JobApiService? apiService; // Add apiService parameter
+  final int? expectedQuantity; // Add expectedQuantity parameter for validation
 
   const WorkActionForm({
     super.key,
@@ -29,6 +30,7 @@ class WorkActionForm extends StatefulWidget {
     this.jobNumber, // Add jobNumber
     this.stepNo, // Add stepNo
     this.apiService, // Add apiService
+    this.expectedQuantity, // Add expectedQuantity
   });
 
   @override
@@ -350,6 +352,23 @@ class _WorkActionFormState extends State<WorkActionForm> {
     return !_isLoading && _status == 'stopped';
   }
 
+  // Helper method to get valid quantity range
+  String _getValidQuantityRange() {
+    if (widget.expectedQuantity == null || widget.expectedQuantity! <= 0) {
+      return '';
+    }
+    
+    final expectedQty = widget.expectedQuantity!;
+    final tolerance500 = 500;
+    final tolerancePercent = (expectedQty * 0.125).round();
+    final tolerance = tolerance500 > tolerancePercent ? tolerance500 : tolerancePercent;
+    
+    final minAllowed = expectedQty - tolerance;
+    final maxAllowed = expectedQty + tolerance;
+    
+    return '$minAllowed - $maxAllowed';
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -397,30 +416,71 @@ class _WorkActionFormState extends State<WorkActionForm> {
               children: [
                 Padding(
                   padding: const EdgeInsets.only(bottom: 16),
-                  child: TextFormField(
-                    controller: _qtyController,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      labelText: 'Qty Sheet',
-                      labelStyle: TextStyle(color: AppColors.maincolor),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: Colors.grey[300]!),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextFormField(
+                        controller: _qtyController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: 'Qty Sheet',
+                          labelStyle: TextStyle(color: AppColors.maincolor),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: AppColors.maincolor, width: 2),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                          hintText: widget.expectedQuantity != null 
+                              ? 'Expected: ${widget.expectedQuantity} (Valid: ${_getValidQuantityRange()})'
+                              : 'Enter quantity',
+                          hintStyle: TextStyle(color: Colors.grey[500], fontSize: 12),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter Qty Sheet';
+                          }
+                          
+                          // Parse the entered quantity
+                          final enteredQty = int.tryParse(value);
+                          if (enteredQty == null) {
+                            return 'Please enter a valid number';
+                          }
+                          
+                          // If expected quantity is provided, validate against it
+                          if (widget.expectedQuantity != null && widget.expectedQuantity! > 0) {
+                            final expectedQty = widget.expectedQuantity!;
+                            
+                            // Calculate tolerance: ±500 or ±12.5%, whichever is greater
+                            final tolerance500 = 500;
+                            final tolerancePercent = (expectedQty * 0.125).round();
+                            final tolerance = tolerance500 > tolerancePercent ? tolerance500 : tolerancePercent;
+                            
+                            final minAllowed = expectedQty - tolerance;
+                            final maxAllowed = expectedQty + tolerance;
+                            
+                            // Debug print
+                            print('Quantity Validation:');
+                            print('  Expected: $expectedQty');
+                            print('  Entered: $enteredQty');
+                            print('  Tolerance: $tolerance (500 vs ${tolerancePercent})');
+                            print('  Min Allowed: $minAllowed');
+                            print('  Max Allowed: $maxAllowed');
+                            
+                            if (enteredQty < minAllowed || enteredQty > maxAllowed) {
+                              return 'Enter valid quantity Nearby $expectedQty';
+                            }
+                          }
+                          
+                          return null;
+                        },
                       ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: AppColors.maincolor, width: 2),
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey[50],
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter Qty Sheet';
-                      }
-                      return null;
-                    },
+                    ],
                   ),
                 ),
                 Row(

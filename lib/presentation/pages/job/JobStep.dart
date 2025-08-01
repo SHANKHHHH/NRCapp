@@ -963,6 +963,20 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
     final stepNo = StepDataManager.getStepNumber(step.type);
 
+    // Get expected quantity from job details
+    int? expectedQuantity;
+    if (jobDetails != null) {
+      final jobData = jobDetails is List ? (jobDetails as List)[0] : jobDetails;
+      if (jobData != null && jobData.purchaseOrders != null) {
+        final purchaseOrders = jobData.purchaseOrders as List;
+        if (purchaseOrders.isNotEmpty) {
+          final po = purchaseOrders[0];
+          expectedQuantity = po.totalPOQuantity;
+          print('JobStep - Expected Quantity: $expectedQuantity');
+        }
+      }
+    }
+
     // For other steps, use WorkActionForm
     showDialog(
       context: context,
@@ -975,6 +989,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         jobNumber: widget.jobNumber,
         stepNo: stepNo,
         apiService: _apiService,
+        expectedQuantity: expectedQuantity,
         onComplete: (formData) async {
 
 
