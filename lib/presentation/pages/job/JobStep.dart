@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:nrc/constants/colors.dart';
@@ -621,26 +622,50 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: Image.memory(
-                            base64Decode(imageUrl),
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                color: Colors.grey[200],
-                                child: Center(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.broken_image, color: Colors.grey[400]),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'Image not available',
-                                        style: TextStyle(color: Colors.grey[600]),
+                          child: Builder(
+                            builder: (context) {
+                              final imageData = _safeBase64Decode(imageUrl);
+                              if (imageData != null) {
+                                return Image.memory(
+                                  imageData,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Container(
+                                      color: Colors.grey[200],
+                                      child: Center(
+                                        child: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(Icons.broken_image, color: Colors.grey[400]),
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              'Image not available',
+                                              style: TextStyle(color: Colors.grey[600]),
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ],
+                                    );
+                                  },
+                                );
+                              } else {
+                                return Container(
+                                  color: Colors.grey[200],
+                                  child: Center(
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.broken_image, color: Colors.grey[400]),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Image not available',
+                                          style: TextStyle(color: Colors.grey[600]),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              );
+                                );
+                              }
                             },
                           ),
                         ),
@@ -889,26 +914,50 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: Image.memory(
-                            base64Decode(imageUrl),
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                color: Colors.grey[200],
-                                child: Center(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.broken_image, color: Colors.grey[400]),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'Image not available',
-                                        style: TextStyle(color: Colors.grey[600]),
+                          child: Builder(
+                            builder: (context) {
+                              final imageData = _safeBase64Decode(imageUrl);
+                              if (imageData != null) {
+                                return Image.memory(
+                                  imageData,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Container(
+                                      color: Colors.grey[200],
+                                      child: Center(
+                                        child: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(Icons.broken_image, color: Colors.grey[400]),
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              'Image not available',
+                                              style: TextStyle(color: Colors.grey[600]),
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ],
+                                    );
+                                  },
+                                );
+                              } else {
+                                return Container(
+                                  color: Colors.grey[200],
+                                  child: Center(
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.broken_image, color: Colors.grey[400]),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Image not available',
+                                          style: TextStyle(color: Colors.grey[600]),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              );
+                                );
+                              }
                             },
                           ),
                         ),
@@ -975,6 +1024,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
     } catch (e) {
       if (mounted) Navigator.pop(context);
+      print(e.toString());
       DialogManager.showErrorMessage(context, 'Failed to start work: ${e.toString()}');
     }
   }
@@ -998,7 +1048,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
     // For Paper Store, also create/update paper store record
     if (step.type == StepType.paperStore) {
-      await _apiService.startPaperStoreWork(widget.jobNumber!, jobDetails ?? {});
+      await _apiService.startPaperStoreWork(widget.jobNumber!, _convertJobDetailsToMap());
     }
   }
 
@@ -1119,7 +1169,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       context,
       step,
       widget.jobNumber,
-      jobDetails,
+      _convertJobDetailsToMap(),
           (formData) => _completePaperStoreWork(step, formData),
     );
   }
@@ -1134,7 +1184,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       );
 
       // Complete paper store work (updates status to 'accept')
-      await _apiService.completePaperStoreWork(widget.jobNumber!, jobDetails ?? {}, formData);
+      await _apiService.completePaperStoreWork(widget.jobNumber!, _convertJobDetailsToMap(), formData);
 
       // Update job planning step status to 'stop' with end date
       await _apiService.updateJobPlanningStepComplete(widget.jobNumber!, 1, "stop");
@@ -1276,7 +1326,146 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     await _fetchJobDetails();
     Navigator.of(context).pop();
 
-    DialogManager.showJobDetailsDialog(context, widget.jobNumber, jobDetails);
+    // Convert jobDetails (List<Job>) to Map<String, dynamic> for DialogManager
+    Map<String, dynamic>? jobDetailsMap;
+    if (jobDetails != null) {
+      final jobData = jobDetails is List ? (jobDetails as List)[0] : jobDetails;
+      if (jobData != null) {
+        // Convert to Map if it's not already a Map
+        Map<String, dynamic> jobMap;
+        if (jobData is Map) {
+          jobMap = Map<String, dynamic>.from(jobData);
+        } else {
+          // If it's a Job object, convert to Map
+          jobMap = {
+            'id': jobData.id,
+            'nrcJobNo': jobData.nrcJobNo,
+            'styleItemSKU': jobData.styleItemSKU,
+            'customerName': jobData.customerName,
+            'status': jobData.status,
+            'fluteType': jobData.fluteType,
+            'jobDemand': jobData.jobDemand,
+            'srNo': jobData.srNo,
+            'length': jobData.length,
+            'width': jobData.width,
+            'height': jobData.height,
+            'boxDimensions': jobData.boxDimensions,
+            'boardSize': jobData.boardSize,
+            'noUps': jobData.noUps,
+            'boardCategory': jobData.boardCategory,
+            'diePunchCode': jobData.diePunchCode,
+            'topFaceGSM': jobData.topFaceGSM,
+            'flutingGSM': jobData.flutingGSM,
+            'bottomLinerGSM': jobData.bottomLinerGSM,
+            'decalBoardX': jobData.decalBoardX,
+            'lengthBoardY': jobData.lengthBoardY,
+            'noOfColor': jobData.noOfColor,
+            'processColors': jobData.processColors,
+            'specialColor1': jobData.specialColor1,
+            'specialColor2': jobData.specialColor2,
+            'specialColor3': jobData.specialColor3,
+            'specialColor4': jobData.specialColor4,
+            'overPrintFinishing': jobData.overPrintFinishing,
+            'latestRate': jobData.latestRate,
+            'preRate': jobData.preRate,
+            'artworkReceivedDate': jobData.artworkReceivedDate,
+            'artworkApprovalDate': jobData.artworkApprovalDate,
+            'shadeCardApprovalDate': jobData.shadeCardApprovalDate,
+            'imageURL': jobData.imageURL,
+            'userId': jobData.userId,
+            'machineId': jobData.machineId,
+            'createdAt': jobData.createdAt,
+            'updatedAt': jobData.updatedAt,
+            'hasPurchaseOrders': jobData.hasPurchaseOrders,
+            'purchaseOrders': jobData.purchaseOrders,
+            'purchaseOrder': jobData.purchaseOrder,
+          };
+        }
+
+        // Convert Job object to Map<String, dynamic> with all available fields
+        jobDetailsMap = {
+          // Basic Job Information
+          'Job ID': jobMap['id']?.toString() ?? 'N/A',
+          'Job Number': jobMap['nrcJobNo']?.toString() ?? 'N/A',
+          'Style Item SKU': jobMap['styleItemSKU']?.toString() ?? 'N/A',
+          'Customer Name': jobMap['customerName']?.toString() ?? 'N/A',
+          'Status': jobMap['status']?.toString() ?? 'N/A',
+          'Flute Type': jobMap['fluteType']?.toString() ?? 'N/A',
+          'Job Demand': jobMap['jobDemand']?.toString() ?? 'N/A',
+          'SR Number': jobMap['srNo']?.toString() ?? 'N/A',
+          
+          // Dimensions
+          'Length': jobMap['length']?.toString() ?? 'N/A',
+          'Width': jobMap['width']?.toString() ?? 'N/A',
+          'Height': jobMap['height']?.toString() ?? 'N/A',
+          'Box Dimensions': jobMap['boxDimensions']?.toString() ?? 'N/A',
+          'Board Size': jobMap['boardSize']?.toString() ?? 'N/A',
+          'No Ups': jobMap['noUps']?.toString() ?? 'N/A',
+          
+          // Board Specifications
+          'Board Category': jobMap['boardCategory']?.toString() ?? 'N/A',
+          'Die Punch Code': jobMap['diePunchCode']?.toString() ?? 'N/A',
+          'Top Face GSM': jobMap['topFaceGSM']?.toString() ?? 'N/A',
+          'Fluting GSM': jobMap['flutingGSM']?.toString() ?? 'N/A',
+          'Bottom Liner GSM': jobMap['bottomLinerGSM']?.toString() ?? 'N/A',
+          'Decal Board X': jobMap['decalBoardX']?.toString() ?? 'N/A',
+          'Length Board Y': jobMap['lengthBoardY']?.toString() ?? 'N/A',
+          
+          // Printing Details
+          'No Of Color': jobMap['noOfColor']?.toString() ?? 'N/A',
+          'Process Colors': jobMap['processColors']?.toString() ?? 'N/A',
+          'Special Color 1': jobMap['specialColor1']?.toString() ?? 'N/A',
+          'Special Color 2': jobMap['specialColor2']?.toString() ?? 'N/A',
+          'Special Color 3': jobMap['specialColor3']?.toString() ?? 'N/A',
+          'Special Color 4': jobMap['specialColor4']?.toString() ?? 'N/A',
+          'Over Print Finishing': jobMap['overPrintFinishing']?.toString() ?? 'N/A',
+          
+          // Financial Information
+          'Latest Rate': jobMap['latestRate']?.toString() ?? 'N/A',
+          'Pre Rate': jobMap['preRate']?.toString() ?? 'N/A',
+          
+          // Artwork Information
+          'Artwork Received Date': jobMap['artworkReceivedDate']?.toString() ?? 'N/A',
+          'Artwork Approval Date': jobMap['artworkApprovalDate']?.toString() ?? 'N/A',
+          'Shade Card Approval Date': jobMap['shadeCardApprovalDate']?.toString() ?? 'N/A',
+          'Image URL': jobMap['imageURL']?.toString() ?? 'N/A',
+          
+          // System Information
+          'User ID': jobMap['userId']?.toString() ?? 'N/A',
+          'Machine ID': jobMap['machineId']?.toString() ?? 'N/A',
+          'Created At': jobMap['createdAt']?.toString() ?? 'N/A',
+          'Updated At': jobMap['updatedAt']?.toString() ?? 'N/A',
+          'Has Purchase Orders': jobMap['hasPurchaseOrders']?.toString() ?? 'N/A',
+        };
+        
+        // Add purchase order details if available
+        final purchaseOrders = jobMap['purchaseOrders'];
+        if (purchaseOrders != null && purchaseOrders is List && purchaseOrders.isNotEmpty) {
+          final po = purchaseOrders[0];
+          if (po is Map) {
+            jobDetailsMap['PO ID'] = po['id']?.toString() ?? 'N/A';
+            jobDetailsMap['PO Number'] = po['poNumber']?.toString() ?? 'N/A';
+            jobDetailsMap['Total PO Quantity'] = po['totalPOQuantity']?.toString() ?? 'N/A';
+            jobDetailsMap['Unit'] = po['unit']?.toString() ?? 'N/A';
+            jobDetailsMap['PO Status'] = po['status']?.toString() ?? 'N/A';
+            jobDetailsMap['PO Created At'] = po['createdAt']?.toString() ?? 'N/A';
+            jobDetailsMap['PO Updated At'] = po['updatedAt']?.toString() ?? 'N/A';
+          }
+        }
+        
+        // Add single purchase order if available
+        final purchaseOrder = jobMap['purchaseOrder'];
+        if (purchaseOrder != null && purchaseOrder is Map) {
+          jobDetailsMap['Single PO ID'] = purchaseOrder['id']?.toString() ?? 'N/A';
+          jobDetailsMap['Single PO Number'] = purchaseOrder['poNumber']?.toString() ?? 'N/A';
+          jobDetailsMap['Single PO Quantity'] = purchaseOrder['totalPOQuantity']?.toString() ?? 'N/A';
+          jobDetailsMap['Single PO Unit'] = purchaseOrder['unit']?.toString() ?? 'N/A';
+          jobDetailsMap['Single PO Status'] = purchaseOrder['status']?.toString() ?? 'N/A';
+        }
+      }
+    }
+
+    DialogManager.showJobDetailsDialog(context, widget.jobNumber, jobDetailsMap);
   }
 
   void _showCompletedStepDetails(StepData step) async {
@@ -1425,6 +1614,58 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         .join(' ');
   }
 
+  /// Convert jobDetails (List<Job>) to Map<String, dynamic> for Paper Store APIs
+  Map<String, dynamic> _convertJobDetailsToMap() {
+    Map<String, dynamic> jobDetailsMap = {};
+    if (jobDetails != null) {
+      final jobData = jobDetails is List ? (jobDetails as List)[0] : jobDetails;
+      if (jobData != null) {
+        // Convert Job object to Map
+        jobDetailsMap = {
+          'boardSize': jobData.boxDimensions,
+          'noUps': jobData.purchaseOrders?.isNotEmpty == true 
+              ? jobData.purchaseOrders![0].totalPOQuantity 
+              : 0,
+          'fluteType': jobData.fluteType,
+        };
+      }
+    }
+    return jobDetailsMap;
+  }
+
+  /// Safely decode base64 image data, handling various formats
+  Uint8List? _safeBase64Decode(String? imageUrl) {
+    if (imageUrl == null || imageUrl.isEmpty) return null;
+    
+    try {
+      String base64Data = imageUrl;
+      
+      // Handle data URLs (e.g., "data:image/jpeg;base64,/9j/4AAQ...")
+      if (imageUrl.startsWith('data:')) {
+        final parts = imageUrl.split(',');
+        if (parts.length > 1) {
+          base64Data = parts[1];
+        }
+      }
+      
+      // Handle URLs with metadata (e.g., "image/jpeg; base64,/9j/4AAQ...")
+      if (base64Data.contains('; base64,')) {
+        final parts = base64Data.split('; base64,');
+        if (parts.length > 1) {
+          base64Data = parts[1];
+        }
+      }
+      
+      // Clean up any remaining whitespace or newlines
+      base64Data = base64Data.trim();
+      
+      return base64Decode(base64Data);
+    } catch (e) {
+      print('Error decoding base64 image: $e');
+      return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1447,6 +1688,46 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         elevation: 0,
         centerTitle: false,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.blue),
+            tooltip: 'Reload Job Data',
+            onPressed: () async {
+              // Show loading indicator
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => JobTimelineUI.buildLoadingDialog('Reloading...'),
+              );
+
+              try {
+                // Refresh job details
+                await _fetchJobDetails();
+                
+                // Refresh step statuses
+                await _refreshStepStatuses();
+                
+                // Close loading dialog
+                if (mounted) {
+                  Navigator.pop(context);
+                }
+                
+                // Show success message
+                if (mounted) {
+                  DialogManager.showSuccessMessage(context, 'Job data reloaded successfully!');
+                }
+              } catch (e) {
+                // Close loading dialog
+                if (mounted) {
+                  Navigator.pop(context);
+                }
+                
+                // Show error message
+                if (mounted) {
+                  DialogManager.showErrorMessage(context, 'Failed to reload job data: ${e.toString()}');
+                }
+              }
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.info_outline, color: Colors.blue),
             tooltip: 'View Job Details',
