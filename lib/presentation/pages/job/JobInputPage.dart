@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../constants/colors.dart';
-import '../../../data/models/job_details.dart';
-import '../../../data/models/purchase_order.dart';
+import '../../../data/datasources/job_api.dart';
+import '../../../core/services/dio_service.dart';
 
 class JobInputPage extends StatefulWidget {
 
@@ -228,53 +228,89 @@ class _JobInputPageState extends State<JobInputPage> {
     super.dispose();
   }
 
-  void _submitForm() {
-    if (_formKey.currentState!.validate()) {
-      // Create JobDetails instance
-      JobDetails jobDetails = JobDetails(
-        nrcJobNo: _nrcJobNoController.text,
-        styleItemSKU: _styleItemSKUController.text,
-        customerName: _customerNameController.text,
-        fluteType: _fluteTypeController.text,
-        jobStatus: _jobStatusController.text,
-        latestRate: _latestRateController.text,
-        preRate: _preRateController.text,
-        length: _lengthController.text,
-        width: _widthController.text,
-        height: _heightController.text,
-        boxDimensions: _boxDimensionsController.text,
-        diePunchCode: _diePunchCodeController.text,
-        boardCategory: _boardCategoryController.text,
-        noOfColor: _noOfColorController.text,
-        processColors: _processColorsController.text,
-        specialColor1: _specialColor1Controller.text,
-        specialColor2: _specialColor2Controller.text,
-        specialColor3: _specialColor3Controller.text,
-        specialColor4: _specialColor4Controller.text,
-        overPrintFinishing: _overPrintFinishingController.text,
-        topFaceGSM: _topFaceGSMController.text,
-        flutingGSM: _flutingGSMController.text,
-        bottomLinerGSM: _bottomLinerGSMController.text,
-        decalBoardX: _decalBoardXController.text,
-        lengthBoardY: _lengthBoardYController.text,
-        boardSize: _boardSizeController.text,
-        noUps: _noUpsController.text,
-        srNo: _srNoController.text,
+  void _submitForm() async {
+    // Remove form validation to allow partial submissions
+    // if (_formKey.currentState!.validate()) {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(AppColors.maincolor),
+            ),
+          );
+        },
       );
 
-      // Assign job details to the PurchaseOrder
+      try {
+        // Create API instance and submit job
+        final jobApi = JobApi(DioService.instance);
+        
+        // Create the job data map directly to avoid toJson() method issues
+        final jobData = {
+          'nrcJobNo': _nrcJobNoController.text.isEmpty ? null : _nrcJobNoController.text,
+          'styleItemSKU': _styleItemSKUController.text.isEmpty ? null : _styleItemSKUController.text,
+          'customerName': _customerNameController.text.isEmpty ? null : _customerNameController.text,
+          'fluteType': _fluteTypeController.text.isEmpty ? null : _fluteTypeController.text,
+          'status': _jobStatusController.text.isEmpty ? null : _jobStatusController.text.toLowerCase(),
+          'latestRate': _latestRateController.text.isEmpty ? null : double.tryParse(_latestRateController.text),
+          'preRate': _preRateController.text.isEmpty ? null : double.tryParse(_preRateController.text),
+          'length': _lengthController.text.isEmpty ? null : double.tryParse(_lengthController.text),
+          'width': _widthController.text.isEmpty ? null : double.tryParse(_widthController.text),
+          'height': _heightController.text.isEmpty ? null : double.tryParse(_heightController.text),
+          'boxDimensions': _boxDimensionsController.text.isEmpty ? null : _boxDimensionsController.text,
+          'diePunchCode': _diePunchCodeController.text.isEmpty ? null : double.tryParse(_diePunchCodeController.text),
+          'boardCategory': _boardCategoryController.text.isEmpty ? null : _boardCategoryController.text,
+          'noOfColor': _noOfColorController.text.isEmpty ? null : _noOfColorController.text,
+          'processColors': _processColorsController.text.isEmpty ? null : _processColorsController.text,
+          'specialColor1': _specialColor1Controller.text.isEmpty ? null : _specialColor1Controller.text,
+          'specialColor2': _specialColor2Controller.text.isEmpty ? null : _specialColor2Controller.text,
+          'specialColor3': _specialColor3Controller.text.isEmpty ? null : _specialColor3Controller.text,
+          'specialColor4': _specialColor4Controller.text.isEmpty ? null : _specialColor4Controller.text,
+          'overPrintFinishing': _overPrintFinishingController.text.isEmpty ? null : _overPrintFinishingController.text,
+          'topFaceGSM': _topFaceGSMController.text.isEmpty ? null : _topFaceGSMController.text,
+          'flutingGSM': _flutingGSMController.text.isEmpty ? null : _flutingGSMController.text,
+          'bottomLinerGSM': _bottomLinerGSMController.text.isEmpty ? null : _bottomLinerGSMController.text,
+          'decalBoardX': _decalBoardXController.text.isEmpty ? null : _decalBoardXController.text,
+          'lengthBoardY': _lengthBoardYController.text.isEmpty ? null : _lengthBoardYController.text,
+          'boardSize': _boardSizeController.text.isEmpty ? null : _boardSizeController.text,
+          'noUps': _noUpsController.text.isEmpty ? null : _noUpsController.text,
+          'artworkReceivedDate': _artworkReceivedDate?.toIso8601String(),
+          'artworkApprovedDate': _artworkApprovedDate?.toIso8601String(),
+          'shadeCardApprovalDate': _shadeCardApprovalDate?.toIso8601String(),
+          'srNo': _srNoController.text.isEmpty ? null : double.tryParse(_srNoController.text),
+        };
+        
+        await jobApi.createJob(jobData);
 
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Job data submitted successfully!'),
-          backgroundColor: AppColors.green,
-        ),
-      );
+        // Hide loading indicator
+        Navigator.pop(context);
 
-      // Optionally, navigate back or update the UI
-      Navigator.pop(context);
-    }
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Job created successfully!'),
+            backgroundColor: AppColors.green,
+          ),
+        );
+
+        // Navigate back
+        Navigator.pop(context);
+      } catch (e) {
+        // Hide loading indicator
+        Navigator.pop(context);
+        
+        // Show error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to create job: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    // }
   }
 
   InputDecoration _getInputDecoration(String label) {
@@ -307,12 +343,6 @@ class _JobInputPageState extends State<JobInputPage> {
         readOnly: readOnly,
         onChanged: onChanged,
         decoration: _getInputDecoration(label),
-        validator: (value) {
-          if (value == null || value.isEmpty) {
-            return 'Please enter $label';
-          }
-          return null;
-        },
       ),
     );
   }
@@ -352,12 +382,6 @@ class _JobInputPageState extends State<JobInputPage> {
           );
         }).toList(),
         onChanged: (val) => setState(() => controller.text = val!),
-        validator: (value) {
-          if (value == null || value.isEmpty) {
-            return 'Please select $label';
-          }
-          return null;
-        },
         menuMaxHeight: 300, // Limit dropdown height
       ),
     );

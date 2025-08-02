@@ -47,32 +47,13 @@ class DialogManager {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor:AppColors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
             Icon(Icons.play_circle_filled, color: AppColors.maincolor),
             const SizedBox(width: 8),
             const Text('Start Work'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Are you ready to start work on:'),
-            const SizedBox(height: 8),
-            Text(
-              step.title,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: AppColors.maincolor,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              step.description,
-              style: TextStyle(color: Colors.grey[600]),
-            ),
           ],
         ),
         actions: [

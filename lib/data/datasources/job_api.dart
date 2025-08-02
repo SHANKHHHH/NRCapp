@@ -734,4 +734,33 @@ class JobApi {
       return [];
     }
   }
+
+  Future<Map<String, dynamic>> createJob(Map<String, dynamic> jobData) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    print('[createJob] Token: $token');
+    print('[createJob] Job data: $jobData');
+    
+    try {
+      final response = await dio.post(
+        'https://nrc-backend-his4.onrender.com/api/jobs/',
+        data: jobData,
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            if (token != null) 'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      print('[createJob] Response: ${response.statusCode} ${response.data}');
+      return response.data;
+    } catch (e) {
+      print('[createJob] Error: $e');
+      if (e is DioException && e.response != null) {
+        print('[createJob] Error response: ${e.response?.data}');
+        throw Exception('Failed to create job: ${e.response?.data['message'] ?? 'Unknown error'}');
+      }
+      throw Exception('Failed to create job: $e');
+    }
+  }
 }

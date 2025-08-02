@@ -28,6 +28,7 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
 
   // Controllers for form fields
   late TextEditingController _purchaseOrderDateController;
+  late TextEditingController _poNumberController;
   late TextEditingController _deliverDateController;
   late TextEditingController _totalPoController;
   late TextEditingController _dispatchDateController;
@@ -44,6 +45,7 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
     super.initState();
     // Initialize controllers first
     _purchaseOrderDateController = TextEditingController();
+    _poNumberController = TextEditingController();
     _deliverDateController = TextEditingController();
     _totalPoController = TextEditingController();
     _dispatchDateController = TextEditingController();
@@ -54,6 +56,7 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
     // Then set their values if editing
     if (widget.existingPo != null) {
       _purchaseOrderDateController.text = widget.existingPo!.poDate.toIso8601String();
+      _poNumberController.text = widget.existingPo!.poNumber ?? '';
       _deliverDateController.text = widget.existingPo!.deliveryDate.toIso8601String();
       _totalPoController.text = widget.existingPo!.totalPOQuantity.toString();
       _dispatchDateController.text = widget.existingPo!.dispatchDate.toIso8601String();
@@ -66,6 +69,7 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
   @override
   void dispose() {
     _purchaseOrderDateController.dispose();
+    _poNumberController.dispose();
     _deliverDateController.dispose();
     _totalPoController.dispose();
     _dispatchDateController.dispose();
@@ -405,6 +409,20 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
                 children: [
                   // PO Date (read-only)
                   _buildInfoRow(Icons.calendar_today_outlined, 'PO Date', _formatDateForDisplay(DateTime.now().toIso8601String())),
+                  const SizedBox(height: 20),
+
+                  // PO Number
+                  _buildTextFormField(
+                    controller: _poNumberController,
+                    label: 'PO Number',
+                    icon: Icons.numbers_outlined,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please enter PO number';
+                      }
+                      return null;
+                    },
+                  ),
                   const SizedBox(height: 20),
 
                   // Form Fields Grid
@@ -902,6 +920,7 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
         'jobNrcJobNo': widget.job.nrcJobNo,
         'customer': widget.job.customerName,
         'poDate': _formatDate(poDate),
+        'poNumber': _poNumberController.text,
         'deliveryDate': _formatDate(DateTime.parse(_deliverDateController.text)),
         'dispatchDate': _formatDate(DateTime.parse(_dispatchDateController.text)),
         'nrcDeliveryDate': _formatDate(DateTime.parse(_nrcDeliveryDateController.text)),

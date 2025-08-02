@@ -428,6 +428,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: AppColors.white,
         title: Row(
           children: [
             Icon(Icons.warning, color: Colors.orange),
@@ -436,7 +437,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           ],
         ),
         content: Text(
-          'Machine has not been assigned to ${step.title} yet. Please contact your supervisor to assign a machine before starting work.',
+          'Contact To Admin',
           style: TextStyle(fontSize: 16),
         ),
         actions: [
@@ -1544,6 +1545,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: AppColors.white,
         title: Row(
           children: [
             Icon(Icons.info_outline, color: AppColors.maincolor),

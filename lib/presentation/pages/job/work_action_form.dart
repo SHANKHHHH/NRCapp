@@ -195,6 +195,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: AppColors.white,
         title: const Text('Confirm Stop'),
         content: const Text('Are you sure you want to stop the work?'),
         actions: [
@@ -552,7 +553,16 @@ class _WorkActionFormState extends State<WorkActionForm> {
                             valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         )
-                            : const Text('Start'),
+                            : Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  Icon(Icons.check_circle, size: 24),
+                                  Text(
+                                    'Start',
+                                    style: TextStyle(color: Colors.transparent),
+                                  ),
+                                ],
+                              ),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -565,7 +575,16 @@ class _WorkActionFormState extends State<WorkActionForm> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
                         onPressed: _isPauseEnabled() ? _handlePause : null,
-                        child: const Text('Pause'),
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Icon(Icons.pause_circle, size: 24),
+                            Text(
+                              'Pause',
+                              style: TextStyle(color: Colors.transparent),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -587,7 +606,16 @@ class _WorkActionFormState extends State<WorkActionForm> {
                             valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         )
-                            : const Text('Stop'),
+                            : Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  Icon(Icons.cancel, size: 24),
+                                  Text(
+                                    'Stop',
+                                    style: TextStyle(color: Colors.transparent),
+                                  ),
+                                ],
+                              ),
                       ),
                     ),
                   ],

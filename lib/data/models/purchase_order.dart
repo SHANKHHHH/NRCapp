@@ -1,5 +1,6 @@
 class PurchaseOrder {
   final DateTime poDate;
+  final String? poNumber;
   final DateTime deliveryDate;
   final DateTime dispatchDate;
   final DateTime nrcDeliveryDate;
@@ -10,6 +11,7 @@ class PurchaseOrder {
 
   PurchaseOrder({
     required this.poDate,
+    required this.poNumber,
     required this.deliveryDate,
     required this.dispatchDate,
     required this.nrcDeliveryDate,
@@ -22,6 +24,7 @@ class PurchaseOrder {
   factory PurchaseOrder.fromJson(Map<String, dynamic> json) {
     return PurchaseOrder(
       poDate: json['poDate'] != null ? DateTime.parse(json['poDate'].toString()) : DateTime.now(),
+      poNumber: json['poNumber']?.toString(),
       deliveryDate: json['deliveryDate'] != null ? DateTime.parse(json['deliveryDate'].toString()) : DateTime.now(),
       dispatchDate: json['dispatchDate'] != null ? DateTime.parse(json['dispatchDate'].toString()) : DateTime.now(),
       nrcDeliveryDate: json['nrcDeliveryDate'] != null ? DateTime.parse(json['nrcDeliveryDate'].toString()) : DateTime.now(),
@@ -35,6 +38,7 @@ class PurchaseOrder {
   Map<String, dynamic> toJson() {
     return {
       'poDate': poDate.toIso8601String(),
+      'poNumber': poNumber,
       'deliveryDate': deliveryDate.toIso8601String(),
       'dispatchDate': dispatchDate.toIso8601String(),
       'nrcDeliveryDate': nrcDeliveryDate.toIso8601String(),
