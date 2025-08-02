@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nrc/constants/colors.dart';
 import '../../../core/services/dio_service.dart';
 import '../../../data/models/Job.dart';
 import '../stepsselections/AssignWorkSteps.dart';
@@ -687,6 +688,7 @@ class EnhancedJobCard extends StatelessWidget {
                       showDialog(
                         context: context,
                         builder: (context) => AlertDialog(
+                          backgroundColor: AppColors.white,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),
@@ -709,32 +711,12 @@ class EnhancedJobCard extends StatelessWidget {
                                   ),
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: po.toJson().entries.map<Widget>((entry) {
-                                      return Padding(
-                                        padding: const EdgeInsets.symmetric(vertical: 4),
-                                        child: Row(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            SizedBox(
-                                              width: 100,
-                                              child: Text(
-                                                '${entry.key}:',
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.w600,
-                                                  fontSize: 13,
-                                                ),
-                                              ),
-                                            ),
-                                            Expanded(
-                                              child: Text(
-                                                entry.value?.toString() ?? '',
-                                                style: const TextStyle(fontSize: 13),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                    }).toList(),
+                                    children: [
+                                      _buildDetailRow('PO Date', _formatDate(po.poDate)),
+                                      _buildDetailRow('Total PO Quantity', po.totalPOQuantity?.toString() ?? ''),
+                                      _buildDetailRow('Unit', po.unit ?? ''),
+                                      _buildDetailRow('No. of Sheets', po.noOfSheets?.toString() ?? ''),
+                                    ],
                                   ),
                                 );
                               }).toList(),
@@ -1049,34 +1031,54 @@ class EnhancedJobCard extends StatelessWidget {
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              '$label:',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey[700],
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.black87,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+     Widget _buildDetailRow(String label, String value) {
+     return Padding(
+       padding: const EdgeInsets.symmetric(vertical: 6),
+       child: Row(
+         crossAxisAlignment: CrossAxisAlignment.start,
+         children: [
+           SizedBox(
+             width: 120,
+             child: Text(
+               '$label:',
+               style: TextStyle(
+                 fontSize: 14,
+                 fontWeight: FontWeight.w600,
+                 color: Colors.grey[700],
+               ),
+             ),
+           ),
+           Expanded(
+             child: Text(
+               value,
+               style: const TextStyle(
+                 fontSize: 14,
+                 color: Colors.black87,
+               ),
+             ),
+           ),
+         ],
+       ),
+     );
+   }
+
+   String _formatDate(dynamic date) {
+     if (date == null) return '';
+     
+     try {
+       if (date is DateTime) {
+         return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+       } else if (date is String) {
+         // Try to parse the string date
+         final parsedDate = DateTime.tryParse(date);
+         if (parsedDate != null) {
+           return '${parsedDate.day.toString().padLeft(2, '0')}/${parsedDate.month.toString().padLeft(2, '0')}/${parsedDate.year}';
+         }
+         return date; // Return as is if parsing fails
+       }
+       return date.toString();
+     } catch (e) {
+       return date.toString();
+     }
+   }
+ }
