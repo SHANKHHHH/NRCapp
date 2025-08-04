@@ -278,18 +278,10 @@ class EnhancedJobCard extends StatelessWidget {
           _buildInfoRow(Icons.settings_outlined, 'Flute Type', job.fluteType),
           if (job.boardSize != null && job.boardSize!.isNotEmpty)
             _buildInfoRow(Icons.straighten_outlined, 'Board Size', job.boardSize!),
-          if (job.noUps != null && job.noUps!.isNotEmpty)
-            _buildInfoRow(Icons.format_list_numbered_outlined, 'No. of Ups', job.noUps!),
-          if (job.artworkReceivedDate != null && job.artworkReceivedDate!.isNotEmpty)
-            _buildInfoRow(Icons.palette_outlined, 'Artwork Received', job.artworkReceivedDate!),
-          if (job.artworkApprovalDate != null && job.artworkApprovalDate!.isNotEmpty)
-            _buildInfoRow(Icons.check_circle_outline, 'Artwork Approved', job.artworkApprovalDate!),
-          if (job.shadeCardApprovalDate != null && job.shadeCardApprovalDate!.isNotEmpty)
-            _buildInfoRow(Icons.color_lens_outlined, 'Shade Card Approval', job.shadeCardApprovalDate!),
-          if (job.createdAt != null && job.createdAt!.isNotEmpty)
-            _buildInfoRow(Icons.calendar_today_outlined, 'Created At', job.createdAt!),
-          if (job.updatedAt != null && job.updatedAt!.isNotEmpty)
-            _buildInfoRow(Icons.update_outlined, 'Updated At', job.updatedAt!),
+          if (job.boxDimensions != null && job.boxDimensions!.isNotEmpty)
+            _buildInfoRow(Icons.straighten_outlined, 'Box Dimensions', job.boxDimensions!),
+          if (job.diePunchCode != null)
+            _buildInfoRow(Icons.radio_button_unchecked, 'Die Punch Code', job.diePunchCode.toString()),
         ],
       ),
     );
@@ -926,51 +918,79 @@ class EnhancedJobCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildDetailSection('Job Information', [
-                  _buildDetailRow('NRC Job No', job.nrcJobNo),
-                  _buildDetailRow('Customer Name', job.customerName),
-                  _buildDetailRow('Style/SKU', job.styleItemSKU),
-                  _buildDetailRow('Flute Type', job.fluteType),
-                  _buildDetailRow('Status', _getStatusDisplayName(_convertStringToJobStatus(job.status))),
-                ]),
+                                 _buildDetailSection('Job Information', [
+                   _buildDetailRow('NRC Job No', job.nrcJobNo),
+                   _buildDetailRow('Customer Name', job.customerName),
+                   _buildDetailRow('Style/SKU', job.styleItemSKU),
+                   _buildDetailRow('Flute Type', job.fluteType),
+                   _buildDetailRow('Status', _getStatusDisplayName(_convertStringToJobStatus(job.status))),
+                 ]),
 
-                if (job.boardSize?.isNotEmpty == true ||
-                    job.noUps?.isNotEmpty == true ||
-                    job.length != null ||
-                    job.width != null ||
-                    job.height != null ||
-                    job.latestRate != null)
-                  _buildDetailSection('Specifications', [
-                    if (job.boardSize?.isNotEmpty == true)
-                      _buildDetailRow('Board Size', job.boardSize!),
-                    if (job.noUps?.isNotEmpty == true)
-                      _buildDetailRow('No. of Ups', job.noUps!),
-                    if (job.length != null && job.width != null && job.height != null)
-                      _buildDetailRow('Dimensions', '${job.length} x ${job.width} x ${job.height}'),
-                    if (job.latestRate != null)
-                      _buildDetailRow('Latest Rate', '₹${job.latestRate!.toStringAsFixed(2)}'),
-                  ]),
+                 _buildDetailSection('Specifications', [
+                   if (job.boardSize?.isNotEmpty == true)
+                     _buildDetailRow('Board Size', job.boardSize!),
+                   if (job.boxDimensions?.isNotEmpty == true)
+                     _buildDetailRow('Box Dimensions', job.boxDimensions!),
+                   if (job.length != null && job.width != null && job.height != null)
+                     _buildDetailRow('Dimensions', '${job.length} x ${job.width} x ${job.height}'),
+                   if (job.diePunchCode != null)
+                     _buildDetailRow('Die Punch Code', job.diePunchCode.toString()),
+                   if (job.decalBoardX?.isNotEmpty == true)
+                     _buildDetailRow('Decal Board X', job.decalBoardX!),
+                   if (job.lengthBoardY?.isNotEmpty == true)
+                     _buildDetailRow('Length Board Y', job.lengthBoardY!),
+                   if (job.noUps?.isNotEmpty == true)
+                     _buildDetailRow('No. of Ups', job.noUps!),
+                 ]),
 
-                if (job.artworkReceivedDate?.isNotEmpty == true ||
-                    job.artworkApprovalDate?.isNotEmpty == true ||
-                    job.shadeCardApprovalDate?.isNotEmpty == true)
-                  _buildDetailSection('Artwork Timeline', [
-                    if (job.artworkReceivedDate?.isNotEmpty == true)
-                      _buildDetailRow('Artwork Received', job.artworkReceivedDate!),
-                    if (job.artworkApprovalDate?.isNotEmpty == true)
-                      _buildDetailRow('Artwork Approved', job.artworkApprovalDate!),
-                    if (job.shadeCardApprovalDate?.isNotEmpty == true)
-                      _buildDetailRow('Shade Card Approval', job.shadeCardApprovalDate!),
-                  ]),
+                 _buildDetailSection('Board Specifications', [
+                   if (job.boardCategory?.isNotEmpty == true)
+                     _buildDetailRow('Board Category', job.boardCategory!),
+                   if (job.topFaceGSM?.isNotEmpty == true)
+                     _buildDetailRow('Top Face GSM', job.topFaceGSM!),
+                   if (job.flutingGSM?.isNotEmpty == true)
+                     _buildDetailRow('Fluting GSM', job.flutingGSM!),
+                   if (job.bottomLinerGSM?.isNotEmpty == true)
+                     _buildDetailRow('Bottom Liner GSM', job.bottomLinerGSM!),
+                 ]),
 
-                if (job.createdAt?.isNotEmpty == true ||
-                    job.updatedAt?.isNotEmpty == true)
-                  _buildDetailSection('Timeline', [
-                    if (job.createdAt?.isNotEmpty == true)
-                      _buildDetailRow('Created At', job.createdAt!),
-                    if (job.updatedAt?.isNotEmpty == true)
-                      _buildDetailRow('Updated At', job.updatedAt!),
-                  ]),
+                 _buildDetailSection('Printing Details', [
+                   if (job.noOfColor?.isNotEmpty == true)
+                     _buildDetailRow('No. of Colors', job.noOfColor!),
+                   if (job.processColors?.isNotEmpty == true)
+                     _buildDetailRow('Process Colors', job.processColors!),
+                   if (job.specialColor1?.isNotEmpty == true)
+                     _buildDetailRow('Special Color 1', job.specialColor1!),
+                   if (job.specialColor2?.isNotEmpty == true)
+                     _buildDetailRow('Special Color 2', job.specialColor2!),
+                   if (job.specialColor3?.isNotEmpty == true)
+                     _buildDetailRow('Special Color 3', job.specialColor3!),
+                   if (job.specialColor4?.isNotEmpty == true)
+                     _buildDetailRow('Special Color 4', job.specialColor4!),
+                   if (job.overPrintFinishing?.isNotEmpty == true)
+                     _buildDetailRow('Over Print Finishing', job.overPrintFinishing!),
+                 ]),
+
+                 if (job.artworkReceivedDate?.isNotEmpty == true ||
+                     job.artworkApprovalDate?.isNotEmpty == true ||
+                     job.shadeCardApprovalDate?.isNotEmpty == true)
+                   _buildDetailSection('Artwork Timeline', [
+                     if (job.artworkReceivedDate?.isNotEmpty == true)
+                       _buildDetailRow('Artwork Received', job.artworkReceivedDate!),
+                     if (job.artworkApprovalDate?.isNotEmpty == true)
+                       _buildDetailRow('Artwork Approved', job.artworkApprovalDate!),
+                     if (job.shadeCardApprovalDate?.isNotEmpty == true)
+                       _buildDetailRow('Shade Card Approval', job.shadeCardApprovalDate!),
+                   ]),
+
+                 if (job.createdAt?.isNotEmpty == true ||
+                     job.updatedAt?.isNotEmpty == true)
+                   _buildDetailSection('Timeline', [
+                     if (job.createdAt?.isNotEmpty == true)
+                       _buildDetailRow('Created At', job.createdAt!),
+                     if (job.updatedAt?.isNotEmpty == true)
+                       _buildDetailRow('Updated At', job.updatedAt!),
+                   ]),
               ],
             ),
           ),
