@@ -737,21 +737,22 @@ class EnhancedJobCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-                Expanded(
-                  child: _buildActionButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => AssignWorkSteps(job: latestJob),
-                        ),
-                      );
-                    },
-                    icon: Icons.build_outlined,
-                    label: 'Machine Details',
-                    backgroundColor: Colors.orange[700]!,
+                if (!_isMachineDetailsFilled(latestJob))
+                  Expanded(
+                    child: _buildActionButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => AssignWorkSteps(job: latestJob),
+                          ),
+                        );
+                      },
+                      icon: Icons.build_outlined,
+                      label: 'Machine Details',
+                      backgroundColor: Colors.orange[700]!,
+                    ),
                   ),
-                ),
               ],
             ),
           ],
@@ -1069,7 +1070,6 @@ class EnhancedJobCard extends StatelessWidget {
        if (date is DateTime) {
          return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
        } else if (date is String) {
-         // Try to parse the string date
          final parsedDate = DateTime.tryParse(date);
          if (parsedDate != null) {
            return '${parsedDate.day.toString().padLeft(2, '0')}/${parsedDate.month.toString().padLeft(2, '0')}/${parsedDate.year}';
@@ -1080,5 +1080,12 @@ class EnhancedJobCard extends StatelessWidget {
      } catch (e) {
        return date.toString();
      }
+   }
+
+   bool _isMachineDetailsFilled(Job job) {
+     if (job.isMachineDetailsFilled != null) {
+       return job.isMachineDetailsFilled!;
+     }
+     return false;
    }
  }

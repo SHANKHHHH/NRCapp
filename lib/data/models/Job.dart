@@ -43,6 +43,7 @@ class Job {
   final String? updatedAt;
   final int? userId;
   final int? machineId;
+  final bool? isMachineDetailsFilled;
   final PurchaseOrder? purchaseOrder;
   final List<PurchaseOrder>? purchaseOrders;
   final bool? hasPurchaseOrders;
@@ -87,6 +88,7 @@ class Job {
     this.updatedAt,
     this.userId,
     this.machineId,
+    this.isMachineDetailsFilled,
     this.purchaseOrder,
     this.purchaseOrders,
     this.hasPurchaseOrders,
@@ -132,6 +134,7 @@ class Job {
       updatedAt: json['updatedAt']?.toString(),
       userId: json['userId'] is int ? json['userId'] : (json['userId'] is double ? (json['userId'] as double).toInt() : null),
       machineId: json['machineId'] is int ? json['machineId'] : (json['machineId'] is double ? (json['machineId'] as double).toInt() : null),
+      isMachineDetailsFilled: json['isMachineDetailsFilled'] as bool?,
       purchaseOrder: json['purchaseOrder'] != null ? PurchaseOrder.fromJson(json['purchaseOrder']) : null,
       purchaseOrders: json['purchaseOrders'] != null
           ? List<PurchaseOrder>.from((json['purchaseOrders'] as List).map((po) => PurchaseOrder.fromJson(po)))
@@ -198,6 +201,7 @@ class Job {
     String? updatedAt,
     int? userId,
     int? machineId,
+    bool? isMachineDetailsFilled,
     PurchaseOrder? purchaseOrder,
     List<PurchaseOrder>? purchaseOrders,
     bool? hasPurchaseOrders,
@@ -241,6 +245,7 @@ class Job {
       updatedAt: updatedAt ?? this.updatedAt,
       userId: userId ?? this.userId,
       machineId: machineId ?? this.machineId,
+      isMachineDetailsFilled: isMachineDetailsFilled ?? this.isMachineDetailsFilled,
       purchaseOrder: purchaseOrder ?? this.purchaseOrder,
       purchaseOrders: purchaseOrders ?? this.purchaseOrders,
       hasPurchaseOrders: hasPurchaseOrders ?? this.hasPurchaseOrders,
