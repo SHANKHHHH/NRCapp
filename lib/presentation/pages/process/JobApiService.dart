@@ -96,7 +96,7 @@ class JobApiService {
       'jobNrcJobNo': jobNumber,
       'status': 'in_progress',
       'sheetSize': jobDetails['boardSize'] ?? '',
-      'required': int.tryParse(jobDetails['noUps']?.toString() ?? '0') ?? 0,
+      'quantity': int.tryParse(jobDetails['noUps']?.toString() ?? '0') ?? 0,
       'gsm': jobDetails['fluteType'] ?? '',
       'issuedDate': _formatDateWithMilliseconds(),
     };
@@ -270,7 +270,7 @@ class JobApiService {
       "jobNrcJobNo": jobNumber,
       "jobStepId": jobStepId,
       "status": "accept",
-      "postPrintingFinishingOkQty": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
+      "quantity": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
       "date": _formatDateWithMilliseconds(),
       "oprName": formData['Operator Name'] ?? '',
       "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
@@ -304,7 +304,7 @@ class JobApiService {
     "shift": formData['Shift'] ?? '',
     "oprName": formData['Operator Name'] ?? '',
     "machineNo": formData['Machine No'] ?? '',
-    "noOfSheets": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
+    "quantity": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
     "size": formData['Size'] ?? '',
     "gsm1": formData['GSM 1'] ?? '',
     "gsm2": formData['GSM 2'] ?? '',
@@ -344,7 +344,7 @@ class JobApiService {
       "shift": formData['Shift'] ?? '',                  // New
       "operatorName": formData['Operator Name'] ?? '',
       "film": formData['Film Type'] ?? '',               // Changed key from 'filmType' to 'film'
-      "okQty": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0, // Use Qty Sheet from form
+      "quantity": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0, // Use Qty Sheet from form
       "qcCheckSignBy": formData['QC Sign By'] ?? '',     // New
       "adhesive": formData['Adhesive'] ?? '',
       "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
@@ -375,7 +375,7 @@ class JobApiService {
       "date": _formatDateWithMilliseconds(),
       "operatorName": formData['Operator Name'] ?? '',
       "machine": formData['Machine'] ?? '',
-      "okQty": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
+      "quantity": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
       "die": formData['Die Used'] ?? '',
       "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
       "remarks": formData['Remarks'] ?? '',
@@ -404,7 +404,7 @@ class JobApiService {
       "status": "accept",
       "date": _formatDateWithMilliseconds(),
       "checkedBy": formData['Checked By'] ?? '',
-      "passQty": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
+      "quantity": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
       "rejectedQty": int.tryParse(formData['Reject Quantity'] ?? '0') ?? 0,
       "reasonForRejection": formData['Reason for Rejection'] ?? '',
       "remarks": formData['Remarks'] ?? '',
@@ -459,7 +459,7 @@ class JobApiService {
       "status": "accept",
       "date": _formatDateWithMilliseconds(),
       "operatorName": formData['Operator Name'] ?? '',
-      "noOfBoxes": int.tryParse(formData['No of Boxes'] ?? '0') ?? 0,
+      "quantity": int.tryParse(formData['No of Boxes'] ?? '0') ?? 0,
       "dispatchNo": formData['Dispatch No'] ?? '',
       "dispatchDate": _formatDateWithMilliseconds(),
       "balanceQty": int.tryParse(formData['Balance Qty'] ?? '0') ?? 0,

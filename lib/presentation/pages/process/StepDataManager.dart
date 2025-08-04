@@ -5,8 +5,8 @@ import '../../../data/models/job_step_models.dart';
 class StepDataManager {
   static const orderedStepNames = [
     'PaperStore',
-    'PrintingDetails',
-    'Corrugation',
+    'PrintingDetails', // Printing comes 3rd
+    'Corrugation', // Corrugation comes 4th
     'FluteLaminateBoardConversion',
     'Punching',
     'SideFlapPasting',
@@ -79,24 +79,34 @@ class StepDataManager {
   }
 
   static StepType getStepTypeFromString(String step) {
+    print('DEBUG: Converting step string: "$step" to StepType');
     switch (step.toLowerCase()) {
       case 'paperstore':
+        print('DEBUG: Converting to StepType.paperStore');
         return StepType.paperStore;
       case 'printingdetails':
+        print('DEBUG: Converting to StepType.printing');
         return StepType.printing;
       case 'corrugation':
+        print('DEBUG: Converting to StepType.corrugation');
         return StepType.corrugation;
       case 'flutelaminateboardconversion':
+        print('DEBUG: Converting to StepType.fluteLamination');
         return StepType.fluteLamination;
       case 'punching':
+        print('DEBUG: Converting to StepType.punching');
         return StepType.punching;
       case 'sideflappasting':
+        print('DEBUG: Converting to StepType.flapPasting');
         return StepType.flapPasting;
       case 'qualitydept':
+        print('DEBUG: Converting to StepType.qc');
         return StepType.qc;
       case 'dispatchprocess':
+        print('DEBUG: Converting to StepType.dispatch');
         return StepType.dispatch;
       default:
+        print('DEBUG: Unknown step type, defaulting to StepType.jobAssigned');
         return StepType.jobAssigned;
     }
   }
@@ -153,9 +163,9 @@ class StepDataManager {
       case StepType.paperStore:
         return 1;
       case StepType.printing:
-        return 2;
+        return 2; // Printing comes 3rd
       case StepType.corrugation:
-        return 3;
+        return 3; // Corrugation comes 4th
       case StepType.fluteLamination:
         return 4;
       case StepType.punching:
@@ -172,6 +182,9 @@ class StepDataManager {
   }
 
   static List<StepData> initializeSteps(List<dynamic>? assignedSteps, {String? userRole}) {
+    print('DEBUG: Initializing steps with assignedSteps: $assignedSteps');
+    print('DEBUG: User role: $userRole');
+    
     List<StepData> steps = [
       StepData(
         type: StepType.jobAssigned,
@@ -183,22 +196,30 @@ class StepDataManager {
 
     if (assignedSteps != null && assignedSteps.isNotEmpty) {
       final sortedSteps = List<Map<String, dynamic>>.from(assignedSteps);
+      print('DEBUG: Original assigned steps: $sortedSteps');
+      
       sortedSteps.sort((a, b) {
         int aIndex = orderedStepNames.indexOf(a['stepName'] ?? '');
         int bIndex = orderedStepNames.indexOf(b['stepName'] ?? '');
         return aIndex.compareTo(bIndex);
       });
+      
+      print('DEBUG: Sorted steps: $sortedSteps');
 
       for (final stepMap in sortedSteps) {
         final stepName = stepMap['stepName'] ?? '';
         final displayName = getDisplayName(stepName);
         final stepType = getStepTypeFromString(stepName);
+        
+        print('DEBUG: Processing step - stepName: "$stepName", displayName: "$displayName", stepType: $stepType');
 
         // Filter steps based on user role
         if (userRole != null && !isStepAllowedForRole(stepType, userRole)) {
+          print('DEBUG: Skipping step "$displayName" - not allowed for role: $userRole');
           continue; // Skip this step if not allowed for the user's role
         }
 
+        print('DEBUG: Adding step: $displayName ($stepType)');
         steps.add(
           StepData(
             type: stepType,
@@ -211,6 +232,11 @@ class StepDataManager {
 
     if (steps.length > 1) {
       steps[1].status = StepStatus.pending;
+    }
+    
+    print('DEBUG: Final steps list:');
+    for (int i = 0; i < steps.length; i++) {
+      print('DEBUG: Step $i: ${steps[i].title} (${steps[i].type})');
     }
 
     return steps;

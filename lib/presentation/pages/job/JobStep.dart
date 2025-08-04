@@ -31,7 +31,7 @@ class JobTimelinePage extends StatefulWidget {
 
 class _JobTimelinePageState extends State<JobTimelinePage> {
   List<StepData> steps = []; // Initialize with empty list
-  int currentActiveStep = 0;
+  List<int> currentActiveSteps = []; // Support multiple active steps
   dynamic jobDetails;
   bool _jobLoading = false;
   String? _jobError;
@@ -76,10 +76,15 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     setState(() {
       steps = StepDataManager.initializeSteps(widget.assignedSteps, userRole: _userRole);
       if (steps.length > 1) {
-        currentActiveStep = 1;
+        currentActiveSteps = [1]; // Initialize with first step
       }
     });
     print('Initialized ${steps.length} steps for user role: $_userRole');
+    
+    // Debug: Print all steps with their types
+    for (int i = 0; i < steps.length; i++) {
+      print('DEBUG: Step $i: ${steps[i].title} (${steps[i].type})');
+    }
   }
 
   Future<void> _initializeStepsWithBackendSync() async {
@@ -113,13 +118,33 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       _loadingMessage = 'Finalizing...';
     });
 
-    // After syncing all steps, determine the current active step
-    _determineCurrentActiveStep();
+    // After syncing all steps, determine the current active steps
+    _determineCurrentActiveSteps();
 
-    print('Initialization complete. Current active step: $currentActiveStep');
+    // Check if we need to activate parallel steps
+    for (int i = 0; i < currentActiveSteps.length; i++) {
+      final activeStepIndex = currentActiveSteps[i];
+      if (activeStepIndex < steps.length) {
+        final activeStep = steps[activeStepIndex];
+        if (StepProgressManager.canRunInParallel(activeStep.type)) {
+          final parallelStepTypes = StepProgressManager.getParallelSteps(activeStep.type);
+          for (final parallelStepType in parallelStepTypes) {
+            final parallelStepIndex = steps.indexWhere((s) => s.type == parallelStepType);
+            if (parallelStepIndex != -1 && StepProgressManager.shouldActivateStep(steps, parallelStepIndex)) {
+              if (!currentActiveSteps.contains(parallelStepIndex)) {
+                currentActiveSteps.add(parallelStepIndex);
+                print('Activated parallel step: ${steps[parallelStepIndex].title}');
+              }
+            }
+          }
+        }
+      }
+    }
+
+    print('Initialization complete. Current active steps: $currentActiveSteps');
   }
 
-  void _determineCurrentActiveStep() {
+  void _determineCurrentActiveSteps() {
     setState(() {
       // Check if user has any steps available for their role
       if (steps.isEmpty || steps.length <= 1) {
@@ -127,41 +152,50 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         return;
       }
 
-      // First priority: Find any step that is currently 'started' (in progress)
+      List<int> activeSteps = [];
+
+      // Find all steps that should be active
       for (int i = 1; i < steps.length; i++) {
-        if (steps[i].status == StepStatus.started) {
-          currentActiveStep = i;
-          print('Found started step at index: $i (${steps[i].title})');
-          return;
+        final step = steps[i];
+        
+        // Check if step is started or in progress
+        if (step.status == StepStatus.started || step.status == StepStatus.inProgress) {
+          activeSteps.add(i);
+          print('Found active step at index: $i (${step.title})');
         }
-      }
-
-      // Second priority: Find any step with 'planned' status - stay on that step
-      for (int i = 1; i < steps.length; i++) {
-        if (steps[i].status == StepStatus.pending) {
-          bool allPreviousCompleted = true;
-          for (int j = 1; j < i; j++) {
-            if (steps[j].status != StepStatus.completed) {
-              allPreviousCompleted = false;
-              break;
-            }
-          }
-
-          if (allPreviousCompleted) {
-            currentActiveStep = i;
-            print('Found available step at index: $i (${steps[i].title}) - staying here until status changes to stop');
-            return;
+        // Check if step is pending and should be activated
+        else if (step.status == StepStatus.pending) {
+          if (StepProgressManager.shouldActivateStep(steps, i)) {
+            activeSteps.add(i);
+            print('Found pending step that should be active at index: $i (${step.title})');
           }
         }
       }
 
-      // Fallback: If no started or available step found, keep current
-      print('No active step found, keeping current: $currentActiveStep');
+      // If no active steps found, find the first step that should be activated
+      if (activeSteps.isEmpty) {
+        for (int i = 1; i < steps.length; i++) {
+          if (StepProgressManager.shouldActivateStep(steps, i)) {
+            activeSteps.add(i);
+            print('Found first available step at index: $i (${steps[i].title})');
+            break;
+          }
+        }
+      }
+
+      currentActiveSteps = activeSteps;
+      print('Current active steps: $currentActiveSteps');
     });
   }
 
   Future<void> _syncStepWithBackend(StepData step, int stepIndex) async {
     try {
+      // If step has form data, it was completed, so preserve completed status
+      if (step.formData.isNotEmpty && step.status == StepStatus.completed) {
+        print('Step ${step.title} has form data, preserving completed status');
+        return;
+      }
+
       final stepNo = StepDataManager.getStepNumber(step.type);
       final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
       final stepStatus = await _apiService.getStepStatusByType(step.type, widget.jobNumber!);
@@ -182,23 +216,29 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         setState(() {
           step.status = StepStatus.completed;
         });
-        print('Step  [33m${step.title} [0m marked as WORK COMPLETE (stop detected)');
-        // Move to the next available step
-        for (int i = stepIndex + 1; i < steps.length; i++) {
-          if (steps[i].status == StepStatus.pending || steps[i].status == StepStatus.inProgress || steps[i].status == StepStatus.started) {
-            setState(() {
-              currentActiveStep = i;
-            });
-            print('Moved to next step: ${steps[i].title}');
-            break;
-          }
+        print('Step ${step.title} marked as WORK COMPLETE (stop detected)');
+        // Check if all parallel steps are completed before moving to next step
+        bool shouldMoveToNext = true;
+        if (StepProgressManager.canRunInParallel(step.type)) {
+          shouldMoveToNext = StepProgressManager.areAllParallelStepsCompleted(steps, step.type);
+          print('Step ${step.title} can run in parallel. All parallel steps completed: $shouldMoveToNext');
         }
-        StepProgressManager.moveToNextStep(
-          steps,
-          stepIndex,
-              (newActiveStep) => setState(() => currentActiveStep = newActiveStep),
-              (message) => DialogManager.showSuccessMessage(context, message),
-        );
+
+        if (shouldMoveToNext) {
+          // Move to the next available step(s)
+          StepProgressManager.moveToNextStep(
+            steps,
+            stepIndex,
+                (newActiveStep) => setState(() {
+                  if (!currentActiveSteps.contains(newActiveStep)) {
+                    currentActiveSteps.add(newActiveStep);
+                  }
+                }),
+                (message) => DialogManager.showSuccessMessage(context, message),
+          );
+        } else {
+          print('Not moving to next step yet - waiting for parallel steps to complete');
+        }
         return;
       }
 
@@ -206,7 +246,9 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       if (stepStatus == 'start' || planningStatus == 'start') {
         setState(() {
           step.status = StepStatus.started;
-          currentActiveStep = stepIndex;
+          if (!currentActiveSteps.contains(stepIndex)) {
+            currentActiveSteps.add(stepIndex);
+          }
         });
         print('Step ${step.title} marked as WORK STARTED (from either API)');
         return;
@@ -227,17 +269,26 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         }
         if (allPreviousCompleted) {
           setState(() {
-            currentActiveStep = stepIndex;
+            if (!currentActiveSteps.contains(stepIndex)) {
+              currentActiveSteps.add(stepIndex);
+            }
           });
           print('Forcing step ${step.title} to be active due to planned status');
         }
         return;
       }
 
-      // 4. Fallback: Pending
+      // 4. Fallback: Pending (but preserve completed status if step has form data)
       setState(() {
-        step.status = StepStatus.pending;
-        print('Step ${step.title} marked as PENDING (fallback)');
+        // Only set to pending if the step doesn't have form data (indicating it wasn't actually completed)
+        if (step.formData.isEmpty) {
+          step.status = StepStatus.pending;
+          print('Step ${step.title} marked as PENDING (fallback)');
+        } else {
+          // If step has form data, it was completed, so keep it completed
+          step.status = StepStatus.completed;
+          print('Step ${step.title} preserved as COMPLETED (has form data)');
+        }
       });
 
       // For Paper Store, also sync with paper store API
@@ -265,7 +316,9 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           setState(() {
             if (status == 'in_progress') {
               steps[paperStoreStepIndex].status = StepStatus.started;
-              currentActiveStep = paperStoreStepIndex;
+              if (!currentActiveSteps.contains(paperStoreStepIndex)) {
+                currentActiveSteps.add(paperStoreStepIndex);
+              }
             } else if (status == 'accept') {
               steps[paperStoreStepIndex].status = StepStatus.completed;
             }
@@ -301,7 +354,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   }
 
   void _handleStepTap(StepData step) {
-    print('Step tapped: ${step.title}, Status: ${step.status}');
+    print('DEBUG: Step tapped: ${step.title}, Type: ${step.type}, Status: ${step.status}');
 
     if (step.type == StepType.jobAssigned) {
       _showCompleteJobDetails();
@@ -309,19 +362,19 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     }
 
     final isActive = _isStepActive(step);
-    print('Step ${step.title} - isActive: $isActive, status: ${step.status}');
+    print('DEBUG: Step ${step.title} - isActive: $isActive, status: ${step.status}');
 
     if (step.status == StepStatus.pending && isActive) {
       // Check machine assignment before allowing start
       _checkMachineAssignmentAndStart(step);
     } else if (step.status == StepStatus.started || step.status == StepStatus.inProgress) {
-      print('Showing work form for ${step.title}');
+      print('DEBUG: Showing work form for ${step.title}');
       _showWorkForm(step);
     } else if (step.status == StepStatus.completed) {
-      print('Showing completed step details for ${step.title}');
+      print('DEBUG: Showing completed step details for ${step.title}');
       _showCompletedStepDetails(step);
     } else {
-      print('Step ${step.title} is not available. Status: ${step.status}, Active: $isActive');
+      print('DEBUG: Step ${step.title} is not available. Status: ${step.status}, Active: $isActive');
       DialogManager.showErrorMessage(
           context,
           '${step.title} is not available yet. Complete previous steps first.'
@@ -623,51 +676,54 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: Builder(
-                            builder: (context) {
-                              final imageData = _safeBase64Decode(imageUrl);
-                              if (imageData != null) {
-                                return Image.memory(
-                                  imageData,
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Container(
-                                      color: Colors.grey[200],
-                                      child: Center(
-                                        child: Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            Icon(Icons.broken_image, color: Colors.grey[400]),
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              'Image not available',
-                                              style: TextStyle(color: Colors.grey[600]),
-                                            ),
-                                          ],
+                          child: GestureDetector(
+                            onTap: () => _showFullScreenImage(imageUrl),
+                            child: Builder(
+                              builder: (context) {
+                                final imageData = _safeBase64Decode(imageUrl);
+                                if (imageData != null) {
+                                  return Image.memory(
+                                    imageData,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Container(
+                                        color: Colors.grey[200],
+                                        child: Center(
+                                          child: Column(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Icon(Icons.broken_image, color: Colors.grey[400]),
+                                              const SizedBox(height: 8),
+                                              Text(
+                                                'Image not available',
+                                                style: TextStyle(color: Colors.grey[600]),
+                                              ),
+                                            ],
+                                          ),
                                         ),
+                                      );
+                                    },
+                                  );
+                                } else {
+                                  return Container(
+                                    color: Colors.grey[200],
+                                    child: Center(
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.broken_image, color: Colors.grey[400]),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'Image not available',
+                                            style: TextStyle(color: Colors.grey[600]),
+                                          ),
+                                        ],
                                       ),
-                                    );
-                                  },
-                                );
-                              } else {
-                                return Container(
-                                  color: Colors.grey[200],
-                                  child: Center(
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.broken_image, color: Colors.grey[400]),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          'Image not available',
-                                          style: TextStyle(color: Colors.grey[600]),
-                                        ),
-                                      ],
                                     ),
-                                  ),
-                                );
-                              }
-                            },
+                                  );
+                                }
+                              },
+                            ),
                           ),
                         ),
                       ),
@@ -729,27 +785,31 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       imageUrl = jobData?.imageURL;
     }
 
-    // Get machine information for current active step only
+    // Get machine information for current active steps
     Map<String, dynamic>? currentStepMachineInfo;
 
     try {
-      if (currentActiveStep > 0 && currentActiveStep < steps.length) {
-        final currentStep = steps[currentActiveStep];
-        final stepNo = StepDataManager.getStepNumber(currentStep.type);
-        final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
+      if (currentActiveSteps.isNotEmpty) {
+        // Use the first active step for machine info display
+        final currentStepIndex = currentActiveSteps.first;
+        if (currentStepIndex > 0 && currentStepIndex < steps.length) {
+          final currentStep = steps[currentStepIndex];
+          final stepNo = StepDataManager.getStepNumber(currentStep.type);
+          final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
 
-        if (stepDetails != null && stepDetails is Map) {
-          final machineDetails = stepDetails['machineDetails'];
+          if (stepDetails != null && stepDetails is Map) {
+            final machineDetails = stepDetails['machineDetails'];
 
-          if (machineDetails != null && machineDetails is List && machineDetails.isNotEmpty) {
-            final machineInfo = machineDetails[0];
-            if (machineInfo is Map) {
-              currentStepMachineInfo = {
-                'stepTitle': currentStep.title,
-                'machineCode': machineInfo['machineCode'] ?? 'Not assigned',
-                'machineId': machineInfo['id'] ?? 'Not assigned',
-                'unit': machineInfo['unit'] ?? 'Not assigned',
-              };
+            if (machineDetails != null && machineDetails is List && machineDetails.isNotEmpty) {
+              final machineInfo = machineDetails[0];
+              if (machineInfo is Map) {
+                currentStepMachineInfo = {
+                  'stepTitle': currentStep.title,
+                  'machineCode': machineInfo['machineCode'] ?? 'Not assigned',
+                  'machineId': machineInfo['id'] ?? 'Not assigned',
+                  'unit': machineInfo['unit'] ?? 'Not assigned',
+                };
+              }
             }
           }
         }
@@ -915,51 +975,54 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: Builder(
-                            builder: (context) {
-                              final imageData = _safeBase64Decode(imageUrl);
-                              if (imageData != null) {
-                                return Image.memory(
-                                  imageData,
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Container(
-                                      color: Colors.grey[200],
-                                      child: Center(
-                                        child: Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            Icon(Icons.broken_image, color: Colors.grey[400]),
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              'Image not available',
-                                              style: TextStyle(color: Colors.grey[600]),
-                                            ),
-                                          ],
+                          child: GestureDetector(
+                            onTap: () => _showFullScreenImage(imageUrl),
+                            child: Builder(
+                              builder: (context) {
+                                final imageData = _safeBase64Decode(imageUrl);
+                                if (imageData != null) {
+                                  return Image.memory(
+                                    imageData,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Container(
+                                        color: Colors.grey[200],
+                                        child: Center(
+                                          child: Column(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Icon(Icons.broken_image, color: Colors.grey[400]),
+                                              const SizedBox(height: 8),
+                                              Text(
+                                                'Image not available',
+                                                style: TextStyle(color: Colors.grey[600]),
+                                              ),
+                                            ],
+                                          ),
                                         ),
+                                      );
+                                    },
+                                  );
+                                } else {
+                                  return Container(
+                                    color: Colors.grey[200],
+                                    child: Center(
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.broken_image, color: Colors.grey[400]),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'Image not available',
+                                            style: TextStyle(color: Colors.grey[600]),
+                                          ),
+                                        ],
                                       ),
-                                    );
-                                  },
-                                );
-                              } else {
-                                return Container(
-                                  color: Colors.grey[200],
-                                  child: Center(
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.broken_image, color: Colors.grey[400]),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          'Image not available',
-                                          style: TextStyle(color: Colors.grey[600]),
-                                        ),
-                                      ],
                                     ),
-                                  ),
-                                );
-                              }
-                            },
+                                  );
+                                }
+                              },
+                            ),
                           ),
                         ),
                       ),
@@ -981,8 +1044,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
   bool _isStepActive(StepData step) {
     int stepIndex = steps.indexOf(step);
-    bool isActive = stepIndex == currentActiveStep;
-    print('Checking if step ${step.title} (index: $stepIndex) is active. Current active: $currentActiveStep, Result: $isActive');
+    bool isActive = currentActiveSteps.contains(stepIndex);
+    print('Checking if step ${step.title} (index: $stepIndex) is active. Current active steps: $currentActiveSteps, Result: $isActive');
     return isActive;
   }
 
@@ -1004,10 +1067,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       // Update local state immediately for UI responsiveness
       setState(() {
         step.status = StepStatus.started;
-        // Ensure this step becomes the current active step
+        // Ensure this step becomes one of the current active steps
         final stepIndex = steps.indexOf(step);
-        if (stepIndex != -1) {
-          currentActiveStep = stepIndex;
+        if (stepIndex != -1 && !currentActiveSteps.contains(stepIndex)) {
+          currentActiveSteps.add(stepIndex);
         }
       });
 
@@ -1136,8 +1199,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           setState(() {
             step.status = StepStatus.started;
             final stepIndex = steps.indexOf(step);
-            if (stepIndex != -1) {
-              currentActiveStep = stepIndex;
+            if (stepIndex != -1 && !currentActiveSteps.contains(stepIndex)) {
+              currentActiveSteps.add(stepIndex);
             }
           });
           print('Work started for ${step.title}');
@@ -1204,7 +1267,11 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         StepProgressManager.moveToNextStep(
           steps,
           paperStoreStepIndex,
-              (newActiveStep) => setState(() => currentActiveStep = newActiveStep),
+              (newActiveStep) => setState(() {
+                if (!currentActiveSteps.contains(newActiveStep)) {
+                  currentActiveSteps.add(newActiveStep);
+                }
+              }),
               (message) => DialogManager.showSuccessMessage(context, message),
         );
       }
@@ -1251,30 +1318,47 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       // Re-sync all steps to check for any 'planned' status
       await _refreshStepStatuses();
 
-      // Check for any planned steps that should become active
-      bool hasPlannedStep = false;
-      for (int i = 1; i < steps.length; i++) {
-        if (steps[i].status == StepStatus.pending) {
-          final checkStepNo = StepDataManager.getStepNumber(steps[i].type);
-          final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, checkStepNo);
-          if (stepDetails != null && stepDetails['status'] == 'planned') {
-            hasPlannedStep = true;
-            setState(() {
-              currentActiveStep = i;
-            });
-            print('Found planned step ${steps[i].title}, staying on it');
-            break;
-          }
-        }
+      // Check if all parallel steps are completed before moving to next step
+      bool shouldMoveToNext = true;
+      if (StepProgressManager.canRunInParallel(step.type)) {
+        shouldMoveToNext = StepProgressManager.areAllParallelStepsCompleted(steps, step.type);
+        print('Step ${step.title} can run in parallel. All parallel steps completed: $shouldMoveToNext');
       }
 
-      if (!hasPlannedStep) {
-        StepProgressManager.moveToNextStep(
-          steps,
-          stepIndex,
-              (newActiveStep) => setState(() => currentActiveStep = newActiveStep),
-              (message) => DialogManager.showSuccessMessage(context, message),
-        );
+      if (shouldMoveToNext) {
+        // Check for any planned steps that should become active
+        bool hasPlannedStep = false;
+        for (int i = 1; i < steps.length; i++) {
+          if (steps[i].status == StepStatus.pending) {
+            final checkStepNo = StepDataManager.getStepNumber(steps[i].type);
+            final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, checkStepNo);
+            if (stepDetails != null && stepDetails['status'] == 'planned') {
+              hasPlannedStep = true;
+              setState(() {
+                if (!currentActiveSteps.contains(i)) {
+                  currentActiveSteps.add(i);
+                }
+              });
+              print('Found planned step ${steps[i].title}, adding to active steps');
+              break;
+            }
+          }
+        }
+
+        if (!hasPlannedStep) {
+          StepProgressManager.moveToNextStep(
+            steps,
+            stepIndex,
+                (newActiveStep) => setState(() {
+                  if (!currentActiveSteps.contains(newActiveStep)) {
+                    currentActiveSteps.add(newActiveStep);
+                  }
+                }),
+                (message) => DialogManager.showSuccessMessage(context, message),
+          );
+        }
+      } else {
+        print('Not moving to next step yet - waiting for parallel steps to complete');
       }
 
       if (mounted && Navigator.canPop(context)) {
@@ -1301,11 +1385,26 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       return;
     }
 
+    // Store current completed steps to preserve their status
+    List<int> completedStepIndices = [];
+    for (int i = 1; i < steps.length; i++) {
+      if (steps[i].status == StepStatus.completed) {
+        completedStepIndices.add(i);
+      }
+    }
+
     for (int i = 1; i < steps.length; i++) {
       await _syncStepWithBackend(steps[i], i);
     }
 
-    _determineCurrentActiveStep();
+    // Restore completed status for steps that were completed before refresh
+    for (int index in completedStepIndices) {
+      if (index < steps.length) {
+        steps[index].status = StepStatus.completed;
+      }
+    }
+
+    _determineCurrentActiveSteps();
   }
 
   void _submitForm(StepData step, Map<String, String> formData) {
@@ -1470,6 +1569,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   }
 
   void _showCompletedStepDetails(StepData step) async {
+    print('DEBUG: _showCompletedStepDetails called for step: ${step.title} (${step.type})');
+    
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1482,30 +1583,47 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
       switch (step.type) {
         case StepType.printing:
+          print('DEBUG: Fetching printing details for job: ${widget.jobNumber}');
           stepDetails = await _apiService.getPrintingDetails(widget.jobNumber!);
+          print('DEBUG: Printing details response: $stepDetails');
           break;
         case StepType.corrugation:
+          print('DEBUG: Fetching corrugation details for job: ${widget.jobNumber}');
           stepDetails = await _apiService.getCorrugationDetails(widget.jobNumber!);
+          print('DEBUG: Corrugation details response: $stepDetails');
           break;
         case StepType.fluteLamination:
+          print('DEBUG: Fetching flute lamination details for job: ${widget.jobNumber}');
           stepDetails = await _apiService.getFluteLaminationDetails(widget.jobNumber!);
+          print('DEBUG: Flute lamination details response: $stepDetails');
           break;
         case StepType.punching:
+          print('DEBUG: Fetching punching details for job: ${widget.jobNumber}');
           stepDetails = await _apiService.getPunchingDetails(widget.jobNumber!);
+          print('DEBUG: Punching details response: $stepDetails');
           break;
         case StepType.flapPasting:
+          print('DEBUG: Fetching flap pasting details for job: ${widget.jobNumber}');
           stepDetails = await _apiService.getFlapPastingDetails(widget.jobNumber!);
+          print('DEBUG: Flap pasting details response: $stepDetails');
           break;
         case StepType.qc:
+          print('DEBUG: Fetching QC details for job: ${widget.jobNumber}');
           stepDetails = await _apiService.getQCDetails(widget.jobNumber!);
+          print('DEBUG: QC details response: $stepDetails');
           break;
         case StepType.dispatch:
+          print('DEBUG: Fetching dispatch details for job: ${widget.jobNumber}');
           stepDetails = await _apiService.getDispatchDetails(widget.jobNumber!);
+          print('DEBUG: Dispatch details response: $stepDetails');
           break;
         case StepType.paperStore:
+          print('DEBUG: Fetching paper store details for job: ${widget.jobNumber}');
           stepDetails = await _apiService.getPaperStoreStepByJob(widget.jobNumber!);
+          print('DEBUG: Paper store details response: $stepDetails');
           break;
         default:
+          print('DEBUG: Unknown step type: ${step.type}');
           stepDetails = null;
       }
 
@@ -1568,32 +1686,49 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
               const SizedBox(height: 16),
-              ...details.entries.map((entry) {
-                if (entry.key == 'id' || entry.key == 'jobStepId' || entry.key == 'jobNrcJobNo') {
-                  return const SizedBox.shrink(); // Skip internal fields
-                }
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        width: 120,
-                        child: Text(
-                          '${_formatFieldName(entry.key)}:',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
+              // Show only Status and Quantity
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 120,
+                      child: Text(
+                        'Status:',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
-                      Expanded(
-                        child: Text(
-                          '${entry.value ?? 'N/A'}',
-                          style: const TextStyle(fontSize: 14),
-                        ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        '${details['status'] ?? 'N/A'}',
+                        style: const TextStyle(fontSize: 14),
                       ),
-                    ],
-                  ),
-                );
-              }).toList(),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 120,
+                      child: Text(
+                        'Quantity:',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        '${details['quantity'] ?? 'N/A'}',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -1666,6 +1801,74 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       print('Error decoding base64 image: $e');
       return null;
     }
+  }
+
+  /// Show full screen image viewer
+  void _showFullScreenImage(String? imageUrl) {
+    if (imageUrl == null || imageUrl.isEmpty) return;
+    
+    final imageData = _safeBase64Decode(imageUrl);
+    if (imageData == null) return;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          children: [
+            // Full screen image
+            InteractiveViewer(
+              child: Center(
+                child: Image.memory(
+                  imageData,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      color: Colors.grey[900],
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.broken_image, color: Colors.grey[400], size: 64),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Image not available',
+                              style: TextStyle(color: Colors.grey[400], fontSize: 18),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            // Close button
+            Positioned(
+              top: 40,
+              right: 20,
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.close,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -1813,8 +2016,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                           jobNumber: widget.jobNumber,
                           onTap: () => _handleStepTap(step),
                         ),
-                        // Show Step Details button right after the current active step
-                        if (index == currentActiveStep && index > 0)
+                        // Show Step Details button right after any active step
+                        if (currentActiveSteps.contains(index) && index > 0)
                           Container(
                             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                             child: ElevatedButton.icon(
