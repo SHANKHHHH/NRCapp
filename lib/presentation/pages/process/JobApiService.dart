@@ -406,9 +406,8 @@ class JobApiService {
       "checkedBy": formData['Checked By'] ?? '',
       "quantity": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
       "rejectedQty": int.tryParse(formData['Reject Quantity'] ?? '0') ?? 0,
-      "reasonForRejection": formData['Reason for Rejection'] ?? '',
+      "reasonForRejection": formData['Reason for Rejection'].toString() ?? '',
       "remarks": formData['Remarks'] ?? '',
-      "user": formData['Emp Id'] ?? '',
     };
     print(body);
     await _jobApi.putQCDetails(body,jobNumber);
