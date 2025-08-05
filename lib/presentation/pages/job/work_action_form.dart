@@ -41,6 +41,8 @@ class _WorkActionFormState extends State<WorkActionForm> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _qtyController = TextEditingController();
   final TextEditingController _empIdController = TextEditingController();
+  final TextEditingController _rejectedQtyController = TextEditingController();
+  final TextEditingController _reasonForRejectionController = TextEditingController();
   String _status = 'pending';
   DateTime? _startTime;
   DateTime? _endTime;
@@ -76,6 +78,8 @@ class _WorkActionFormState extends State<WorkActionForm> {
   void dispose() {
     _qtyController.dispose();
     _empIdController.dispose();
+    _rejectedQtyController.dispose();
+    _reasonForRejectionController.dispose();
     super.dispose();
   }
 
@@ -283,13 +287,17 @@ class _WorkActionFormState extends State<WorkActionForm> {
           'End Time': _endTime?.toString() ?? DateTime.now().toString(),
         };
 
-        // Debug print to see what's being sent
+        if (widget.title.toLowerCase().contains('quality control') ||
+            widget.title.toLowerCase().contains('qc')) {
+          formData['Reject Quantity'] = _rejectedQtyController.text;
+          formData['Reason for Rejection'] = _reasonForRejectionController.text;
+        }
+
         print('WorkActionForm - Form Data being sent:');
         print('Qty Sheet: ${_qtyController.text}');
         print('Emp Id: ${_empIdController.text}');
         print('Full formData: $formData');
 
-        // Update job planning step status to 'stop' with user information
         if (widget.jobNumber != null && widget.stepNo != null && widget.apiService != null) {
           try {
             await widget.apiService!.updateJobPlanningStepComplete(
@@ -304,7 +312,6 @@ class _WorkActionFormState extends State<WorkActionForm> {
           }
         }
 
-        // Call the onComplete callback which will handle the specific step post operation
         widget.onComplete(formData);
 
         setState(() => _isLoading = false);
@@ -529,6 +536,72 @@ class _WorkActionFormState extends State<WorkActionForm> {
                           return null;
                         },
                       ),
+                      // Quality Control specific fields
+                      if (widget.title.toLowerCase().contains('quality control') || 
+                          widget.title.toLowerCase().contains('qc')) ...[
+                        // Rejected Qty field
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _rejectedQtyController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: 'Rejected Qty',
+                            labelStyle: TextStyle(color: AppColors.maincolor),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(color: Colors.grey[300]!),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(color: AppColors.maincolor, width: 2),
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey[50],
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                            hintText: 'Enter Rejected Quantity',
+                            hintStyle: TextStyle(color: Colors.grey[500], fontSize: 12),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter Rejected Qty';
+                            }
+                            final enteredQty = int.tryParse(value);
+                            if (enteredQty == null) {
+                              return 'Please enter a valid number';
+                            }
+                            return null;
+                          },
+                        ),
+                        // Reason for Rejection field
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _reasonForRejectionController,
+                          keyboardType: TextInputType.text,
+                          decoration: InputDecoration(
+                            labelText: 'Reason for Rejection',
+                            labelStyle: TextStyle(color: AppColors.maincolor),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(color: Colors.grey[300]!),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(color: AppColors.maincolor, width: 2),
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey[50],
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                            hintText: 'Enter Reason for Rejection',
+                            hintStyle: TextStyle(color: Colors.grey[500], fontSize: 12),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter Reason for Rejection';
+                            }
+                            return null;
+                          },
+                        ),
+                      ],
                     ],
                   ),
                 ),

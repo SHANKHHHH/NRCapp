@@ -327,14 +327,6 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
                             letterSpacing: 1.2,
                           ),
                         ),
-                        Text(
-                          'SUMMARY',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.maincolor,
-                          ),
-                        ),
                       ],
                     ),
                     Row(

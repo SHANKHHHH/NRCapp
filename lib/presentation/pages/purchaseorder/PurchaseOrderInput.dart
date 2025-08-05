@@ -32,8 +32,7 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
   late TextEditingController _deliverDateController;
   late TextEditingController _totalPoController;
   late TextEditingController _dispatchDateController;
-  late TextEditingController _nrcDeliveryDateController;
-  late TextEditingController _unitController;
+  late TextEditingController _locationController;
   late TextEditingController _noOfSheetsController;
 
   // Calculated field
@@ -49,8 +48,7 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
     _deliverDateController = TextEditingController();
     _totalPoController = TextEditingController();
     _dispatchDateController = TextEditingController();
-    _nrcDeliveryDateController = TextEditingController();
-    _unitController = TextEditingController(text: 'PCS');
+    _locationController = TextEditingController();
     _noOfSheetsController = TextEditingController();
 
     // Then set their values if editing
@@ -60,10 +58,11 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
       _deliverDateController.text = widget.existingPo!.deliveryDate.toIso8601String();
       _totalPoController.text = widget.existingPo!.totalPOQuantity.toString();
       _dispatchDateController.text = widget.existingPo!.dispatchDate.toIso8601String();
-      _nrcDeliveryDateController.text = widget.existingPo!.nrcDeliveryDate.toIso8601String();
-      _unitController.text = widget.existingPo!.unit;
+      _locationController.text = widget.existingPo!.unit;
       _noOfSheetsController.text = widget.existingPo!.noOfSheets.toString();
     }
+
+    _totalPoController.addListener(_calculateNumberOfSheets);
   }
 
   @override
@@ -73,10 +72,22 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
     _deliverDateController.dispose();
     _totalPoController.dispose();
     _dispatchDateController.dispose();
-    _nrcDeliveryDateController.dispose();
-    _unitController.dispose();
+    _locationController.dispose();
     _noOfSheetsController.dispose();
     super.dispose();
+  }
+
+  // Calculate number of sheets based on Total PO Quantity / Number of Ups
+  void _calculateNumberOfSheets() {
+    final totalPoQty = int.tryParse(_totalPoController.text);
+    final noOfUps = int.tryParse(widget.job.noUps ?? '0');
+    
+    if (totalPoQty != null && noOfUps != null && noOfUps > 0) {
+      final calculatedSheets = (totalPoQty / noOfUps).ceil();
+      setState(() {
+        _noOfSheetsController.text = calculatedSheets.toString();
+      });
+    }
   }
 
   @override
@@ -452,23 +463,10 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
                   ),
                   const SizedBox(height: 20),
 
-                  _buildDateFormField(
-                    controller: _nrcDeliveryDateController,
-                    label: 'NRC Delivery Date',
-                    icon: Icons.event_outlined,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please select NRC delivery date';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 20),
-
                   Row(
                     children: [
                       Expanded(
-                        flex: 2,
+                        flex: 1,
                         child: _buildNumberFormField(
                           controller: _totalPoController,
                           label: 'Total PO Quantity',
@@ -487,12 +485,12 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
                       const SizedBox(width: 16),
                       Expanded(
                         child: _buildTextFormField(
-                          controller: _unitController,
-                          label: 'Unit',
-                          icon: Icons.straighten,
+                          controller: _locationController,
+                          label: 'Location',
+                          icon: Icons.location_on_outlined,
                           validator: (value) {
                             if (value == null || value.isEmpty) {
-                              return 'Please enter unit';
+                              return 'Please enter location';
                             }
                             return null;
                           },
@@ -502,19 +500,11 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
                   ),
                   const SizedBox(height: 20),
 
-                  _buildNumberFormField(
+                  _buildReadOnlyNumberField(
                     controller: _noOfSheetsController,
-                    label: 'Number of Sheets',
+                    label: 'Number of Sheets (Calculated)',
                     icon: Icons.format_list_numbered_outlined,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter number of sheets';
-                      }
-                      if (int.tryParse(value) == null) {
-                        return 'Please enter a valid number';
-                      }
-                      return null;
-                    },
+                    hintText: 'Auto-calculated from Total PO Quantity / Number of Ups',
                   ),
                   const SizedBox(height: 20),
 
@@ -773,6 +763,57 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
     );
   }
 
+  Widget _buildReadOnlyNumberField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    required String hintText,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          enabled: false,
+          decoration: InputDecoration(
+            prefixIcon: Icon(icon, color: Colors.grey[600], size: 20),
+            hintText: hintText,
+            hintStyle: TextStyle(
+              color: Colors.grey[500],
+              fontSize: 12,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[300]!),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[300]!),
+            ),
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[300]!),
+            ),
+            filled: true,
+            fillColor: Colors.grey[100],
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          ),
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        ),
+      ],
+    );
+  }
+
   Widget _buildActionButtons() {
     return Column(
       children: [
@@ -923,9 +964,8 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
         'poNumber': _poNumberController.text,
         'deliveryDate': _formatDate(DateTime.parse(_deliverDateController.text)),
         'dispatchDate': _formatDate(DateTime.parse(_dispatchDateController.text)),
-        'nrcDeliveryDate': _formatDate(DateTime.parse(_nrcDeliveryDateController.text)),
+        'unit': _locationController.text,
         'totalPOQuantity': int.parse(_totalPoController.text),
-        'unit': _unitController.text,
         'pendingValidity': pendingValidity,
         'noOfSheets': int.parse(_noOfSheetsController.text),
         'updatedAt': _formatDate(DateTime.now()),
