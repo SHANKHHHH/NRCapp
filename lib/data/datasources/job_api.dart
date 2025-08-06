@@ -415,31 +415,7 @@ class JobApi {
     }
   }
 
-  Future<void> updateJobPlanningStepStartDateOnly(String jobNumber, int stepNo, String startDate) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('accessToken');
-      print('[updateJobPlanningStepStartDateOnly] Token: $token');
-      print('[updateJobPlanningStepStartDateOnly] jobNumber: $jobNumber, stepNo: $stepNo, startDate: $startDate');
-      final url = '${AppStrings.baseUrl}/api/job-planning/${jobNumber}/steps/$stepNo';
-      final body = {
-        'startDate': startDate
-      };
-      print('[updateJobPlanningStepStartDateOnly] URL: $url');
-      print('[updateJobPlanningStepStartDateOnly] Body: $body');
-      final response = await dio.patch(url, data: body, options: Options(
-        headers: {
-          'Content-Type': 'application/json',
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
-      ),
-      );
-      print('[updateJobPlanningStepStartDateOnly] Response:  [32m${response.statusCode} ${response.data} [0m');
-    } catch (e) {
-      print('[updateJobPlanningStepStartDateOnly] Error: $e');
-      throw e;
-    }
-  }
+
 
   Future<Response> updateJobPlanningStepFields(String jobNumber, int stepNo, Map<String, dynamic> body) async {
     try {
@@ -450,7 +426,7 @@ class JobApi {
       final url = '${AppStrings.baseUrl}/api/job-planning/${jobNumber}/steps/$stepNo';
       print('[updateJobPlanningStepFields] URL: $url');
       print('[updateJobPlanningStepFields] Body: $body');
-      final response = await dio.patch(url, data: body, options: Options(
+      final response = await dio.put(url, data: body, options: Options(
         headers: {
           'Content-Type': 'application/json',
           if (token != null) 'Authorization': 'Bearer $token',
@@ -669,7 +645,7 @@ class JobApi {
       
       print('[updateJobPlanningStepComplete] URL: $url');
       print('[updateJobPlanningStepComplete] Body: $body');
-      final response = await dio.patch(url, data: body, options: Options(
+      final response = await dio.put(url, data: body, options: Options(
         headers: {
           'Content-Type': 'application/json',
           if (token != null) 'Authorization': 'Bearer $token',
