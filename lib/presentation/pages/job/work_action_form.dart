@@ -315,6 +315,23 @@ class _WorkActionFormState extends State<WorkActionForm> {
         widget.onComplete(formData);
 
         setState(() => _isLoading = false);
+
+        // Close the dialog after successful completion
+        if (mounted) {
+          // Show success message first
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${widget.title} work completed successfully!'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+              behavior: SnackBarBehavior.floating,
+              margin: EdgeInsets.all(16),
+            ),
+          );
+          
+          // Then close the dialog
+          Navigator.of(context).pop();
+        }
       } catch (e) {
         print("this is the issue");
         setState(() => _isLoading = false);

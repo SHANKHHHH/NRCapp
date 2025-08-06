@@ -463,7 +463,6 @@ class JobApiService {
       "dispatchDate": _formatDateWithMilliseconds(),
       "balanceQty": int.tryParse(formData['Balance Qty'] ?? '0') ?? 0,
       "remarks": formData['Remarks'] ?? '',
-      "user": formData['Emp Id'] ?? '',
     };
     await _jobApi.putDispatchDetails(body,jobNumber);
   }

@@ -39,6 +39,12 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   String? _userRole;
   bool _isInitializing = true; // New loading state
   String _loadingMessage = 'Initializing...'; // Loading message for user feedback
+  
+  // Performance optimization: Cache for API responses
+  Map<int, Map<String, dynamic>?> _stepDetailsCache = {};
+  Map<StepType, String> _stepStatusCache = {};
+  Map<String, dynamic>? _paperStoreCache;
+  bool _isDataLoaded = false;
 
   @override
   void initState() {
@@ -87,10 +93,11 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     }
   }
 
+  /// Optimized backend sync that batches API calls and uses caching
   Future<void> _initializeStepsWithBackendSync() async {
     if (widget.jobNumber == null) return;
 
-    print('Starting backend sync for ${steps.length} steps...');
+    print('Starting optimized backend sync for ${steps.length} steps...');
 
     // Check if user has any steps available for their role
     if (steps.isEmpty || steps.length <= 1) {
@@ -99,29 +106,211 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     }
 
     setState(() {
-      _loadingMessage = 'Syncing with backend...';
+      _loadingMessage = 'Loading step data...';
     });
 
-    // Create a list of futures for parallel execution
-    List<Future<void>> syncFutures = [];
+    try {
+      // Batch load all step details in parallel
+      await _batchLoadStepDetails();
+      
+      setState(() {
+        _loadingMessage = 'Processing step statuses...';
+      });
 
+      // Process all steps with cached data
+      await _processAllStepsWithCachedData();
+      
+      setState(() {
+        _loadingMessage = 'Finalizing...';
+      });
+
+      // Determine current active steps
+      _determineCurrentActiveSteps();
+
+      // Check for parallel steps
+      _activateParallelSteps();
+
+      setState(() {
+        _isDataLoaded = true;
+      });
+
+      print('Optimized backend sync completed. Current active steps: $currentActiveSteps');
+    } catch (e) {
+      print('Error during optimized backend sync: $e');
+      // Fallback to individual sync if batch loading fails
+      await _fallbackIndividualSync();
+    }
+  }
+
+  /// Batch load all step details in parallel to reduce API calls
+  Future<void> _batchLoadStepDetails() async {
+    if (widget.jobNumber == null) return;
+
+    List<Future<void>> batchFutures = [];
+
+    // Load all step details in parallel
     for (int i = 1; i < steps.length; i++) {
-      syncFutures.add(_syncStepWithBackend(steps[i], i));
+      final step = steps[i];
+      final stepNo = StepDataManager.getStepNumber(step.type);
+      
+      batchFutures.add(_loadStepDetailsWithCache(stepNo, step.type));
     }
 
-    // Execute all sync operations in parallel
-    await Future.wait(syncFutures);
+    // Also load paper store data if needed
+    if (steps.any((step) => step.type == StepType.paperStore)) {
+      batchFutures.add(_loadPaperStoreWithCache());
+    }
 
-    print('Backend sync completed. Determining current active step...');
+    // Execute all batch operations in parallel
+    await Future.wait(batchFutures);
+  }
+
+  /// Load step details with caching
+  Future<void> _loadStepDetailsWithCache(int stepNo, StepType stepType) async {
+    try {
+      // Check cache first
+      if (_stepDetailsCache.containsKey(stepNo)) {
+        print('Using cached step details for step $stepNo');
+        return;
+      }
+
+      // Load from API
+      final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
+      _stepDetailsCache[stepNo] = stepDetails;
+      
+      // Also load step status
+      final stepStatus = await _apiService.getStepStatusByType(stepType, widget.jobNumber!);
+      _stepStatusCache[stepType] = stepStatus.toString();
+      
+      print('Loaded and cached step details for step $stepNo');
+    } catch (e) {
+      print('Error loading step details for step $stepNo: $e');
+      _stepDetailsCache[stepNo] = null;
+      _stepStatusCache[stepType] = '';
+    }
+  }
+
+  /// Load paper store data with caching
+  Future<void> _loadPaperStoreWithCache() async {
+    try {
+      if (_paperStoreCache != null) {
+        print('Using cached paper store data');
+        return;
+      }
+
+      _paperStoreCache = await _apiService.getPaperStoreStepByJob(widget.jobNumber!);
+      print('Loaded and cached paper store data');
+    } catch (e) {
+      print('Error loading paper store data: $e');
+      _paperStoreCache = null;
+    }
+  }
+
+  /// Process all steps using cached data
+  Future<void> _processAllStepsWithCachedData() async {
+    for (int i = 1; i < steps.length; i++) {
+      final step = steps[i];
+      final stepNo = StepDataManager.getStepNumber(step.type);
+      
+      // Skip if step has form data (already completed)
+      if (step.formData.isNotEmpty && step.status == StepStatus.completed) {
+        print('Step ${step.title} has form data, preserving completed status');
+        continue;
+      }
+
+      // Get cached data
+      final stepDetails = _stepDetailsCache[stepNo];
+      final stepStatus = _stepStatusCache[step.type];
+
+      // Process step status
+      _processStepStatus(step, i, stepDetails, stepStatus);
+
+      // Special handling for Paper Store
+      if (step.type == StepType.paperStore && _paperStoreCache != null) {
+        _processPaperStoreStep(step, i);
+      }
+    }
+  }
+
+  void _processStepStatus(StepData step, int stepIndex, Map<String, dynamic>? stepDetails, String? stepStatus) {
+    dynamic planningStatus;
+    if (stepDetails is List && stepDetails!.isEmpty) {
+      planningStatus = null;
+    } else if (stepDetails is Map && stepDetails!.containsKey('status')) {
+      planningStatus = stepDetails['status'];
+    } else if (stepDetails is Map && stepDetails!.isEmpty) {
+      planningStatus = null;
+    } else {
+      planningStatus = null;
+    }
 
     setState(() {
-      _loadingMessage = 'Finalizing...';
+      // 1. Work Complete: If either status is 'stop', mark as completed
+      if (stepStatus == 'stop' || planningStatus == 'stop') {
+        step.status = StepStatus.completed;
+        print('Step ${step.title} marked as WORK COMPLETE (stop detected)');
+      }
+      // 2. Work Started: If either status is 'start'
+      else if (stepStatus == 'start' || planningStatus == 'start') {
+        step.status = StepStatus.started;
+        if (!currentActiveSteps.contains(stepIndex)) {
+          currentActiveSteps.add(stepIndex);
+        }
+        print('Step ${step.title} marked as WORK STARTED');
+      }
+      // 3. Pending: If planning status is 'planned'
+      else if (planningStatus == 'planned') {
+        step.status = StepStatus.pending;
+        print('Step ${step.title} marked as PENDING (planned)');
+        
+        // Check if all previous steps are completed
+        bool allPreviousCompleted = true;
+        for (int j = 1; j < stepIndex; j++) {
+          if (steps[j].status != StepStatus.completed) {
+            allPreviousCompleted = false;
+            break;
+          }
+        }
+        if (allPreviousCompleted) {
+          if (!currentActiveSteps.contains(stepIndex)) {
+            currentActiveSteps.add(stepIndex);
+          }
+          print('Forcing step ${step.title} to be active due to planned status');
+        }
+      }
+      // 4. Fallback: Pending (but preserve completed status if step has form data)
+      else {
+        if (step.formData.isEmpty) {
+          step.status = StepStatus.pending;
+          print('Step ${step.title} marked as PENDING (fallback)');
+        } else {
+          step.status = StepStatus.completed;
+          print('Step ${step.title} preserved as COMPLETED (has form data)');
+        }
+      }
     });
+  }
 
-    // After syncing all steps, determine the current active steps
-    _determineCurrentActiveSteps();
+  /// Process Paper Store step using cached data
+  void _processPaperStoreStep(StepData step, int stepIndex) {
+    if (_paperStoreCache != null) {
+      final status = _paperStoreCache!['status'];
+      
+      setState(() {
+        if (status == 'in_progress') {
+          step.status = StepStatus.started;
+          if (!currentActiveSteps.contains(stepIndex)) {
+            currentActiveSteps.add(stepIndex);
+          }
+        } else if (status == 'accept') {
+          step.status = StepStatus.completed;
+        }
+      });
+    }
+  }
 
-    // Check if we need to activate parallel steps
+  /// Activate parallel steps if needed
+  void _activateParallelSteps() {
     for (int i = 0; i < currentActiveSteps.length; i++) {
       final activeStepIndex = currentActiveSteps[i];
       if (activeStepIndex < steps.length) {
@@ -140,8 +329,17 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         }
       }
     }
+  }
 
-    print('Initialization complete. Current active steps: $currentActiveSteps');
+  /// Fallback to individual sync if batch loading fails
+  Future<void> _fallbackIndividualSync() async {
+    print('Falling back to individual sync...');
+    
+    List<Future<void>> syncFutures = [];
+    for (int i = 1; i < steps.length; i++) {
+      syncFutures.add(_syncStepWithBackend(steps[i], i));
+    }
+    await Future.wait(syncFutures);
   }
 
   void _determineCurrentActiveSteps() {
@@ -188,6 +386,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     });
   }
 
+  /// Legacy method for fallback - kept for backward compatibility
   Future<void> _syncStepWithBackend(StepData step, int stepIndex) async {
     try {
       // If step has form data, it was completed, so preserve completed status
@@ -331,6 +530,11 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   }
 
   Future<void> _fetchJobDetails() async {
+    // Don't reload if already loaded
+    if (jobDetails != null && !_jobLoading) {
+      return;
+    }
+
     setState(() {
       _jobLoading = true;
       _jobError = null;
@@ -444,9 +648,15 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     }
 
     try {
-      // Get step details to check machine assignment
+      // Use cached step details if available
       final stepNo = StepDataManager.getStepNumber(step.type);
-      final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
+      Map<String, dynamic>? stepDetails = _stepDetailsCache[stepNo];
+      
+      // If not in cache, load it
+      if (stepDetails == null) {
+        stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
+        _stepDetailsCache[stepNo] = stepDetails; // Cache for future use
+      }
 
       if (stepDetails != null && stepDetails is Map) {
         final machineDetails = stepDetails['machineDetails'];
@@ -1315,51 +1525,17 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         step.status = StepStatus.completed;
       });
 
-      // Re-sync all steps to check for any 'planned' status
-      await _refreshStepStatuses();
-
-      // Check if all parallel steps are completed before moving to next step
-      bool shouldMoveToNext = true;
-      if (StepProgressManager.canRunInParallel(step.type)) {
-        shouldMoveToNext = StepProgressManager.areAllParallelStepsCompleted(steps, step.type);
-        print('Step ${step.title} can run in parallel. All parallel steps completed: $shouldMoveToNext');
+      // Update cache to reflect the completed status
+      _stepStatusCache[step.type] = 'stop';
+      if (_stepDetailsCache.containsKey(stepNo)) {
+        final cachedDetails = _stepDetailsCache[stepNo];
+        if (cachedDetails != null && cachedDetails is Map) {
+          cachedDetails['status'] = 'stop';
+        }
       }
 
-      if (shouldMoveToNext) {
-        // Check for any planned steps that should become active
-        bool hasPlannedStep = false;
-        for (int i = 1; i < steps.length; i++) {
-          if (steps[i].status == StepStatus.pending) {
-            final checkStepNo = StepDataManager.getStepNumber(steps[i].type);
-            final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, checkStepNo);
-            if (stepDetails != null && stepDetails['status'] == 'planned') {
-              hasPlannedStep = true;
-              setState(() {
-                if (!currentActiveSteps.contains(i)) {
-                  currentActiveSteps.add(i);
-                }
-              });
-              print('Found planned step ${steps[i].title}, adding to active steps');
-              break;
-            }
-          }
-        }
-
-        if (!hasPlannedStep) {
-          StepProgressManager.moveToNextStep(
-            steps,
-            stepIndex,
-                (newActiveStep) => setState(() {
-                  if (!currentActiveSteps.contains(newActiveStep)) {
-                    currentActiveSteps.add(newActiveStep);
-                  }
-                }),
-                (message) => DialogManager.showSuccessMessage(context, message),
-          );
-        }
-      } else {
-        print('Not moving to next step yet - waiting for parallel steps to complete');
-      }
+      // Optimized step progression check using cached data
+      await _optimizedStepProgressionCheck(step, stepIndex);
 
       if (mounted && Navigator.canPop(context)) {
         Navigator.pop(context); // Close WorkActionForm dialog
@@ -1375,7 +1551,82 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     }
   }
 
+  /// Optimized step progression check using cached data
+  Future<void> _optimizedStepProgressionCheck(StepData step, int stepIndex) async {
+    // Check if all parallel steps are completed before moving to next step
+    bool shouldMoveToNext = true;
+    if (StepProgressManager.canRunInParallel(step.type)) {
+      shouldMoveToNext = StepProgressManager.areAllParallelStepsCompleted(steps, step.type);
+      print('Step ${step.title} can run in parallel. All parallel steps completed: $shouldMoveToNext');
+    }
+
+    if (shouldMoveToNext) {
+      // Check for any planned steps that should become active using cached data
+      bool hasPlannedStep = false;
+      for (int i = 1; i < steps.length; i++) {
+        if (steps[i].status == StepStatus.pending) {
+          final checkStepNo = StepDataManager.getStepNumber(steps[i].type);
+          final stepDetails = _stepDetailsCache[checkStepNo];
+          
+          // If not in cache, load it
+          if (stepDetails == null) {
+            try {
+              final loadedDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, checkStepNo);
+              _stepDetailsCache[checkStepNo] = loadedDetails;
+              if (loadedDetails != null && loadedDetails['status'] == 'planned') {
+                hasPlannedStep = true;
+                setState(() {
+                  if (!currentActiveSteps.contains(i)) {
+                    currentActiveSteps.add(i);
+                  }
+                });
+                print('Found planned step ${steps[i].title}, adding to active steps');
+                break;
+              }
+            } catch (e) {
+              print('Error checking planned step: $e');
+            }
+          } else if (stepDetails['status'] == 'planned') {
+            hasPlannedStep = true;
+            setState(() {
+              if (!currentActiveSteps.contains(i)) {
+                currentActiveSteps.add(i);
+              }
+            });
+            print('Found planned step ${steps[i].title}, adding to active steps');
+            break;
+          }
+        }
+      }
+
+      if (!hasPlannedStep) {
+        StepProgressManager.moveToNextStep(
+          steps,
+          stepIndex,
+              (newActiveStep) => setState(() {
+                if (!currentActiveSteps.contains(newActiveStep)) {
+                  currentActiveSteps.add(newActiveStep);
+                }
+              }),
+              (message) => DialogManager.showSuccessMessage(context, message),
+        );
+      }
+    } else {
+      print('Not moving to next step yet - waiting for parallel steps to complete');
+    }
+  }
+
   // New method to refresh step statuses
+  /// Clear all caches to force fresh data
+  void _clearAllCaches() {
+    _stepDetailsCache.clear();
+    _stepStatusCache.clear();
+    _paperStoreCache = null;
+    _completedStepDetailsCache.clear();
+    jobDetails = null; // Clear job details cache too
+  }
+
+  /// Optimized refresh method that uses cached data when possible
   Future<void> _refreshStepStatuses() async {
     if (widget.jobNumber == null) return;
 
@@ -1385,6 +1636,9 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       return;
     }
 
+    // Clear cache to force fresh data
+    _clearAllCaches();
+
     // Store current completed steps to preserve their status
     List<int> completedStepIndices = [];
     for (int i = 1; i < steps.length; i++) {
@@ -1393,9 +1647,9 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       }
     }
 
-    for (int i = 1; i < steps.length; i++) {
-      await _syncStepWithBackend(steps[i], i);
-    }
+    // Use optimized batch loading
+    await _batchLoadStepDetails();
+    await _processAllStepsWithCachedData();
 
     // Restore completed status for steps that were completed before refresh
     for (int index in completedStepIndices) {
@@ -1568,8 +1822,20 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     DialogManager.showJobDetailsDialog(context, widget.jobNumber, jobDetailsMap);
   }
 
+  // Cache for completed step details
+  Map<StepType, Map<String, dynamic>?> _completedStepDetailsCache = {};
+
   void _showCompletedStepDetails(StepData step) async {
     print('DEBUG: _showCompletedStepDetails called for step: ${step.title} (${step.type})');
+    
+    // Check cache first
+    if (_completedStepDetailsCache.containsKey(step.type)) {
+      final cachedDetails = _completedStepDetailsCache[step.type];
+      if (cachedDetails != null) {
+        _showStepDetailsDialog(step, cachedDetails);
+        return;
+      }
+    }
     
     showDialog(
       context: context,
@@ -1646,6 +1912,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         }
 
         if (details.isNotEmpty) {
+          // Cache the details for future use
+          _completedStepDetailsCache[step.type] = details;
           _showStepDetailsDialog(step, details);
         } else {
           DialogManager.showErrorMessage(context, 'No details found for ${step.title}');
@@ -1905,10 +2173,13 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
               );
 
               try {
+                // Clear all caches first
+                _clearAllCaches();
+                
                 // Refresh job details
                 await _fetchJobDetails();
                 
-                // Refresh step statuses
+                // Refresh step statuses using optimized method
                 await _refreshStepStatuses();
                 
                 // Close loading dialog
