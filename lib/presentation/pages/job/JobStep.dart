@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:nrc/constants/colors.dart';
 import 'package:nrc/core/services/dio_service.dart';
@@ -30,17 +29,16 @@ class JobTimelinePage extends StatefulWidget {
 }
 
 class _JobTimelinePageState extends State<JobTimelinePage> {
-  List<StepData> steps = []; // Initialize with empty list
-  List<int> currentActiveSteps = []; // Support multiple active steps
+  List<StepData> steps = [];
+  List<int> currentActiveSteps = [];
   dynamic jobDetails;
   bool _jobLoading = false;
   String? _jobError;
   late final JobApiService _apiService;
   String? _userRole;
-  bool _isInitializing = true; // New loading state
-  String _loadingMessage = 'Initializing...'; // Loading message for user feedback
+  bool _isInitializing = true;
+  String _loadingMessage = 'Initializing...';
   
-  // Performance optimization: Cache for API responses
   Map<int, Map<String, dynamic>?> _stepDetailsCache = {};
   Map<StepType, String> _stepStatusCache = {};
   Map<String, dynamic>? _paperStoreCache;
@@ -117,7 +115,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         _loadingMessage = 'Processing step statuses...';
       });
 
-      // Process all steps with cached data
       await _processAllStepsWithCachedData();
       
       setState(() {
@@ -142,7 +139,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     }
   }
 
-  /// Batch load all step details in parallel to reduce API calls
   Future<void> _batchLoadStepDetails() async {
     if (widget.jobNumber == null) return;
 
@@ -161,7 +157,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       batchFutures.add(_loadPaperStoreWithCache());
     }
 
-    // Execute all batch operations in parallel
     await Future.wait(batchFutures);
   }
 
@@ -545,7 +540,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       print("This is the details I want");
       print(details?[0]);
       setState(() {
-        // Handle the case where details might be a List<Job> or a single Job
         jobDetails = details;
         _jobLoading = false;
       });
@@ -586,51 +580,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     }
   }
 
-  Future<void> _checkMachineAssignmentForPendingStep(StepData step) async {
-    // Exclude these steps from machine assignment check
-    final excludedSteps = [
-      StepType.paperStore,
-      StepType.qc,
-      StepType.dispatch,
-    ];
-
-    if (excludedSteps.contains(step.type)) {
-      print('Step ${step.title} is excluded from machine assignment check');
-      // Don't show work details dialog for pending active step
-      return;
-    }
-
-    try {
-      // Get step details to check machine assignment
-      final stepNo = StepDataManager.getStepNumber(step.type);
-      final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
-
-      if (stepDetails != null && stepDetails is Map) {
-        final machineDetails = stepDetails['machineDetails'];
-
-        if (machineDetails != null && machineDetails is List && machineDetails.isNotEmpty) {
-          final machineInfo = machineDetails[0];
-
-          if (machineInfo is Map && machineInfo['machineType'] == 'Not assigned') {
-            // Machine not assigned - show dialog
-            _showMachineNotAssignedDialog(step);
-            return;
-          }
-
-          // Machine is assigned - don't show work details dialog for pending active step
-          print('Machine is assigned for ${step.title}, but not showing work details dialog');
-          return;
-        }
-      }
-
-      // No machine details found - don't show work details dialog for pending active step
-      print('No machine details found for ${step.title}, but not showing work details dialog');
-
-    } catch (e) {
-      print('Error checking machine assignment for ${step.title}: $e');
-      // Don't show work details dialog for pending active step
-    }
-  }
 
   Future<void> _checkMachineAssignmentAndStart(StepData step) async {
     // Exclude these steps from machine assignment check
@@ -655,7 +604,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       // If not in cache, load it
       if (stepDetails == null) {
         stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
-        _stepDetailsCache[stepNo] = stepDetails; // Cache for future use
+        _stepDetailsCache[stepNo] = stepDetails;
       }
 
       if (stepDetails != null && stepDetails is Map) {
@@ -665,7 +614,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           final machineInfo = machineDetails[0];
 
           if (machineInfo is Map && machineInfo['machineType'] == 'Not assigned') {
-            // Machine not assigned - show dialog
             _showMachineNotAssignedDialog(step);
             return;
           }
@@ -676,13 +624,11 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         }
       }
 
-      // No machine details found - show start work dialog directly
       print('No machine details found for ${step.title}');
       DialogManager.showStartWorkDialog(context, step, () => _startWork(step));
 
     } catch (e) {
       print('Error checking machine assignment for ${step.title}: $e');
-      // If there's an error checking, show start work dialog directly
       DialogManager.showStartWorkDialog(context, step, () => _startWork(step));
     }
   }
@@ -713,256 +659,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     );
   }
 
-  Future<void> _showWorkDetailsDialog(StepData step, Map<String, dynamic>? machineInfo) async {
-    // Fetch job details if not already loaded
-    if (jobDetails == null) {
-      await _fetchJobDetails();
-    }
-
-    // Get PO details
-    String poQuantity = 'N/A';
-    String customerName = 'N/A';
-    print("This is The Job Details");
-    print(jobDetails);
-
-    if (jobDetails != null) {
-      // Check if jobDetails is a list and get the first item
-      final jobData = jobDetails is List ? (jobDetails as List)[0] : jobDetails;
-      print("this is the JobData: $jobData");
-      if (jobData != null && jobData.purchaseOrders != null) {
-        final purchaseOrders = jobData.purchaseOrders as List;
-        if (purchaseOrders.isNotEmpty) {
-          final po = purchaseOrders[0];
-          print('Purchase Order Data: $po');
-          poQuantity = '${po.totalPOQuantity ?? 'N/A'} ${po.unit ?? ''}';
-          customerName = jobData.customerName ?? 'N/A';
-          print('Quantity: $poQuantity');
-          print('Customer: $customerName');
-        }
-      }
-    }
-
-    // Get artwork image
-    String? imageUrl;
-    if (jobDetails != null) {
-      final jobData = jobDetails is List ? (jobDetails as List)[0] : jobDetails;
-      imageUrl = jobData?.imageURL;
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        title: Row(
-          children: [
-            Icon(Icons.work, color: Colors.blue),
-            const SizedBox(width: 8),
-            Text('Work Details - ${step.title}'),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Job Information
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue[200]!),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.assignment, color: Colors.blue[700], size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Job Information',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue[700],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text('Job Number: ${widget.jobNumber}'),
-                    Text('Customer: $customerName'),
-                    Text('Quantity: $poQuantity'),
-                    if (jobDetails != null) ...[
-                      Builder(
-                        builder: (context) {
-                          final jobData = jobDetails is List ? (jobDetails as List)[0] : jobDetails;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (jobData?.styleItemSKU != null)
-                                Text('Style: ${jobData.styleItemSKU}'),
-                            ],
-                          );
-                        },
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Machine Details (if available)
-              if (machineInfo != null)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.green[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.green[200]!),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.build, color: Colors.green[700], size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Machine Details',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green[700],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text('Machine Code: ${machineInfo['machineCode'] ?? 'N/A'}'),
-                      Text('Machine Type: ${machineInfo['machineType'] ?? 'N/A'}'),
-                      Text('Unit: ${machineInfo['unit'] ?? 'N/A'}'),
-                    ],
-                  ),
-                ),
-
-              if (machineInfo != null) const SizedBox(height: 16),
-
-              // Artwork Image (if available)
-              if (imageUrl != null && imageUrl.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.purple[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.purple[200]!),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.image, color: Colors.purple[700], size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Artwork Reference',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.purple[700],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        width: double.infinity,
-                        height: 200,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey[300]!),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: GestureDetector(
-                            onTap: () => _showFullScreenImage(imageUrl),
-                            child: Builder(
-                              builder: (context) {
-                                final imageData = _safeBase64Decode(imageUrl);
-                                if (imageData != null) {
-                                  return Image.memory(
-                                    imageData,
-                                    fit: BoxFit.contain,
-                                    errorBuilder: (context, error, stackTrace) {
-                                      return Container(
-                                        color: Colors.grey[200],
-                                        child: Center(
-                                          child: Column(
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            children: [
-                                              Icon(Icons.broken_image, color: Colors.grey[400]),
-                                              const SizedBox(height: 8),
-                                              Text(
-                                                'Image not available',
-                                                style: TextStyle(color: Colors.grey[600]),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  );
-                                } else {
-                                  return Container(
-                                    color: Colors.grey[200],
-                                    child: Center(
-                                      child: Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          Icon(Icons.broken_image, color: Colors.grey[400]),
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            'Image not available',
-                                            style: TextStyle(color: Colors.grey[600]),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                }
-                              },
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              DialogManager.showStartWorkDialog(context, step, () => _startWork(step));
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-            ),
-            child: Text('Start Work'),
-          ),
-        ],
-      ),
-    );
-  }
 
   Future<void> _showJobDetailsDialog() async {
     // Fetch job details if not already loaded
@@ -1271,27 +967,21 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       // First update the backend
       await _performStartWork(step);
 
-      // Close loading dialog
       if (mounted) Navigator.pop(context);
 
-      // Update local state immediately for UI responsiveness
       setState(() {
         step.status = StepStatus.started;
-        // Ensure this step becomes one of the current active steps
         final stepIndex = steps.indexOf(step);
         if (stepIndex != -1 && !currentActiveSteps.contains(stepIndex)) {
           currentActiveSteps.add(stepIndex);
         }
       });
 
-      // Show success message
       DialogManager.showSuccessMessage(context, '${step.title} work started!');
 
-      // Force UI rebuild to reflect changes
       Future.delayed(Duration(milliseconds: 100), () {
         if (mounted) {
           setState(() {
-            // Trigger rebuild
           });
         }
       });
@@ -1317,10 +1007,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       throw Exception('Job step ID not found in planning details.');
     }
 
-    // Update job planning step status to 'start' with start date
     await _apiService.updateJobPlanningStepComplete(widget.jobNumber!, stepNo, "start");
 
-    // For Paper Store, also create/update paper store record
     if (step.type == StepType.paperStore) {
       await _apiService.startPaperStoreWork(widget.jobNumber!, _convertJobDetailsToMap());
     }
@@ -1334,7 +1022,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
     final stepNo = StepDataManager.getStepNumber(step.type);
 
-    // Get expected quantity from job details
     int? expectedQuantity;
     if (jobDetails != null) {
       final jobData = jobDetails is List ? (jobDetails as List)[0] : jobDetails;
@@ -1387,7 +1074,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
               return '${year}-${month}-${day}T${hour}:${minute}:${second}.${millisecond}Z';
             }
-            // For current time - preserve local time
             final now = DateTime.now();
             final year = now.year.toString().padLeft(4, '0');
             final month = now.month.toString().padLeft(2, '0');
@@ -1400,7 +1086,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
             return '${year}-${month}-${day}T${hour}:${minute}:${second}.${millisecond}Z';
           }
 
-          // Ensure your formData uses formatted date
           formData['Date'] = formatUtcDateToFixedIso(formData['Date']);
 
           await _handleWorkFormComplete(step, formData);
@@ -1495,7 +1180,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
   Future<void> _handleWorkFormComplete(StepData step, Map<String, String> formData) async {
     try {
-      // Debug print to see what's being received
       print('JobStep - Received formData:');
       print('Qty Sheet: ${formData['Qty Sheet']}');
       print('Full formData: $formData');
@@ -1509,14 +1193,12 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
       final stepNo = StepDataManager.getStepNumber(step.type);
 
-      // Post step details to backend first
       await _apiService.putStepDetails(step.type, widget.jobNumber!, formData, stepNo);
 
-      // Then update job planning step status to 'stop' with end date
       await _apiService.updateJobPlanningStepComplete(widget.jobNumber!, stepNo, "stop");
 
       if (mounted && Navigator.canPop(context)) {
-        Navigator.pop(context); // Close loading dialog
+        Navigator.pop(context);
       }
 
       final stepIndex = steps.indexOf(step);
@@ -1525,7 +1207,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         step.status = StepStatus.completed;
       });
 
-      // Update cache to reflect the completed status
       _stepStatusCache[step.type] = 'stop';
       if (_stepDetailsCache.containsKey(stepNo)) {
         final cachedDetails = _stepDetailsCache[stepNo];
@@ -1534,7 +1215,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         }
       }
 
-      // Optimized step progression check using cached data
       await _optimizedStepProgressionCheck(step, stepIndex);
 
       if (mounted && Navigator.canPop(context)) {
@@ -1616,7 +1296,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     }
   }
 
-  // New method to refresh step statuses
   /// Clear all caches to force fresh data
   void _clearAllCaches() {
     _stepDetailsCache.clear();
@@ -1630,16 +1309,13 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   Future<void> _refreshStepStatuses() async {
     if (widget.jobNumber == null) return;
 
-    // Check if user has any steps available for their role
     if (steps.isEmpty || steps.length <= 1) {
       print('No steps available for user role: $_userRole');
       return;
     }
 
-    // Clear cache to force fresh data
     _clearAllCaches();
 
-    // Store current completed steps to preserve their status
     List<int> completedStepIndices = [];
     for (int i = 1; i < steps.length; i++) {
       if (steps[i].status == StepStatus.completed) {
@@ -1647,11 +1323,9 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       }
     }
 
-    // Use optimized batch loading
     await _batchLoadStepDetails();
     await _processAllStepsWithCachedData();
 
-    // Restore completed status for steps that were completed before refresh
     for (int index in completedStepIndices) {
       if (index < steps.length) {
         steps[index].status = StepStatus.completed;
@@ -1661,13 +1335,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     _determineCurrentActiveSteps();
   }
 
-  void _submitForm(StepData step, Map<String, String> formData) {
-    setState(() {
-      step.formData = formData;
-      step.status = StepStatus.inProgress;
-    });
-    DialogManager.showSuccessMessage(context, '${step.title} details saved successfully!');
-  }
 
   void _showCompleteJobDetails() async {
     showDialog(
@@ -1736,9 +1403,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           };
         }
 
-        // Convert Job object to Map<String, dynamic> with all available fields
         jobDetailsMap = {
-          // Basic Job Information
           'Job ID': jobMap['id']?.toString() ?? 'N/A',
           'Job Number': jobMap['nrcJobNo']?.toString() ?? 'N/A',
           'Style Item SKU': jobMap['styleItemSKU']?.toString() ?? 'N/A',
@@ -1748,7 +1413,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           'Job Demand': jobMap['jobDemand']?.toString() ?? 'N/A',
           'SR Number': jobMap['srNo']?.toString() ?? 'N/A',
           
-          // Dimensions
           'Length': jobMap['length']?.toString() ?? 'N/A',
           'Width': jobMap['width']?.toString() ?? 'N/A',
           'Height': jobMap['height']?.toString() ?? 'N/A',
@@ -1756,7 +1420,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           'Board Size': jobMap['boardSize']?.toString() ?? 'N/A',
           'No Ups': jobMap['noUps']?.toString() ?? 'N/A',
           
-          // Board Specifications
           'Board Category': jobMap['boardCategory']?.toString() ?? 'N/A',
           'Die Punch Code': jobMap['diePunchCode']?.toString() ?? 'N/A',
           'Top Face GSM': jobMap['topFaceGSM']?.toString() ?? 'N/A',
@@ -1765,7 +1428,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           'Decal Board X': jobMap['decalBoardX']?.toString() ?? 'N/A',
           'Length Board Y': jobMap['lengthBoardY']?.toString() ?? 'N/A',
           
-          // Printing Details
           'No Of Color': jobMap['noOfColor']?.toString() ?? 'N/A',
           'Process Colors': jobMap['processColors']?.toString() ?? 'N/A',
           'Special Color 1': jobMap['specialColor1']?.toString() ?? 'N/A',
@@ -1774,17 +1436,14 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           'Special Color 4': jobMap['specialColor4']?.toString() ?? 'N/A',
           'Over Print Finishing': jobMap['overPrintFinishing']?.toString() ?? 'N/A',
           
-          // Financial Information
           'Latest Rate': jobMap['latestRate']?.toString() ?? 'N/A',
           'Pre Rate': jobMap['preRate']?.toString() ?? 'N/A',
           
-          // Artwork Information
           'Artwork Received Date': jobMap['artworkReceivedDate']?.toString() ?? 'N/A',
           'Artwork Approval Date': jobMap['artworkApprovalDate']?.toString() ?? 'N/A',
           'Shade Card Approval Date': jobMap['shadeCardApprovalDate']?.toString() ?? 'N/A',
           'Image URL': jobMap['imageURL']?.toString() ?? 'N/A',
           
-          // System Information
           'User ID': jobMap['userId']?.toString() ?? 'N/A',
           'Machine ID': jobMap['machineId']?.toString() ?? 'N/A',
           'Created At': jobMap['createdAt']?.toString() ?? 'N/A',
@@ -1792,7 +1451,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           'Has Purchase Orders': jobMap['hasPurchaseOrders']?.toString() ?? 'N/A',
         };
         
-        // Add purchase order details if available
         final purchaseOrders = jobMap['purchaseOrders'];
         if (purchaseOrders != null && purchaseOrders is List && purchaseOrders.isNotEmpty) {
           final po = purchaseOrders[0];
@@ -1807,7 +1465,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           }
         }
         
-        // Add single purchase order if available
         final purchaseOrder = jobMap['purchaseOrder'];
         if (purchaseOrder != null && purchaseOrder is Map) {
           jobDetailsMap['Single PO ID'] = purchaseOrder['id']?.toString() ?? 'N/A';
