@@ -7,6 +7,13 @@ import '../models/Job.dart'; // Added import for Job model
 
 class JobApi {
   final Dio dio;
+  
+  // Cache for API responses
+  static Map<String, dynamic>? _cachedJobs;
+  static Map<String, dynamic>? _cachedPlannings;
+  static Map<String, Map<String, dynamic>> _cachedPrintingDetails = {};
+  static DateTime? _lastCacheTime;
+  static const Duration _cacheValidity = Duration(minutes: 5);
 
   JobApi(this.dio);
 
@@ -27,7 +34,28 @@ class JobApi {
     return '${year}-${month}-${day}T${hour}:${minute}:${second}.${millisecond}Z';
   }
 
+  /// Clear all cached data
+  static void clearCache() {
+    _cachedJobs = null;
+    _cachedPlannings = null;
+    _cachedPrintingDetails.clear();
+    _lastCacheTime = null;
+  }
+
+  /// Check if cache is valid
+  static bool _isCacheValid() {
+    return _lastCacheTime != null && 
+           DateTime.now().difference(_lastCacheTime!) < _cacheValidity;
+  }
+
   Future<List<JobModel>> getJobs() async {
+    // Check cache first
+    if (_isCacheValid() && _cachedJobs != null) {
+      print('[getJobs] Using cached data');
+      return _cachedJobs!['data'];
+    }
+
+    print('[getJobs] Fetching fresh data');
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     print('[getJobs] Token: $token');
@@ -41,7 +69,16 @@ class JobApi {
     );
     print('[getJobs] Response: ${response.statusCode} ${response.data}');
     final List<dynamic> jobList = response.data['data'];
-    return jobList.map((e) => JobModel.fromJson(e)).toList();
+    final jobs = jobList.map((e) => JobModel.fromJson(e)).toList();
+    
+    // Cache the results
+    _cachedJobs = {
+      'data': jobs,
+      'timestamp': DateTime.now(),
+    };
+    _lastCacheTime = DateTime.now();
+    
+    return jobs;
   }
 
   Future<List<Job>> getJobsByNo(String nrcJobNo) async {
@@ -82,6 +119,8 @@ class JobApi {
         },
       ),
     );
+    // Clear cache after update
+    clearCache();
   }
 
   Future<void> updateJobField(String nrcJobNo, Map<String, dynamic> fields) async {
@@ -98,6 +137,7 @@ class JobApi {
         },
       ),
     );
+    clearCache();
   }
 
   Future<Response> createPurchaseOrder(Map<String, dynamic> purchaseOrderData) async {
@@ -150,6 +190,8 @@ class JobApi {
       ),
     );
     print('[submitJobPlanning] Response: ${response.statusCode} ${response.data}');
+    // Clear cache after creating new planning
+    clearCache();
     return response;
   }
 
@@ -175,6 +217,13 @@ class JobApi {
   }
 
   Future<List<Map<String, dynamic>>> getAllJobPlannings() async {
+    // Check cache first
+    if (_isCacheValid() && _cachedPlannings != null) {
+      print('[getAllJobPlannings] Using cached data');
+      return _cachedPlannings!['data'];
+    }
+
+    print('[getAllJobPlannings] Fetching fresh data');
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     print('[getAllJobPlannings] Token: $token');
@@ -188,7 +237,16 @@ class JobApi {
     );
     print('[getAllJobPlannings] Response: ${response.statusCode} ${response.data}');
     if (response.data['success'] == true && response.data['count'] > 0) {
-      return List<Map<String, dynamic>>.from(response.data['data']);
+      final plannings = List<Map<String, dynamic>>.from(response.data['data']);
+      
+      // Cache the results
+      _cachedPlannings = {
+        'data': plannings,
+        'timestamp': DateTime.now(),
+      };
+      _lastCacheTime = DateTime.now();
+      
+      return plannings;
     }
     return [];
   }
@@ -404,6 +462,8 @@ class JobApi {
         ),
       );
       print('[updateJobPlanningStepStatus] Response: ${response.statusCode} ${response.data}');
+      // Clear cache after status update
+      clearCache();
       return response;
     } on DioError catch (e) {
       print('[updateJobPlanningStepStatus] Error: $e');
@@ -414,8 +474,6 @@ class JobApi {
       rethrow;
     }
   }
-
-
 
   Future<Response> updateJobPlanningStepFields(String jobNumber, int stepNo, Map<String, dynamic> body) async {
     try {
@@ -434,6 +492,8 @@ class JobApi {
       ),
       );
       print('[updateJobPlanningStepFields] Response: ${response.statusCode} ${response.data}');
+      // Clear cache after field update
+      clearCache();
       return response;
     } catch (e) {
       print('[updateJobPlanningStepFields] Error: $e');
@@ -504,7 +564,6 @@ class JobApi {
     }
   }
 
-
   Future<Map<String, dynamic>?> _getWithAuth(String endpoint) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
@@ -536,7 +595,19 @@ class JobApi {
   }
 
   Future<Map<String, dynamic>?> getPrintingDetails(String jobNumber) {
-    return _getWithAuth('/printing-details/by-job/$jobNumber');
+    // Check cache first
+    if (_cachedPrintingDetails.containsKey(jobNumber) && _isCacheValid()) {
+      print('[getPrintingDetails] Using cached data for $jobNumber');
+      return Future.value(_cachedPrintingDetails[jobNumber]);
+    }
+    
+    print('[getPrintingDetails] Fetching fresh data for $jobNumber');
+    return _getWithAuth('/printing-details/by-job/$jobNumber').then((result) {
+      if (result != null && result['data'] is List && result['data'].isNotEmpty) {
+        _cachedPrintingDetails[jobNumber] = result['data'][0];
+      }
+      return result;
+    });
   }
 
   Future<Map<String, dynamic>?> getCorrugationDetails(String jobNumber) {
@@ -564,6 +635,8 @@ class JobApi {
   }
 
   Future<Map<String, dynamic>?> putPrintingDetails(Map<String, dynamic> body,String jobNumber) {
+    // Clear cache after update
+    _cachedPrintingDetails.remove(jobNumber);
     return _putWithAuth('/printing-details/$jobNumber', body);
   }
 
@@ -653,6 +726,8 @@ class JobApi {
       ),
       );
       print('[updateJobPlanningStepComplete] Response: ${response.statusCode} ${response.data}');
+      // Clear cache after step update
+      clearCache();
     } catch (e) {
       print('[updateJobPlanningStepComplete] Error: $e');
       throw e;
@@ -729,6 +804,8 @@ class JobApi {
         ),
       );
       print('[createJob] Response: ${response.statusCode} ${response.data}');
+      // Clear cache after creating new job
+      clearCache();
       return response.data;
     } catch (e) {
       print('[createJob] Error: $e');

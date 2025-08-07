@@ -23,6 +23,12 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
   bool _isLoading = true;
   String _selectedFilter = 'All';
   DateTimeRange? _customDateRange;
+  
+  // Cache for API responses to avoid redundant calls
+  Map<String, dynamic>? _cachedPlannings;
+  Map<String, Map<String, dynamic>> _cachedPrintingDetails = {};
+  DateTime? _lastCacheTime;
+  static const Duration _cacheValidity = Duration(minutes: 5);
 
   final List<String> _filterOptions = ['All', 'Daily', 'Weekly', 'Monthly', 'Custom'];
 
@@ -73,8 +79,35 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
   }
 
   Future<List<Map<String, dynamic>>> _fetchActiveJobsWithDetails() async {
+    // Check if cache is still valid
+    if (_lastCacheTime != null && 
+        DateTime.now().difference(_lastCacheTime!) < _cacheValidity &&
+        _cachedPlannings != null) {
+      print('Using cached data');
+      return _processJobsWithCachedData();
+    }
+
+    print('Fetching fresh data');
     final jobs = await _jobApi.getJobs();
     final plannings = await _jobApi.getAllJobPlannings();
+    
+    // Cache the plannings data
+    _cachedPlannings = {
+      'data': plannings,
+      'timestamp': DateTime.now(),
+    };
+    _lastCacheTime = DateTime.now();
+    
+    return _processJobsWithPlannings(jobs, plannings);
+  }
+
+  List<Map<String, dynamic>> _processJobsWithCachedData() {
+    final jobs = _allJobs.map((jobData) => jobData['job']).toList();
+    final plannings = _cachedPlannings!['data'] as List<Map<String, dynamic>>;
+    return _processJobsWithPlannings(jobs, plannings);
+  }
+
+  List<Map<String, dynamic>> _processJobsWithPlannings(List jobs, List<Map<String, dynamic>> plannings) {
     List<Map<String, dynamic>> result = [];
 
     for (final job in jobs) {
@@ -83,23 +116,49 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
         final planning = plannings.firstWhereOrNull((p) => p['nrcJobNo'] == nrcJobNo);
 
         Map<String, dynamic>? printingStep;
+        String workflowStatus = 'Not Started';
+        
         if (planning != null && planning['steps'] != null) {
           final steps = planning['steps'] as List<dynamic>;
           printingStep = steps.firstWhereOrNull(
                 (s) => s['stepName'] == 'PrintingDetails',
           );
+          
+          // Determine workflow status based on printing step
+          if (printingStep != null) {
+            final status = printingStep['status']?.toString().toLowerCase() ?? '';
+            switch (status) {
+              case 'start':
+                workflowStatus = 'In Progress';
+                break;
+              case 'stop':
+                workflowStatus = 'Completed';
+                break;
+              case 'planned':
+              default:
+                workflowStatus = 'Not Started';
+                break;
+            }
+          }
         }
 
+        // Only fetch printing details if not cached or if cache is old
         Map<String, dynamic>? printingDetails;
-        try {
-          final printingRes = await _jobApi.getPrintingDetails(nrcJobNo);
-          if (printingRes != null &&
-              printingRes['data'] is List &&
-              printingRes['data'].isNotEmpty) {
-            printingDetails = printingRes['data'][0];
+        if (!_cachedPrintingDetails.containsKey(nrcJobNo) || 
+            DateTime.now().difference(_lastCacheTime!) > _cacheValidity) {
+          try {
+            _jobApi.getPrintingDetails(nrcJobNo).then((printingRes) {
+              if (printingRes != null &&
+                  printingRes['data'] is List &&
+                  printingRes['data'].isNotEmpty) {
+                _cachedPrintingDetails[nrcJobNo] = printingRes['data'][0];
+              }
+            });
+          } catch (e) {
+            print('Error fetching printing details for $nrcJobNo: $e');
           }
-        } catch (e) {
-          print('Error fetching printing details for $nrcJobNo: $e');
+        } else {
+          printingDetails = _cachedPrintingDetails[nrcJobNo];
         }
 
         final artworkStatus = _determineArtworkStatus(job);
@@ -107,6 +166,7 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
         result.add({
           'job': job,
           'artworkStatus': artworkStatus,
+          'workflowStatus': workflowStatus,
           'printingStep': printingStep,
           'printingDetails': printingDetails,
         });
@@ -126,7 +186,7 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
     if (job.artworkReceivedDate != null &&
         job.artworkApprovedDate != null &&
         job.shadeCardApprovalDate != null) {
-      return 'ArtworkFlow Complete';
+      return 'Artwork Complete';
     }
 
     return 'In Progress';
@@ -227,12 +287,16 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
 
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
-      case 'artworkflow complete':
+      case 'artwork complete':
         return Colors.green;
       case 'pending':
         return Colors.orange;
       case 'in progress':
         return Colors.blue;
+      case 'not started':
+        return Colors.grey;
+      case 'completed':
+        return Colors.green;
       case 'start':
         return Colors.green;
       case 'stop':
@@ -290,7 +354,13 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
       actions: [
         IconButton(
           icon: Icon(Icons.refresh, color: Colors.white),
-          onPressed: _loadJobs,
+          onPressed: () {
+            // Clear cache and reload
+            _cachedPlannings = null;
+            _cachedPrintingDetails.clear();
+            _lastCacheTime = null;
+            _loadJobs();
+          },
         ),
       ],
     );
@@ -408,21 +478,21 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
           ),
           _buildStatItem(
             'Completed',
-            _filteredJobs.where((j) => j['artworkStatus'] == 'ArtworkFlow Complete').length.toString(),
+            _filteredJobs.where((j) => j['workflowStatus'] == 'Completed').length.toString(),
             Icons.check_circle_outline,
             Colors.green,
           ),
           _buildStatItem(
-            'Pending',
-            _filteredJobs.where((j) => j['artworkStatus'] == 'Pending').length.toString(),
-            Icons.pending_outlined,
+            'In Progress',
+            _filteredJobs.where((j) => j['workflowStatus'] == 'In Progress').length.toString(),
+            Icons.hourglass_empty,
             Colors.orange,
           ),
           _buildStatItem(
-            'In Progress',
-            _filteredJobs.where((j) => j['artworkStatus'] == 'In Progress').length.toString(),
-            Icons.hourglass_empty,
-            Colors.purple,
+            'Not Started',
+            _filteredJobs.where((j) => j['workflowStatus'] == 'Not Started').length.toString(),
+            Icons.pending_outlined,
+            Colors.grey,
           ),
         ],
       ),
@@ -533,6 +603,7 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
   Widget _buildJobCard(Map<String, dynamic> jobData, int index) {
     final job = jobData['job'];
     final artworkStatus = jobData['artworkStatus'];
+    final workflowStatus = jobData['workflowStatus'];
     final printingStep = jobData['printingStep'];
     final printingDetails = jobData['printingDetails'];
 
@@ -559,7 +630,7 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
             height: 60,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              color: _getStatusColor(artworkStatus).withOpacity(0.1),
+              color: _getStatusColor(workflowStatus).withOpacity(0.1),
             ),
             child: job.imageURL != null
                 ? ClipRRect(
@@ -569,14 +640,14 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) => Icon(
                   Icons.image,
-                  color: _getStatusColor(artworkStatus),
+                  color: _getStatusColor(workflowStatus),
                   size: 30,
                 ),
               ),
             )
                 : Icon(
               Icons.work,
-              color: _getStatusColor(artworkStatus),
+              color: _getStatusColor(workflowStatus),
               size: 30,
             ),
           ),
@@ -603,31 +674,57 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
               ),
             ],
           ),
-          subtitle: Container(
-            margin: EdgeInsets.only(top: 8),
-            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: _getStatusColor(artworkStatus).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              artworkStatus,
-              style: TextStyle(
-                color: _getStatusColor(artworkStatus),
-                fontWeight: FontWeight.w600,
-                fontSize: 12,
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(workflowStatus).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      workflowStatus,
+                      style: TextStyle(
+                        color: _getStatusColor(workflowStatus),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(artworkStatus).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      artworkStatus,
+                      style: TextStyle(
+                        color: _getStatusColor(artworkStatus),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
+            ],
           ),
           children: [
-            _buildJobDetails(job, printingStep, printingDetails),
+            _buildJobDetails(job, printingStep, printingDetails, workflowStatus),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildJobDetails(dynamic job, Map<String, dynamic>? printingStep, Map<String, dynamic>? printingDetails) {
+  Widget _buildJobDetails(dynamic job, Map<String, dynamic>? printingStep, Map<String, dynamic>? printingDetails, String workflowStatus) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -640,6 +737,51 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
         _buildDetailRow('Flute Type', job.fluteType ?? 'N/A'),
         _buildDetailRow('Box Dimensions', job.boxDimensions ?? 'N/A'),
         _buildDetailRow('Job Demand', job.jobDemand ?? 'N/A'),
+
+        SizedBox(height: 16),
+
+        // Workflow Status
+        _buildSectionTitle('Workflow Status'),
+        Container(
+          padding: EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _getStatusColor(workflowStatus).withOpacity(0.05),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _getStatusColor(workflowStatus).withOpacity(0.2)),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                _getWorkflowIcon(workflowStatus),
+                color: _getStatusColor(workflowStatus),
+                size: 24,
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      workflowStatus,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: _getStatusColor(workflowStatus),
+                      ),
+                    ),
+                    Text(
+                      _getWorkflowDescription(workflowStatus),
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
 
         SizedBox(height: 16),
 
@@ -669,6 +811,32 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
         ],
       ],
     );
+  }
+
+  IconData _getWorkflowIcon(String status) {
+    switch (status.toLowerCase()) {
+      case 'completed':
+        return Icons.check_circle;
+      case 'in progress':
+        return Icons.play_circle;
+      case 'not started':
+        return Icons.schedule;
+      default:
+        return Icons.help;
+    }
+  }
+
+  String _getWorkflowDescription(String status) {
+    switch (status.toLowerCase()) {
+      case 'completed':
+        return 'Printing workflow has been completed';
+      case 'in progress':
+        return 'Printing workflow is currently in progress';
+      case 'not started':
+        return 'Printing workflow has not started yet';
+      default:
+        return 'Status unknown';
+    }
   }
 
   Widget _buildSectionTitle(String title) {
