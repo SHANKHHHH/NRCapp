@@ -86,7 +86,7 @@ class JobApi {
     final token = prefs.getString('accessToken');
     print('[getJobs] Token: $token');
     final response = await dio.get(
-      'https://nrc-backend-his4.onrender.com/api/jobs/$nrcJobNo',
+      'http://nrc-backend-alb-174636098.ap-south-1.elb.amazonaws.com/api/jobs/$nrcJobNo',
       options: Options(
         headers: {
           if (token != null) 'Authorization': 'Bearer $token',
@@ -146,7 +146,7 @@ class JobApi {
     print('[createPurchaseOrder] Token: $token');
     print('[createPurchaseOrder] Data: $purchaseOrderData');
     final response = await dio.post(
-      'https://nrc-backend-his4.onrender.com/api/purchase-orders/create',
+      'http://nrc-backend-alb-174636098.ap-south-1.elb.amazonaws.com/api/purchase-orders/create',
       data: purchaseOrderData,
       options: Options(
         headers: {
@@ -163,7 +163,7 @@ class JobApi {
     final token = prefs.getString('accessToken');
     print('[getMachines] Token: $token');
     final response = await dio.get(
-      'https://nrc-backend-his4.onrender.com/api/machines',
+      'http://nrc-backend-alb-174636098.ap-south-1.elb.amazonaws.com/api/machines',
       options: Options(
         headers: {
           if (token != null) 'Authorization': 'Bearer $token',
@@ -201,7 +201,7 @@ class JobApi {
     print('[getJobPlanningByNrcJobNo] Token: $token');
     print('[getJobPlanningByNrcJobNo] nrcJobNo: $nrcJobNo');
     final response = await dio.get(
-      'https://nrc-backend-his4.onrender.com/api/job-planning/',
+      'http://nrc-backend-alb-174636098.ap-south-1.elb.amazonaws.com/api/job-planning/',
       queryParameters: {'nrcJobNo': nrcJobNo},
       options: Options(
         headers: {
@@ -228,7 +228,7 @@ class JobApi {
     final token = prefs.getString('accessToken');
     print('[getAllJobPlannings] Token: $token');
     final response = await dio.get(
-      'https://nrc-backend-his4.onrender.com/api/job-planning/',
+      'http://nrc-backend-alb-174636098.ap-south-1.elb.amazonaws.com/api/job-planning/',
       options: Options(
         headers: {
           if (token != null) 'Authorization': 'Bearer $token',
@@ -257,7 +257,7 @@ class JobApi {
     print('[getJobPlanningStepsByNrcJobNo] Token: $token');
     print('[getJobPlanningStepsByNrcJobNo] nrcJobNo: $nrcJobNo');
     final response = await dio.get(
-      'https://nrc-backend-his4.onrender.com/api/job-planning/$nrcJobNo',
+      'http://nrc-backend-alb-174636098.ap-south-1.elb.amazonaws.com/api/job-planning/$nrcJobNo',
       options: Options(
         headers: {
           if (token != null) 'Authorization': 'Bearer $token',
@@ -278,7 +278,7 @@ class JobApi {
       print('[getJobByNrcJobNo] Token: $token');
       print('[getJobByNrcJobNo] nrcJobNo: $nrcJobNo');
       final response = await dio.get(
-        'https://nrc-backend-his4.onrender.com/api/jobs',
+        'http://nrc-backend-alb-174636098.ap-south-1.elb.amazonaws.com/api/jobs',
         options: Options(
           headers: {
             if (token != null) 'Authorization': 'Bearer $token',
@@ -307,7 +307,7 @@ class JobApi {
     print('[postPaperStore] Token: $token');
     print('[postPaperStore] Body: $body');
     final response = await dio.post(
-      'https://nrc-backend-his4.onrender.com/api/paper-store',
+      'http://nrc-backend-alb-174636098.ap-south-1.elb.amazonaws.com/api/paper-store',
       data: body,
       options: Options(
         headers: {
@@ -326,7 +326,7 @@ class JobApi {
     print(token);
     print(body);
     final response = await dio.post(
-      'https://nrc-backend-his4.onrender.com/api/auth/add-member',
+      'http://nrc-backend-alb-174636098.ap-south-1.elb.amazonaws.com/api/auth/add-member',
       data: body,
       options: Options(
         headers: {
@@ -342,7 +342,7 @@ class JobApi {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     final response = await dio.get(
-      'https://nrc-backend-his4.onrender.com/api/auth/users',
+      'http://nrc-backend-alb-174636098.ap-south-1.elb.amazonaws.com/api/auth/users',
       options: Options(
         headers: {
           if (token != null) 'Authorization': 'Bearer $token',
@@ -359,7 +359,7 @@ class JobApi {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     final response = await dio.put(
-      'https://nrc-backend-his4.onrender.com/api/auth/users/$id',
+      'http://nrc-backend-alb-174636098.ap-south-1.elb.amazonaws.com/api/auth/users/$id',
       data: body,
       options: Options(
         headers: {
@@ -374,7 +374,7 @@ class JobApi {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     final response = await dio.delete(
-      'https://nrc-backend-his4.onrender.com/api/auth/users/$userId',
+      'http://nrc-backend-alb-174636098.ap-south-1.elb.amazonaws.com/api/auth/users/$userId',
       options: Options(
         headers: {
           if (token != null) 'Authorization': 'Bearer $token',
@@ -390,7 +390,7 @@ class JobApi {
     print('[getPaperStoreStepByJob] Token: $token');
     print('[getPaperStoreStepByJob] jobNrcJobNo: $jobNrcJobNo');
     final response = await dio.get(
-      'https://nrc-backend-his4.onrender.com/api/paper-store/by-job/$jobNrcJobNo',
+      'http://nrc-backend-alb-174636098.ap-south-1.elb.amazonaws.com/api/paper-store/by-job/$jobNrcJobNo',
       options: Options(
         headers: {
           'Content-Type': 'application/json',
@@ -411,7 +411,7 @@ class JobApi {
     print('[putPaperStore] Token: $token');
     print('[putPaperStore] jobNrcJobNo: $jobNrcJobNo, Body: $body');
     final response = await dio.put(
-      'https://nrc-backend-his4.onrender.com/api/paper-store/$jobNrcJobNo',
+      'http://nrc-backend-alb-174636098.ap-south-1.elb.amazonaws.com/api/paper-store/$jobNrcJobNo',
       data: body,
       options: Options(
         headers: {
@@ -430,7 +430,7 @@ class JobApi {
     print('[getJobPlanningStepDetails] Token: $token');
     print('[getJobPlanningStepDetails] jobNumber: $jobNumber, stepId: $stepId');
     final response = await dio.get(
-      'https://nrc-backend-his4.onrender.com/api/job-planning/$jobNumber/steps/$stepId',
+      'http://nrc-backend-alb-174636098.ap-south-1.elb.amazonaws.com/api/job-planning/$jobNumber/steps/$stepId',
       options: Options(
         headers: {
           'Content-Type': 'application/json',
@@ -452,7 +452,7 @@ class JobApi {
     print('[updateJobPlanningStepStatus] jobNumber: $jobNumber, planningId: $planningId, stepId: $stepId, status: $status');
     try {
       final response = await dio.patch(
-        'https://nrc-backend-his4.onrender.com/api/job-planning/$jobNumber/$planningId/steps/$stepId/status',
+        'http://nrc-backend-alb-174636098.ap-south-1.elb.amazonaws.com/api/job-planning/$jobNumber/$planningId/steps/$stepId/status',
         data: {'status': status},
         options: Options(
           headers: {
@@ -766,7 +766,7 @@ class JobApi {
     print('[getCompletedJobs] Token: $token');
     try {
       final response = await dio.get(
-        'https://nrc-backend-his4.onrender.com/api/completed-jobs',
+        'http://nrc-backend-alb-174636098.ap-south-1.elb.amazonaws.com/api/completed-jobs',
         options: Options(
           headers: {
             'Content-Type': 'application/json',
@@ -794,7 +794,7 @@ class JobApi {
     
     try {
       final response = await dio.post(
-        'https://nrc-backend-his4.onrender.com/api/jobs/',
+        'http://nrc-backend-alb-174636098.ap-south-1.elb.amazonaws.com/api/jobs/',
         data: jobData,
         options: Options(
           headers: {

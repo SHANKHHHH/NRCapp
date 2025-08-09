@@ -40,7 +40,11 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   String _loadingMessage = 'Initializing...';
   
   Map<int, Map<String, dynamic>?> _stepDetailsCache = {};
-  Map<StepType, String> _stepStatusCache = {};
+  // Freeze progression when a step is actively started
+  int? _startedStepIndex;
+  int? _startedStepNoFromPlanning;
+  StepType? _startedStepType;
+  bool _freezeAtStarted = false;
   Map<String, dynamic>? _paperStoreCache;
   bool _isDataLoaded = false;
 
@@ -84,7 +88,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       }
     });
     print('Initialized ${steps.length} steps for user role: $_userRole');
-    
+
     // Debug: Print all steps with their types
     for (int i = 0; i < steps.length; i++) {
       print('DEBUG: Step $i: ${steps[i].title} (${steps[i].type})');
@@ -142,17 +146,46 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   Future<void> _batchLoadStepDetails() async {
     if (widget.jobNumber == null) return;
 
+    // Try batch fetch of all planning steps first
+    try {
+      final planning = await _apiService.getJobPlanningStepsByNrcJobNo(widget.jobNumber!);
+      if (planning != null && planning is Map && planning['steps'] is List) {
+        final List stepsList = planning['steps'];
+        for (final s in stepsList) {
+          if (s is Map && s.containsKey('stepNo')) {
+            final int? stepNo = s['stepNo'] is int
+                ? s['stepNo']
+                : int.tryParse(s['stepNo']?.toString() ?? '');
+            if (stepNo != null) {
+              _stepDetailsCache[stepNo] = Map<String, dynamic>.from(s);
+              print('Loaded planning step details (batched) for step $stepNo');
+              if (_startedStepNoFromPlanning == null &&
+                  (s['status']?.toString() == 'start')) {
+                _startedStepNoFromPlanning = stepNo;
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('Error fetching batched planning steps: $e');
+    }
+
     List<Future<void>> batchFutures = [];
 
-    // Load all step details in parallel
+    // Load remaining step details in parallel, but skip future steps once a started step exists
     for (int i = 1; i < steps.length; i++) {
       final step = steps[i];
       final stepNo = StepDataManager.getStepNumber(step.type);
-      
-      batchFutures.add(_loadStepDetailsWithCache(stepNo, step.type));
+
+      if (_startedStepNoFromPlanning != null && stepNo > _startedStepNoFromPlanning!) {
+        continue;
+      }
+      if (!_stepDetailsCache.containsKey(stepNo)) {
+        batchFutures.add(_loadStepDetailsWithCache(stepNo, step.type));
+      }
     }
 
-    // Also load paper store data if needed
     if (steps.any((step) => step.type == StepType.paperStore)) {
       batchFutures.add(_loadPaperStoreWithCache());
     }
@@ -173,15 +206,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
       _stepDetailsCache[stepNo] = stepDetails;
       
-      // Also load step status
-      final stepStatus = await _apiService.getStepStatusByType(stepType, widget.jobNumber!);
-      _stepStatusCache[stepType] = stepStatus.toString();
-      
       print('Loaded and cached step details for step $stepNo');
     } catch (e) {
       print('Error loading step details for step $stepNo: $e');
       _stepDetailsCache[stepNo] = null;
-      _stepStatusCache[stepType] = '';
     }
   }
 
@@ -215,10 +243,13 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
       // Get cached data
       final stepDetails = _stepDetailsCache[stepNo];
-      final stepStatus = _stepStatusCache[step.type];
 
-      // Process step status
-      _processStepStatus(step, i, stepDetails, stepStatus);
+      // Process step status derived only from planning details
+      _processStepStatus(step, i, stepDetails);
+
+      if (_freezeAtStarted == true) {
+        break;
+      }
 
       // Special handling for Paper Store
       if (step.type == StepType.paperStore && _paperStoreCache != null) {
@@ -227,7 +258,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     }
   }
 
-  void _processStepStatus(StepData step, int stepIndex, Map<String, dynamic>? stepDetails, String? stepStatus) {
+  void _processStepStatus(StepData step, int stepIndex, Map<String, dynamic>? stepDetails) {
     dynamic planningStatus;
     if (stepDetails is List && stepDetails!.isEmpty) {
       planningStatus = null;
@@ -240,16 +271,29 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     }
 
     setState(() {
-      // 1. Work Complete: If either status is 'stop', mark as completed
-      if (stepStatus == 'stop' || planningStatus == 'stop') {
+      // 1. Work Complete: If planning/status is 'stop', mark as completed
+      if (planningStatus == 'stop') {
         step.status = StepStatus.completed;
         print('Step ${step.title} marked as WORK COMPLETE (stop detected)');
       }
-      // 2. Work Started: If either status is 'start'
-      else if (stepStatus == 'start' || planningStatus == 'start') {
+      // 2. Work Started: If planning/status is 'start'
+      else if (planningStatus == 'start') {
         step.status = StepStatus.started;
         if (!currentActiveSteps.contains(stepIndex)) {
           currentActiveSteps.add(stepIndex);
+        }
+        _startedStepIndex = stepIndex;
+        _startedStepType = step.type;
+        // If started step is printing or corrugation, allow the other to be active too
+        if (step.type == StepType.printing || step.type == StepType.corrugation) {
+          final otherType = step.type == StepType.printing ? StepType.corrugation : StepType.printing;
+          final otherIndex = steps.indexWhere((s) => s.type == otherType);
+          if (otherIndex != -1 && !currentActiveSteps.contains(otherIndex)) {
+            currentActiveSteps.add(otherIndex);
+          }
+          _freezeAtStarted = false; // allow parallel pair
+        } else {
+          _freezeAtStarted = true;
         }
         print('Step ${step.title} marked as WORK STARTED');
       }
@@ -306,6 +350,14 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
   /// Activate parallel steps if needed
   void _activateParallelSteps() {
+    if (_freezeAtStarted) {
+      // Do not activate further/parallel steps while a step is actively started
+      return;
+    }
+    // If started step is printing/corrugation, we already added the pair; no other parallel activation
+    if (_startedStepType == StepType.printing || _startedStepType == StepType.corrugation) {
+      return;
+    }
     for (int i = 0; i < currentActiveSteps.length; i++) {
       final activeStepIndex = currentActiveSteps[i];
       if (activeStepIndex < steps.length) {
@@ -319,12 +371,12 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                 currentActiveSteps.add(parallelStepIndex);
                 print('Activated parallel step: ${steps[parallelStepIndex].title}');
               }
+              }
             }
           }
         }
       }
     }
-  }
 
   /// Fallback to individual sync if batch loading fails
   Future<void> _fallbackIndividualSync() async {
@@ -347,10 +399,18 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
       List<int> activeSteps = [];
 
+      // If we have a started step, freeze active steps to only that step
+      if (_startedStepIndex != null) {
+        activeSteps = [_startedStepIndex!];
+        currentActiveSteps = activeSteps;
+        print('Freezing active steps at started index: $_startedStepIndex');
+        return;
+      }
+
       // Find all steps that should be active
       for (int i = 1; i < steps.length; i++) {
         final step = steps[i];
-        
+
         // Check if step is started or in progress
         if (step.status == StepStatus.started || step.status == StepStatus.inProgress) {
           activeSteps.add(i);
@@ -424,10 +484,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
             steps,
             stepIndex,
                 (newActiveStep) => setState(() {
-                  if (!currentActiveSteps.contains(newActiveStep)) {
-                    currentActiveSteps.add(newActiveStep);
-                  }
-                }),
+              if (!currentActiveSteps.contains(newActiveStep)) {
+                currentActiveSteps.add(newActiveStep);
+              }
+            }),
                 (message) => DialogManager.showSuccessMessage(context, message),
           );
         } else {
@@ -1163,10 +1223,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           steps,
           paperStoreStepIndex,
               (newActiveStep) => setState(() {
-                if (!currentActiveSteps.contains(newActiveStep)) {
-                  currentActiveSteps.add(newActiveStep);
-                }
-              }),
+            if (!currentActiveSteps.contains(newActiveStep)) {
+              currentActiveSteps.add(newActiveStep);
+            }
+          }),
               (message) => DialogManager.showSuccessMessage(context, message),
         );
       }
@@ -1207,7 +1267,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         step.status = StepStatus.completed;
       });
 
-      _stepStatusCache[step.type] = 'stop';
+      // reflect completed status in cached planning details
       if (_stepDetailsCache.containsKey(stepNo)) {
         final cachedDetails = _stepDetailsCache[stepNo];
         if (cachedDetails != null && cachedDetails is Map) {
@@ -1233,19 +1293,19 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
   /// Optimized step progression check using cached data
   Future<void> _optimizedStepProgressionCheck(StepData step, int stepIndex) async {
-    // Check if all parallel steps are completed before moving to next step
-    bool shouldMoveToNext = true;
-    if (StepProgressManager.canRunInParallel(step.type)) {
-      shouldMoveToNext = StepProgressManager.areAllParallelStepsCompleted(steps, step.type);
-      print('Step ${step.title} can run in parallel. All parallel steps completed: $shouldMoveToNext');
-    }
+      // Check if all parallel steps are completed before moving to next step
+      bool shouldMoveToNext = true;
+      if (StepProgressManager.canRunInParallel(step.type)) {
+        shouldMoveToNext = StepProgressManager.areAllParallelStepsCompleted(steps, step.type);
+        print('Step ${step.title} can run in parallel. All parallel steps completed: $shouldMoveToNext');
+      }
 
-    if (shouldMoveToNext) {
+      if (shouldMoveToNext) {
       // Check for any planned steps that should become active using cached data
-      bool hasPlannedStep = false;
-      for (int i = 1; i < steps.length; i++) {
-        if (steps[i].status == StepStatus.pending) {
-          final checkStepNo = StepDataManager.getStepNumber(steps[i].type);
+        bool hasPlannedStep = false;
+        for (int i = 1; i < steps.length; i++) {
+          if (steps[i].status == StepStatus.pending) {
+            final checkStepNo = StepDataManager.getStepNumber(steps[i].type);
           final stepDetails = _stepDetailsCache[checkStepNo];
           
           // If not in cache, load it
@@ -1254,15 +1314,15 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
               final loadedDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, checkStepNo);
               _stepDetailsCache[checkStepNo] = loadedDetails;
               if (loadedDetails != null && loadedDetails['status'] == 'planned') {
-                hasPlannedStep = true;
-                setState(() {
-                  if (!currentActiveSteps.contains(i)) {
-                    currentActiveSteps.add(i);
-                  }
-                });
-                print('Found planned step ${steps[i].title}, adding to active steps');
-                break;
-              }
+              hasPlannedStep = true;
+              setState(() {
+                if (!currentActiveSteps.contains(i)) {
+                  currentActiveSteps.add(i);
+                }
+              });
+              print('Found planned step ${steps[i].title}, adding to active steps');
+              break;
+            }
             } catch (e) {
               print('Error checking planned step: $e');
             }
@@ -1276,30 +1336,29 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
             print('Found planned step ${steps[i].title}, adding to active steps');
             break;
           }
+          }
         }
-      }
 
-      if (!hasPlannedStep) {
-        StepProgressManager.moveToNextStep(
-          steps,
-          stepIndex,
-              (newActiveStep) => setState(() {
-                if (!currentActiveSteps.contains(newActiveStep)) {
-                  currentActiveSteps.add(newActiveStep);
-                }
-              }),
-              (message) => DialogManager.showSuccessMessage(context, message),
-        );
+        if (!hasPlannedStep) {
+          StepProgressManager.moveToNextStep(
+            steps,
+            stepIndex,
+                (newActiveStep) => setState(() {
+              if (!currentActiveSteps.contains(newActiveStep)) {
+                currentActiveSteps.add(newActiveStep);
+              }
+            }),
+                (message) => DialogManager.showSuccessMessage(context, message),
+          );
+        }
+      } else {
+        print('Not moving to next step yet - waiting for parallel steps to complete');
       }
-    } else {
-      print('Not moving to next step yet - waiting for parallel steps to complete');
-    }
   }
 
   /// Clear all caches to force fresh data
   void _clearAllCaches() {
     _stepDetailsCache.clear();
-    _stepStatusCache.clear();
     _paperStoreCache = null;
     _completedStepDetailsCache.clear();
     jobDetails = null; // Clear job details cache too
@@ -1412,14 +1471,14 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           'Flute Type': jobMap['fluteType']?.toString() ?? 'N/A',
           'Job Demand': jobMap['jobDemand']?.toString() ?? 'N/A',
           'SR Number': jobMap['srNo']?.toString() ?? 'N/A',
-          
+
           'Length': jobMap['length']?.toString() ?? 'N/A',
           'Width': jobMap['width']?.toString() ?? 'N/A',
           'Height': jobMap['height']?.toString() ?? 'N/A',
           'Box Dimensions': jobMap['boxDimensions']?.toString() ?? 'N/A',
           'Board Size': jobMap['boardSize']?.toString() ?? 'N/A',
           'No Ups': jobMap['noUps']?.toString() ?? 'N/A',
-          
+
           'Board Category': jobMap['boardCategory']?.toString() ?? 'N/A',
           'Die Punch Code': jobMap['diePunchCode']?.toString() ?? 'N/A',
           'Top Face GSM': jobMap['topFaceGSM']?.toString() ?? 'N/A',
@@ -1427,7 +1486,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           'Bottom Liner GSM': jobMap['bottomLinerGSM']?.toString() ?? 'N/A',
           'Decal Board X': jobMap['decalBoardX']?.toString() ?? 'N/A',
           'Length Board Y': jobMap['lengthBoardY']?.toString() ?? 'N/A',
-          
+
           'No Of Color': jobMap['noOfColor']?.toString() ?? 'N/A',
           'Process Colors': jobMap['processColors']?.toString() ?? 'N/A',
           'Special Color 1': jobMap['specialColor1']?.toString() ?? 'N/A',
@@ -1435,22 +1494,22 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           'Special Color 3': jobMap['specialColor3']?.toString() ?? 'N/A',
           'Special Color 4': jobMap['specialColor4']?.toString() ?? 'N/A',
           'Over Print Finishing': jobMap['overPrintFinishing']?.toString() ?? 'N/A',
-          
+
           'Latest Rate': jobMap['latestRate']?.toString() ?? 'N/A',
           'Pre Rate': jobMap['preRate']?.toString() ?? 'N/A',
-          
+
           'Artwork Received Date': jobMap['artworkReceivedDate']?.toString() ?? 'N/A',
           'Artwork Approval Date': jobMap['artworkApprovalDate']?.toString() ?? 'N/A',
           'Shade Card Approval Date': jobMap['shadeCardApprovalDate']?.toString() ?? 'N/A',
           'Image URL': jobMap['imageURL']?.toString() ?? 'N/A',
-          
+
           'User ID': jobMap['userId']?.toString() ?? 'N/A',
           'Machine ID': jobMap['machineId']?.toString() ?? 'N/A',
           'Created At': jobMap['createdAt']?.toString() ?? 'N/A',
           'Updated At': jobMap['updatedAt']?.toString() ?? 'N/A',
           'Has Purchase Orders': jobMap['hasPurchaseOrders']?.toString() ?? 'N/A',
         };
-        
+
         final purchaseOrders = jobMap['purchaseOrders'];
         if (purchaseOrders != null && purchaseOrders is List && purchaseOrders.isNotEmpty) {
           final po = purchaseOrders[0];
@@ -1464,7 +1523,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
             jobDetailsMap['PO Updated At'] = po['updatedAt']?.toString() ?? 'N/A';
           }
         }
-        
+
         final purchaseOrder = jobMap['purchaseOrder'];
         if (purchaseOrder != null && purchaseOrder is Map) {
           jobDetailsMap['Single PO ID'] = purchaseOrder['id']?.toString() ?? 'N/A';
@@ -1493,7 +1552,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         return;
       }
     }
-    
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1685,8 +1744,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         // Convert Job object to Map
         jobDetailsMap = {
           'boardSize': jobData.boxDimensions,
-          'noUps': jobData.purchaseOrders?.isNotEmpty == true 
-              ? jobData.purchaseOrders![0].totalPOQuantity 
+          'noUps': jobData.purchaseOrders?.isNotEmpty == true
+              ? jobData.purchaseOrders![0].totalPOQuantity
               : 0,
           'fluteType': jobData.fluteType,
         };
@@ -1698,10 +1757,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   /// Safely decode base64 image data, handling various formats
   Uint8List? _safeBase64Decode(String? imageUrl) {
     if (imageUrl == null || imageUrl.isEmpty) return null;
-    
+
     try {
       String base64Data = imageUrl;
-      
+
       // Handle data URLs (e.g., "data:image/jpeg;base64,/9j/4AAQ...")
       if (imageUrl.startsWith('data:')) {
         final parts = imageUrl.split(',');
@@ -1709,7 +1768,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           base64Data = parts[1];
         }
       }
-      
+
       // Handle URLs with metadata (e.g., "image/jpeg; base64,/9j/4AAQ...")
       if (base64Data.contains('; base64,')) {
         final parts = base64Data.split('; base64,');
@@ -1717,10 +1776,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           base64Data = parts[1];
         }
       }
-      
+
       // Clean up any remaining whitespace or newlines
       base64Data = base64Data.trim();
-      
+
       return base64Decode(base64Data);
     } catch (e) {
       print('Error decoding base64 image: $e');
@@ -1731,10 +1790,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   /// Show full screen image viewer
   void _showFullScreenImage(String? imageUrl) {
     if (imageUrl == null || imageUrl.isEmpty) return;
-    
+
     final imageData = _safeBase64Decode(imageUrl);
     if (imageData == null) return;
-    
+
     showDialog(
       context: context,
       barrierDismissible: true,
@@ -1835,15 +1894,15 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                 
                 // Refresh job details
                 await _fetchJobDetails();
-                
+
                 // Refresh step statuses using optimized method
                 await _refreshStepStatuses();
-                
+
                 // Close loading dialog
                 if (mounted) {
                   Navigator.pop(context);
                 }
-                
+
                 // Show success message
                 if (mounted) {
                   DialogManager.showSuccessMessage(context, 'Job data reloaded successfully!');
@@ -1853,7 +1912,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                 if (mounted) {
                   Navigator.pop(context);
                 }
-                
+
                 // Show error message
                 if (mounted) {
                   DialogManager.showErrorMessage(context, 'Failed to reload job data: ${e.toString()}');

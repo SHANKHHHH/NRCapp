@@ -56,7 +56,7 @@ class AuthRepository {
     try {
       final dio = Dio();
       final response = await dio.get(
-        'https://nrc-backend-his4.onrender.com/api/auth/users/$id',
+        'http://nrc-backend-alb-174636098.ap-south-1.elb.amazonaws.com/api/auth/users/$id',
         options: Options(
           headers: {
             'Authorization': 'Bearer $accessToken',
