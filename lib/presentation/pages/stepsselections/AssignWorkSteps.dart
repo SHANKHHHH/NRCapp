@@ -183,27 +183,20 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
         // Prepare machineDetails list
         List<Map<String, dynamic>> machineDetails = [];
 
+        print(assignment.selectedMachine);
+
         if (assignment.selectedMachine != null) {
           // Machine assigned
           machineDetails.add({
-            'id': assignment.selectedMachine!.id.toString(),
+            'machineId': assignment.selectedMachine!.id.toString(),
             'unit': assignment.selectedMachine!.unit.toString(),
             'machineCode': assignment.selectedMachine!.machineCode.toString(),
             'machineType': assignment.selectedMachine!.machineType.toString(),
-          });
-        } else {
-          // No machine assigned
-          machineDetails.add({
-            'id': '1',
-            'unit': null,
-            'machineCode': null,
-            'machineType': 'Not assigned',
           });
         }
 
         // Prepare request body - match the structure used in _submitJobPlanning
         Map<String, dynamic> updateData = {
-          'stepName': getBackendStepName(assignment.workStep.step),
           'status':'planned',
           'machineDetails': machineDetails,
         };

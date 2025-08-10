@@ -399,11 +399,23 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
       List<int> activeSteps = [];
 
-      // If we have a started step, freeze active steps to only that step
+      // If we have a started step, keep it active and, for printing/corrugation,
+      // also activate its parallel pair so both can run independently
       if (_startedStepIndex != null) {
         activeSteps = [_startedStepIndex!];
+
+        if (_startedStepType == StepType.printing || _startedStepType == StepType.corrugation) {
+          final parallelTypes = StepProgressManager.getParallelSteps(_startedStepType!);
+          for (final parallelType in parallelTypes) {
+            final parallelIndex = steps.indexWhere((s) => s.type == parallelType);
+            if (parallelIndex != -1 && StepProgressManager.shouldActivateStep(steps, parallelIndex)) {
+              activeSteps.add(parallelIndex);
+            }
+          }
+        }
+
         currentActiveSteps = activeSteps;
-        print('Freezing active steps at started index: $_startedStepIndex');
+        print('Freezing active steps at started index (with parallel if applicable): $currentActiveSteps');
         return;
       }
 
@@ -452,6 +464,16 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
       final stepNo = StepDataManager.getStepNumber(step.type);
       final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
+
+      // If planning doesn't include this step, do not query step-specific endpoints
+      if (stepDetails == null) {
+        setState(() {
+          step.status = StepStatus.pending;
+        });
+        print('Planning has no details for ${step.title} (stepNo $stepNo); skipping step-specific queries.');
+        return;
+      }
+
       final stepStatus = await _apiService.getStepStatusByType(step.type, widget.jobNumber!);
 
       dynamic planningStatus;

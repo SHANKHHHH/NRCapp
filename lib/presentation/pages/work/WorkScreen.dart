@@ -98,19 +98,36 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
     try {
       final dio = Dio();
       final jobApi = JobApi(dio);
+      // Ensure fresh data from endpoint instead of cached data
+      JobApi.clearCache();
       final plannings = await jobApi.getAllJobPlannings();
 
-      // Fetch statuses for each job
-      Map<String, String> statuses = {};
-      for (final planning in plannings) {
-        final nrcJobNo = planning['nrcJobNo'];
-        final jobs = await jobApi.getJobsByNo(nrcJobNo);
-        print("this is Jobs");
-        print(jobs);
-        if (jobs.isNotEmpty && jobs[0].status != null) {
-          statuses[nrcJobNo] = jobs[0].status.toString().toUpperCase();
+      // Fetch statuses in small batches to avoid server overload
+      Future<Map<String, String>> fetchStatusesInChunks(
+          List<Map<String, dynamic>> items, int chunkSize) async {
+        final Map<String, String> statuses = {};
+        for (int i = 0; i < items.length; i += chunkSize) {
+          final chunk = items.sublist(i, i + chunkSize > items.length ? items.length : i + chunkSize);
+          final results = await Future.wait(chunk.map((planning) async {
+            final nrcJobNo = planning['nrcJobNo'];
+            try {
+              final jobs = await jobApi.getJobsByNo(nrcJobNo);
+              if (jobs.isNotEmpty) {
+                return MapEntry(nrcJobNo, jobs[0].status.toString().toUpperCase());
+              }
+            } catch (_) {}
+            return null;
+          }));
+          for (final entry in results) {
+            if (entry != null) {
+              statuses[entry.key] = entry.value;
+            }
+          }
         }
+        return statuses;
       }
+
+      final statuses = await fetchStatusesInChunks(plannings, 5);
 
       setState(() {
         jobPlannings = plannings;
@@ -244,9 +261,7 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
     print('this is Jon Status');
     final nrcJobNo = jobPlanning['nrcJobNo'];
     final status = jobStatuses[nrcJobNo] ?? '';
-    final dio = Dio();
-    final jobApi = JobApi(dio);
-    final planning = jobApi.getJobPlanningStepsByNrcJobNo(jobPlanning['nrcJobNo']);
+    // Avoid triggering network calls during build; fetch on tap only
     final isHold = status == 'HOLD';
 
     return GestureDetector(

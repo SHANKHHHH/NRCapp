@@ -49,21 +49,32 @@ class _WorkActionFormState extends State<WorkActionForm> {
   bool _isLoading = false;
   late JobApi _job;
 
-  /// Helper function to format date in the correct format with milliseconds
-  /// This preserves the local time but formats it as UTC for database storage
+  /// Helper: return current time in IST (UTC+05:30) with milliseconds and proper offset
   String _formatDateWithMilliseconds() {
-    final now = DateTime.now();
-    // Get the current local time components
-    final year = now.year.toString().padLeft(4, '0');
-    final month = now.month.toString().padLeft(2, '0');
-    final day = now.day.toString().padLeft(2, '0');
-    final hour = now.hour.toString().padLeft(2, '0');
-    final minute = now.minute.toString().padLeft(2, '0');
-    final second = now.second.toString().padLeft(2, '0');
-    final millisecond = now.millisecond.toString().padLeft(3, '0');
-    
-    // Format as if it were UTC time (this preserves the local time values)
-    return '${year}-${month}-${day}T${hour}:${minute}:${second}.${millisecond}Z';
+    final nowUtc = DateTime.now().toUtc();
+    final ist = nowUtc.add(const Duration(hours: 5, minutes: 30));
+    final year = ist.year.toString().padLeft(4, '0');
+    final month = ist.month.toString().padLeft(2, '0');
+    final day = ist.day.toString().padLeft(2, '0');
+    final hour = ist.hour.toString().padLeft(2, '0');
+    final minute = ist.minute.toString().padLeft(2, '0');
+    final second = ist.second.toString().padLeft(2, '0');
+    final millisecond = ist.millisecond.toString().padLeft(3, '0');
+    return '$year-$month-${day}T$hour:$minute:$second.$millisecond+05:30';
+  }
+
+  /// Helper: format IST wall-clock time but mark as Z (UTC) to match existing backend expectations
+  String _formatIstAsZulu() {
+    final nowUtc = DateTime.now().toUtc();
+    final ist = nowUtc.add(const Duration(hours: 5, minutes: 30));
+    final y = ist.year.toString().padLeft(4, '0');
+    final m = ist.month.toString().padLeft(2, '0');
+    final d = ist.day.toString().padLeft(2, '0');
+    final hh = ist.hour.toString().padLeft(2, '0');
+    final mm = ist.minute.toString().padLeft(2, '0');
+    final ss = ist.second.toString().padLeft(2, '0');
+    final ms = ist.millisecond.toString().padLeft(3, '0');
+    return '$y-$m-${d}T$hh:$mm:$ss.${ms}Z';
   }
 
   @override
@@ -147,7 +158,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
       await widget.apiService!.updateJobPlanningStepFields(
         widget.jobNumber!,
         widget.stepNo!,
-        {'startDate': _formatDateWithMilliseconds()},
+        {'startDate': _formatIstAsZulu()},
       );
 
       // Set local start time
@@ -234,7 +245,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
       await widget.apiService!.updateJobPlanningStepFields(
         widget.jobNumber!,
         widget.stepNo!,
-        {'endDate': _formatDateWithMilliseconds()},
+        {'endDate': _formatIstAsZulu()},
       );
 
       setState(() {

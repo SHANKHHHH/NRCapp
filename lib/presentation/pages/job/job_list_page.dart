@@ -67,15 +67,16 @@ class _JobListPageState extends State<JobListPage> {
 
       final jobs = await _jobApi.getJobs();
 
-      final activeJobs = jobs.where((job) =>
-      job.status.toLowerCase() == 'active'
-      ).toList();
+      final activeJobs = jobs
+          .where((job) => job.status.trim().toLowerCase() == 'active')
+          .toList();
 
       setState(() {
         _jobs = activeJobs;
-        _filteredJobs = List.from(activeJobs);
         _isLoading = false;
       });
+      // Re-apply current filters/search on fresh data
+      _applyFilters();
     } catch (e) {
       setState(() {
         _error = 'Failed to load jobs: ${e.toString()}';
@@ -92,9 +93,10 @@ class _JobListPageState extends State<JobListPage> {
       if (_selectedFilters.isEmpty) {
         filteredByStatus = List.from(_jobs);
       } else {
-        filteredByStatus = _jobs.where((job) =>
-            _selectedFilters.contains(job.status.toLowerCase())
-        ).toList();
+        filteredByStatus = _jobs
+            .where((job) => _selectedFilters
+                .contains(job.status.trim().toLowerCase()))
+            .toList();
       }
       
       // Apply search filter
@@ -111,7 +113,7 @@ class _JobListPageState extends State<JobListPage> {
   }
 
   Set<String> get _availableStatuses {
-    return _jobs.map((job) => job.status.toLowerCase()).toSet();
+    return _jobs.map((job) => job.status.trim().toLowerCase()).toSet();
   }
 
   void _onSearchChanged(String query) {
@@ -440,6 +442,8 @@ class _JobListPageState extends State<JobListPage> {
       margin: const EdgeInsets.only(bottom: 12),
       child: EnhancedJobCard(
         job: compatibleJob,
+        onStatusUpdate: (updatedJob, newStatus) =>
+            _onStatusUpdateFromCard(updatedJob, newStatus),
         onJobUpdate: _updateJobFromJobCard,
       ),
     );
@@ -492,43 +496,123 @@ class _JobListPageState extends State<JobListPage> {
     return JobModel(
       id: originalJobModel.id,
       nrcJobNo: originalJobModel.nrcJobNo,
-      styleItemSKU: originalJobModel.styleItemSKU,
-      customerName: originalJobModel.customerName,
-      fluteType: originalJobModel.fluteType,
-      status: originalJobModel.status,
-      latestRate: originalJobModel.latestRate,
-      preRate: originalJobModel.preRate,
-      length: originalJobModel.length,
-      width: originalJobModel.width,
-      height: originalJobModel.height,
-      boxDimensions: originalJobModel.boxDimensions,
-      diePunchCode: originalJobModel.diePunchCode,
-      boardCategory: originalJobModel.boardCategory,
-      noOfColor: originalJobModel.noOfColor,
-      processColors: originalJobModel.processColors,
-      specialColor1: originalJobModel.specialColor1,
-      specialColor2: originalJobModel.specialColor2,
-      specialColor3: originalJobModel.specialColor3,
-      specialColor4: originalJobModel.specialColor4,
-      overPrintFinishing: originalJobModel.overPrintFinishing,
-      topFaceGSM: originalJobModel.topFaceGSM,
-      flutingGSM: originalJobModel.flutingGSM,
-      bottomLinerGSM: originalJobModel.bottomLinerGSM,
-      decalBoardX: originalJobModel.decalBoardX,
-      lengthBoardY: originalJobModel.lengthBoardY,
-      boardSize: originalJobModel.boardSize,
-      noUps: originalJobModel.noUps,
-      artworkReceivedDate: originalJobModel.artworkReceivedDate,
-      artworkApprovedDate: originalJobModel.artworkApprovedDate,
-      shadeCardApprovalDate: originalJobModel.shadeCardApprovalDate,
-      srNo: originalJobModel.srNo,
-      jobDemand: originalJobModel.jobDemand,
-      imageURL: originalJobModel.imageURL,
-      createdAt: originalJobModel.createdAt,
-      updatedAt: originalJobModel.updatedAt,
-      userId: originalJobModel.userId,
-      machineId: originalJobModel.machineId,
+      styleItemSKU: job.styleItemSKU.isNotEmpty
+          ? job.styleItemSKU
+          : originalJobModel.styleItemSKU,
+      customerName: job.customerName.isNotEmpty
+          ? job.customerName
+          : originalJobModel.customerName,
+      fluteType:
+          job.fluteType.isNotEmpty ? job.fluteType : originalJobModel.fluteType,
+      status: job.status.isNotEmpty ? job.status : originalJobModel.status,
+      latestRate: job.latestRate ?? originalJobModel.latestRate,
+      preRate: job.preRate ?? originalJobModel.preRate,
+      length: job.length ?? originalJobModel.length,
+      width: job.width ?? originalJobModel.width,
+      height: job.height ?? originalJobModel.height,
+      boxDimensions: job.boxDimensions ?? originalJobModel.boxDimensions,
+      diePunchCode: job.diePunchCode ?? originalJobModel.diePunchCode,
+      boardCategory: job.boardCategory ?? originalJobModel.boardCategory,
+      noOfColor: job.noOfColor ?? originalJobModel.noOfColor,
+      processColors: job.processColors ?? originalJobModel.processColors,
+      specialColor1: job.specialColor1 ?? originalJobModel.specialColor1,
+      specialColor2: job.specialColor2 ?? originalJobModel.specialColor2,
+      specialColor3: job.specialColor3 ?? originalJobModel.specialColor3,
+      specialColor4: job.specialColor4 ?? originalJobModel.specialColor4,
+      overPrintFinishing:
+          job.overPrintFinishing ?? originalJobModel.overPrintFinishing,
+      topFaceGSM: job.topFaceGSM ?? originalJobModel.topFaceGSM,
+      flutingGSM: job.flutingGSM ?? originalJobModel.flutingGSM,
+      bottomLinerGSM: job.bottomLinerGSM ?? originalJobModel.bottomLinerGSM,
+      decalBoardX: job.decalBoardX ?? originalJobModel.decalBoardX,
+      lengthBoardY: job.lengthBoardY ?? originalJobModel.lengthBoardY,
+      boardSize: job.boardSize ?? originalJobModel.boardSize,
+      noUps: job.noUps ?? originalJobModel.noUps,
+      artworkReceivedDate:
+          job.artworkReceivedDate ?? originalJobModel.artworkReceivedDate,
+      artworkApprovedDate:
+          job.artworkApprovalDate ?? originalJobModel.artworkApprovedDate,
+      shadeCardApprovalDate:
+          job.shadeCardApprovalDate ?? originalJobModel.shadeCardApprovalDate,
+      srNo: job.srNo ?? originalJobModel.srNo,
+      jobDemand: job.jobDemand ?? originalJobModel.jobDemand,
+      imageURL: job.imageURL ?? originalJobModel.imageURL,
+      createdAt: job.createdAt ?? originalJobModel.createdAt,
+      updatedAt: job.updatedAt ?? originalJobModel.updatedAt,
+      userId: job.userId ?? originalJobModel.userId,
+      machineId: job.machineId ?? originalJobModel.machineId,
     );
+  }
+
+  String _jobStatusToString(JobStatus status) {
+    switch (status) {
+      case JobStatus.active:
+        return 'active';
+      case JobStatus.inactive:
+        return 'inactive';
+      case JobStatus.hold:
+        return 'hold';
+      case JobStatus.workingStarted:
+        return 'working started';
+      case JobStatus.completed:
+        return 'completed';
+    }
+  }
+
+  Future<void> _onStatusUpdateFromCard(Job job, JobStatus newStatus) async {
+    final newStatusString = _jobStatusToString(newStatus);
+    try {
+      await _jobApi.updateJobStatus(job.nrcJobNo, newStatusString);
+      await _loadJobs();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Job ${job.nrcJobNo} status updated to $newStatusString',
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.green,
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error, color: Colors.white, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Failed to update job status: ${e.toString()}',
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.red,
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    }
   }
 
   JobStatus _convertStringToJobStatus(String status) {

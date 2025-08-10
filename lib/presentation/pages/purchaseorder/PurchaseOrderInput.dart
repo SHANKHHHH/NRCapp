@@ -63,6 +63,7 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
     }
 
     _totalPoController.addListener(_calculateNumberOfSheets);
+    _calculateNumberOfSheets();
   }
 
   @override
@@ -77,13 +78,29 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
     super.dispose();
   }
 
+  // Extract first integer found in a string, or null
+  int? _digitsToInt(String? source) {
+    if (source == null) return null;
+    final match = RegExp(r'\d+').firstMatch(source);
+    if (match == null) return null;
+    return int.tryParse(match.group(0)!);
+  }
+
+  int? _getNoUpsInt() {
+    return _digitsToInt(widget.job.noUps);
+  }
+
+  int? _computeSheets(int? totalPoQty) {
+    final noUps = _getNoUpsInt();
+    if (totalPoQty == null || noUps == null || noUps <= 0) return null;
+    return (totalPoQty / noUps).ceil();
+  }
+
   // Calculate number of sheets based on Total PO Quantity / Number of Ups
   void _calculateNumberOfSheets() {
-    final totalPoQty = int.tryParse(_totalPoController.text);
-    final noOfUps = int.tryParse(widget.job.noUps ?? '0');
-    
-    if (totalPoQty != null && noOfUps != null && noOfUps > 0) {
-      final calculatedSheets = (totalPoQty / noOfUps).ceil();
+    final totalPoQty = int.tryParse(_totalPoController.text.trim());
+    final calculatedSheets = _computeSheets(totalPoQty);
+    if (calculatedSheets != null) {
       setState(() {
         _noOfSheetsController.text = calculatedSheets.toString();
       });
@@ -950,6 +967,22 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
       setState(() {
         _isLoading = true;
       });
+      // Ensure Number of Sheets is calculated and valid before submitting
+      final totalPoQty = int.tryParse(_totalPoController.text.trim());
+      final calculatedSheets = _computeSheets(totalPoQty);
+      if (totalPoQty == null || calculatedSheets == null) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Enter valid Total PO Quantity and ensure Job has a valid Number of Ups'),
+            backgroundColor: Colors.red[600],
+          ),
+        );
+        return;
+      }
+      _noOfSheetsController.text = calculatedSheets.toString();
       final poDate = DateTime.now();
       final shadeCardDate = widget.job.shadeCardApprovalDate != null && widget.job.shadeCardApprovalDate!.isNotEmpty
           ? DateTime.tryParse(widget.job.shadeCardApprovalDate!)
@@ -965,9 +998,9 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
         'deliveryDate': _formatDate(DateTime.parse(_deliverDateController.text)),
         'dispatchDate': _formatDate(DateTime.parse(_dispatchDateController.text)),
         'unit': _locationController.text,
-        'totalPOQuantity': int.parse(_totalPoController.text),
+        'totalPOQuantity': totalPoQty,
         'pendingValidity': pendingValidity,
-        'noOfSheets': int.parse(_noOfSheetsController.text),
+        'noOfSheets': calculatedSheets,
         'updatedAt': _formatDate(DateTime.now()),
       };
       try {

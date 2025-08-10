@@ -17,8 +17,7 @@ class JobApi {
 
   JobApi(this.dio);
 
-  /// Helper function to format date in the correct format with milliseconds
-  /// This preserves the local time but formats it as UTC for database storage
+  /// Helper: return current time in IST (UTC+05:30) with milliseconds and proper offset
   String _formatDateWithMilliseconds() {
     final now = DateTime.now();
     // Get the current local time components
@@ -29,7 +28,7 @@ class JobApi {
     final minute = now.minute.toString().padLeft(2, '0');
     final second = now.second.toString().padLeft(2, '0');
     final millisecond = now.millisecond.toString().padLeft(3, '0');
-    
+
     // Format as if it were UTC time (this preserves the local time values)
     return '${year}-${month}-${day}T${hour}:${minute}:${second}.${millisecond}Z';
   }
@@ -589,6 +588,11 @@ class JobApi {
       if (e.response != null) {
         print('[_getWithAuth] Status code: ${e.response?.statusCode}');
         print('[_getWithAuth] Response: ${e.response?.data}');
+        // Gracefully handle 404 Not Found for optional step resources
+        if (e.response?.statusCode == 404) {
+          print('[_getWithAuth] 404 for $endpoint — returning null');
+          return null;
+        }
       }
       rethrow;
     }
