@@ -3,6 +3,9 @@ import 'package:nrc/constants/colors.dart';
 import '../../../data/models/job_step_models.dart';
 
 class StepDataManager {
+  // Maps the current planning's StepType to its dynamic step number (1-based)
+  // This is computed each time initializeSteps is called based on assignedSteps order
+  static Map<StepType, int> _dynamicStepNumberMap = {};
   static const orderedStepNames = [
     'PaperStore',
     'PrintingDetails', // Printing comes 3rd
@@ -159,13 +162,19 @@ class StepDataManager {
   }
 
   static int getStepNumber(StepType stepType) {
+    // Prefer dynamic mapping from the current planning if available
+    if (_dynamicStepNumberMap.isNotEmpty && _dynamicStepNumberMap.containsKey(stepType)) {
+      return _dynamicStepNumberMap[stepType]!;
+    }
+
+    // Fallback to legacy static mapping
     switch (stepType) {
       case StepType.paperStore:
         return 1;
       case StepType.printing:
-        return 2; // Printing comes 3rd
+        return 2;
       case StepType.corrugation:
-        return 3; // Corrugation comes 4th
+        return 3;
       case StepType.fluteLamination:
         return 4;
       case StepType.punching:
@@ -194,11 +203,22 @@ class StepDataManager {
       ),
     ];
 
+    // Reset dynamic mapping each time
+    _dynamicStepNumberMap = {};
+
     if (assignedSteps != null && assignedSteps.isNotEmpty) {
       final sortedSteps = List<Map<String, dynamic>>.from(assignedSteps);
       print('DEBUG: Original assigned steps: $sortedSteps');
       
+      // Sort primarily by provided stepNo if available; otherwise by canonical order
       sortedSteps.sort((a, b) {
+        final aNo = a['stepNo'];
+        final bNo = b['stepNo'];
+        if (aNo != null && bNo != null) {
+          final aNum = aNo is int ? aNo : int.tryParse(aNo.toString()) ?? 0;
+          final bNum = bNo is int ? bNo : int.tryParse(bNo.toString()) ?? 0;
+          return aNum.compareTo(bNum);
+        }
         int aIndex = orderedStepNames.indexOf(a['stepName'] ?? '');
         int bIndex = orderedStepNames.indexOf(b['stepName'] ?? '');
         return aIndex.compareTo(bIndex);
@@ -206,7 +226,9 @@ class StepDataManager {
       
       print('DEBUG: Sorted steps: $sortedSteps');
 
-      for (final stepMap in sortedSteps) {
+      // Build steps list and dynamic step number mapping from the sorted order
+      for (int i = 0; i < sortedSteps.length; i++) {
+        final stepMap = sortedSteps[i];
         final stepName = stepMap['stepName'] ?? '';
         final displayName = getDisplayName(stepName);
         final stepType = getStepTypeFromString(stepName);
@@ -219,7 +241,18 @@ class StepDataManager {
           continue; // Skip this step if not allowed for the user's role
         }
 
-        print('DEBUG: Adding step: $displayName ($stepType)');
+        // Record the dynamic step number (prefer backend-provided stepNo)
+        int dynamicStepNo;
+        if (stepMap['stepNo'] != null) {
+          dynamicStepNo = stepMap['stepNo'] is int
+              ? stepMap['stepNo']
+              : int.tryParse(stepMap['stepNo'].toString()) ?? (i + 1);
+        } else {
+          dynamicStepNo = i + 1;
+        }
+        _dynamicStepNumberMap[stepType] = dynamicStepNo;
+
+        print('DEBUG: Adding step: $displayName ($stepType) with dynamic stepNo: $dynamicStepNo');
         steps.add(
           StepData(
             type: stepType,

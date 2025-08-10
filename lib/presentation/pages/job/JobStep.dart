@@ -38,6 +38,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   String? _userRole;
   bool _isInitializing = true;
   String _loadingMessage = 'Initializing...';
+  List<String> _missingStepTitles = [];
   
   Map<int, Map<String, dynamic>?> _stepDetailsCache = {};
   // Freeze progression when a step is actively started
@@ -92,6 +93,53 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     // Debug: Print all steps with their types
     for (int i = 0; i < steps.length; i++) {
       print('DEBUG: Step $i: ${steps[i].title} (${steps[i].type})');
+    }
+
+    // Compute and report missing standard steps for visibility
+    _computeMissingSteps();
+  }
+
+  void _computeMissingSteps() {
+    final presentTypes = steps.map((s) => s.type).toSet();
+    final expectedTypes = <StepType>{
+      StepType.paperStore,
+      StepType.printing,
+      StepType.corrugation,
+      StepType.fluteLamination,
+      StepType.punching,
+      StepType.flapPasting,
+      StepType.qc,
+      StepType.dispatch,
+    };
+    final missing = expectedTypes.difference(presentTypes);
+    final displayFor = (StepType t) {
+      switch (t) {
+        case StepType.paperStore:
+          return 'Paper Store';
+        case StepType.printing:
+          return 'Printing';
+        case StepType.corrugation:
+          return 'Corrugation';
+        case StepType.fluteLamination:
+          return 'Flute Lamination';
+        case StepType.punching:
+          return 'Punching';
+        case StepType.flapPasting:
+          return 'Flap Pasting';
+        case StepType.qc:
+          return 'Quality Control';
+        case StepType.dispatch:
+          return 'Dispatch';
+        default:
+          return '';
+      }
+    };
+    setState(() {
+      _missingStepTitles = missing.map(displayFor).where((e) => e.isNotEmpty).toList();
+    });
+
+    if (_missingStepTitles.isNotEmpty) {
+      print('WARNING: Missing steps for job ${widget.jobNumber}: ${_missingStepTitles.join(', ')}');
     }
   }
 

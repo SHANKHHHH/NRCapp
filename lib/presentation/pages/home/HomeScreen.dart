@@ -126,7 +126,8 @@ class _HomeScreenState extends State<HomeScreen> {
       print('Fetching jobs...');
       final jobs = await _jobApi!.getJobs();
       print('Jobs List: ' + jobs.toString());
-      activeJobs = jobs.length;
+      // Only count jobs where status == ACTIVE (case-insensitive)
+      activeJobs = jobs.where((j) => (j.status).toString().toUpperCase() == 'ACTIVE').length;
     } catch (e) {
       print('Error fetching status overview: ' + e.toString());
       totalOrders = 0;
@@ -183,24 +184,35 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       // Check if details contains JSON
       if (details.contains('{') && details.contains('}')) {
-        // Extract the JSON part (before the | Resource part)
-        final jsonPart = details.split(' | Resource:')[0].trim();
-        
+        // Extract JSON part and optional Resource part
+        final parts = details.split(' | Resource:');
+        final jsonPart = parts[0].trim();
+        final resourcePart = parts.length > 1 ? parts[1].trim() : null; // e.g., "JobStep (6)"
+
         // Try to parse the JSON
-        final jsonData = jsonDecode(jsonPart);
-        
-        // Format based on the content
-        if (jsonData['message'] != null) {
-          final message = jsonData['message'];
-          final jobNo = jsonData['jobNo'];
-          final updatedFields = jsonData['updatedFields'] as List?;
-          
-          if (jobNo != null) {
-            String formatted = '$message for Job: $jobNo';
-            if (updatedFields != null && updatedFields.isNotEmpty) {
-              formatted += '\nUpdated: ${updatedFields.join(', ')}';
-            }
-            return formatted;
+        final dynamic parsed = jsonDecode(jsonPart);
+        if (parsed is Map<String, dynamic>) {
+          final jsonData = parsed;
+          final message = (jsonData['message'] ?? '').toString();
+          final jobNo = (jsonData['nrcJobNo'] ?? jsonData['jobNo'] ?? '').toString();
+          final planId = (jsonData['jobPlanId'] ?? '').toString();
+          final stepNo = (jsonData['stepNo'] ?? '').toString();
+          final status = (jsonData['status'] ?? '').toString();
+
+          // Build a concise, human-friendly line
+          final List<String> chunks = [];
+          if (message.isNotEmpty) {
+            chunks.add(message);
+          } else if (status.isNotEmpty) {
+            chunks.add('Status: $status');
+          }
+          if (stepNo.isNotEmpty) chunks.add('Step #$stepNo');
+          if (jobNo.isNotEmpty) chunks.add('Job: $jobNo');
+          if (planId.isNotEmpty) chunks.add('Plan: $planId');
+          if (resourcePart != null && resourcePart.isNotEmpty) chunks.add(resourcePart);
+
+          if (chunks.isNotEmpty) {
+            return chunks.join(' — ');
           }
         }
       }

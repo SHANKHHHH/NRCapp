@@ -192,44 +192,43 @@ class JobApiService {
       }
 
       final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
-      if (status == 'start') {
+      if (status == 'start' && stepDetails != null) {
         final postBody = {
-          'jobStepId': stepDetails!['id'],
+          'jobStepId': stepDetails['id'],
           'jobNrcJobNo': jobNumber,
           'status': 'in_progress',
         };
-        switch (stepNo) {
-          case 2:
-            print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to Printing');
-            await _jobApi.postPrintingDetails(postBody);
-            break;
-          case 3:
-            print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to Corrugation');
-            await _jobApi.postCorrugationDetails(postBody);
-            break;
-          case 4:
-            print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to Flute Lamination');
-            await _jobApi.postFluteLaminationDetails(postBody);
-            break;
-          case 5:
-            print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to Punching');
-            await _jobApi.postPunchingDetails(postBody);
-            break;
-          case 6:
-            print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to Flap Pasting');
-            await _jobApi.postFlapPastingDetails(postBody);
-            break;
-          case 7:
-            print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to QC');
-            await _jobApi.postQCDetails(postBody);
-            break;
-          case 8:
-            print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to Dispatch');
-            await _jobApi.postDispatchDetails(postBody);
-            break;
-          default:
-          // Do nothing for unknown step
-            break;
+
+        // Prefer routing by stepName from planning to support dynamic step numbers
+        final rawName = (stepDetails['stepName'] ?? '').toString();
+        final normalized = rawName.replaceAll(' ', '').toLowerCase();
+
+        // Skip PaperStore here (handled by startPaperStoreWork)
+        if (normalized == 'paperstore') {
+          print('[JobApiService.updateJobPlanningStepComplete] Paper Store start handled separately');
+        } else if (normalized == 'printingdetails') {
+          print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to Printing');
+          await _jobApi.postPrintingDetails(postBody);
+        } else if (normalized == 'corrugation') {
+          print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to Corrugation');
+          await _jobApi.postCorrugationDetails(postBody);
+        } else if (normalized == 'flutelaminateboardconversion') {
+          print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to Flute Lamination');
+          await _jobApi.postFluteLaminationDetails(postBody);
+        } else if (normalized == 'punching') {
+          print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to Punching');
+          await _jobApi.postPunchingDetails(postBody);
+        } else if (normalized == 'sideflappasting') {
+          print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to Flap Pasting');
+          await _jobApi.postFlapPastingDetails(postBody);
+        } else if (normalized == 'qualitydept') {
+          print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to QC');
+          await _jobApi.postQCDetails(postBody);
+        } else if (normalized == 'dispatchprocess') {
+          print('[JobApiService.updateJobPlanningStepComplete] Posting in_progress to Dispatch');
+          await _jobApi.postDispatchDetails(postBody);
+        } else {
+          print('[JobApiService.updateJobPlanningStepComplete] Unknown planning stepName "$rawName"; skipping in_progress POST');
         }
       }
       // Invalidate caches after a mutation affecting this job/step
@@ -542,7 +541,7 @@ class JobApiService {
       "status": "accept",
       "date": _formatDateWithMilliseconds(),
       "operatorName": formData['Operator Name'] ?? '',
-      "quantity": int.tryParse(formData['No of Boxes'] ?? '0') ?? 0,
+      "quantity": int.tryParse(formData['Quantity'] ?? '0') ?? 0,
       "dispatchNo": formData['Dispatch No'] ?? '',
       "dispatchDate": _formatDateWithMilliseconds(),
       "balanceQty": int.tryParse(formData['Balance Qty'] ?? '0') ?? 0,
