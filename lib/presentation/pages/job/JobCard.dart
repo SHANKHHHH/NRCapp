@@ -75,12 +75,14 @@ class EnhancedJobCard extends StatelessWidget {
   final Job job;
   final Function(Job, JobStatus)? onStatusUpdate;
   final Function(Job)? onJobUpdate;
+  final int? refreshToken;
 
   const EnhancedJobCard({
     Key? key,
     required this.job,
     this.onStatusUpdate,
     this.onJobUpdate,
+    this.refreshToken,
   }) : super(key: key);
 
   @override
@@ -574,6 +576,7 @@ class EnhancedJobCard extends StatelessWidget {
 
   Widget _buildPurchaseOrderButton(BuildContext context) {
     return FutureBuilder<List<Job>>(
+      key: ValueKey('po-future-${job.nrcJobNo}-${refreshToken ?? 0}'),
       future: JobApi(DioService.instance).getJobsByNo(job.nrcJobNo),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {

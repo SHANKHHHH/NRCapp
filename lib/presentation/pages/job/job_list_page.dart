@@ -29,6 +29,7 @@ class _JobListPageState extends State<JobListPage> {
   String? _error;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  int _refreshTick = 0;
 
   late JobApi _jobApi;
 
@@ -65,6 +66,8 @@ class _JobListPageState extends State<JobListPage> {
         _error = null;
       });
 
+      // Always fetch fresh to avoid stale cache after status changes elsewhere
+      JobApi.clearCache();
       final jobs = await _jobApi.getJobs();
 
       final activeJobs = jobs
@@ -176,7 +179,12 @@ class _JobListPageState extends State<JobListPage> {
                   size: 20,
                 ),
               ),
-              onPressed: _loadJobs,
+              onPressed: () async {
+                setState(() {
+                  _refreshTick++;
+                });
+                await _loadJobs();
+              },
             ),
           ),
         ],
@@ -441,7 +449,9 @@ class _JobListPageState extends State<JobListPage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: EnhancedJobCard(
+        key: ValueKey('job-card-${job.nrcJobNo}-$_refreshTick'),
         job: compatibleJob,
+        refreshToken: _refreshTick,
         onStatusUpdate: (updatedJob, newStatus) =>
             _onStatusUpdateFromCard(updatedJob, newStatus),
         onJobUpdate: _updateJobFromJobCard,

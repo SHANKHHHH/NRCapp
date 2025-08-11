@@ -8,6 +8,8 @@ import '../../../data/models/purchase_order.dart';
 
 import 'package:dio/dio.dart';
 import '../../../data/datasources/job_api.dart';
+import 'dart:convert';
+import 'dart:typed_data';
 
 class WorkDetailsScreen extends StatefulWidget {
   final String nrcJobNo;
@@ -56,6 +58,55 @@ class _WorkDetailsScreenState extends State<WorkDetailsScreen> with TickerProvid
     _fetchJobPlanning();
     _fetchJobDetails();
   }
+  bool _isLikelyBase64Image(String value) {
+    final trimmed = value.trim();
+    if (trimmed.toLowerCase().startsWith('data:image/')) return true;
+    // Heuristic: long base64-looking string
+    final base64Regex = RegExp(r'^[A-Za-z0-9+/=\s]+$');
+    return trimmed.length > 100 && base64Regex.hasMatch(trimmed);
+  }
+
+  Uint8List? _decodeBase64Image(String value) {
+    try {
+      String cleaned = value.trim();
+      final dataUriPrefix = RegExp(r'^data:image/[^;]+;base64,', caseSensitive: false);
+      cleaned = cleaned.replaceFirst(dataUriPrefix, '');
+      return base64Decode(cleaned);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _openFullscreenImage(Uint8List bytes, {String? label}) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            elevation: 0,
+            iconTheme: const IconThemeData(color: Colors.white),
+            title: Text(
+              label ?? 'Image',
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 5,
+              child: Image.memory(
+                bytes,
+                fit: BoxFit.contain,
+                gaplessPlayback: true,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
 
   @override
   void dispose() {
@@ -845,6 +896,54 @@ class _WorkDetailsScreenState extends State<WorkDetailsScreen> with TickerProvid
   }
 
   Widget _buildKeyValueRow(String key, String value) {
+    final lowerKey = key.toLowerCase();
+    final isImageField = lowerKey.contains('image');
+    final isBase64 = _isLikelyBase64Image(value);
+
+    if (isImageField && isBase64) {
+      final bytes = _decodeBase64Image(value);
+      if (bytes != null) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 120,
+                child: Text(
+                  key,
+                  style: TextStyle(
+                    color: Colors.grey[700],
+                    fontWeight: FontWeight.w500,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => _openFullscreenImage(bytes, label: key),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.memory(
+                      bytes,
+                      height: 140,
+                      fit: BoxFit.cover,
+                      gaplessPlayback: true,
+                      errorBuilder: (context, error, stack) => Text(
+                        'Invalid image',
+                        style: TextStyle(color: Colors.red[400], fontSize: 12),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(

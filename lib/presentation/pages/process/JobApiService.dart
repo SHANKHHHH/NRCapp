@@ -192,9 +192,9 @@ class JobApiService {
       }
 
       final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
-      if (status == 'start' && stepDetails != null) {
+      if (status == 'start') {
         final postBody = {
-          'jobStepId': stepDetails['id'],
+          'jobStepId': stepDetails!['id'],
           'jobNrcJobNo': jobNumber,
           'status': 'in_progress',
         };
@@ -640,6 +640,19 @@ class JobApiService {
       return await _getOrFetchMap(key, () => _jobApi.getJobPlanningStepsByNrcJobNo(jobNumber));
     } catch (e) {
       print('Error getting job planning steps: $e');
+      return null;
+    }
+  }
+
+  /// Get job planning steps bypassing cache (used for manual refresh / instant updates)
+  Future<Map<String, dynamic>?> getJobPlanningStepsByNrcJobNoFresh(String jobNumber) async {
+    final key = _keyPlanningSteps(jobNumber);
+    try {
+      final data = await _jobApi.getJobPlanningStepsByNrcJobNo(jobNumber);
+      _cache[key] = _CacheEntry<dynamic>(data);
+      return data;
+    } catch (e) {
+      print('Error getting job planning steps (fresh): $e');
       return null;
     }
   }
