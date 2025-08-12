@@ -36,11 +36,51 @@ final GoRouter router = GoRouter(
     GoRoute(path: '/create-id', builder: (context, state) => CreateID()),
     GoRoute(path: '/user-list', builder: (context, state) => UserListPage()),
     GoRoute(path: '/all-Jobs', builder: (context, state) => AllJobsScreen()),
-    GoRoute(path: '/planning-dashboard', builder: (context, state) => const PlanningDashboard()),
-    GoRoute(path: '/production-dashboard', builder: (context, state) => ProductionBoard()),
-    GoRoute(path: '/printing-dashboard', builder: (context, state) => PrintingManagerBoard()),
-    GoRoute(path: '/dispatch-dashboard', builder: (context, state) => DispatchBoard()),
-    GoRoute(path: '/qc-dashboard', builder: (context, state) => QualityBoard()),
+    GoRoute(
+      path: '/planning-dashboard',
+      builder: (context, state) {
+        final role = userRoleManager.userRole?.toLowerCase();
+        if (role == null) return LoginScreen();
+        if (role == 'admin' || role == 'planner') return const PlanningDashboard();
+        return const MainScaffold();
+      },
+    ),
+    GoRoute(
+      path: '/production-dashboard',
+      builder: (context, state) {
+        final role = userRoleManager.userRole?.toLowerCase();
+        if (role == null) return LoginScreen();
+        if (role == 'admin' || role == 'production_head') return ProductionBoard();
+        return const MainScaffold();
+      },
+    ),
+    GoRoute(
+      path: '/printing-dashboard',
+      builder: (context, state) {
+        final role = userRoleManager.userRole?.toLowerCase();
+        if (role == null) return LoginScreen();
+        if (role == 'admin' || role == 'printer') return PrintingManagerBoard();
+        return const MainScaffold();
+      },
+    ),
+    GoRoute(
+      path: '/dispatch-dashboard',
+      builder: (context, state) {
+        final role = userRoleManager.userRole?.toLowerCase();
+        if (role == null) return LoginScreen();
+        if (role == 'admin' || role == 'dispatch_executive') return const DispatchBoard();
+        return const MainScaffold();
+      },
+    ),
+    GoRoute(
+      path: '/qc-dashboard',
+      builder: (context, state) {
+        final role = userRoleManager.userRole?.toLowerCase();
+        if (role == null) return LoginScreen();
+        if (role == 'admin' || role == 'qc_manager') return QualityBoard();
+        return const MainScaffold();
+      },
+    ),
     GoRoute(path: '/work-screen', builder: (context, state) => WorkScreen()),
     GoRoute(path: '/edit-machines', builder: (context, state) => EditMachinesPage()),
     GoRoute(

@@ -501,7 +501,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ],
-            if (_userRole == 'admin') ...[
+            if (_userRole.isNotEmpty) ...[
               _buildDepartmentCards(),
               const SizedBox(height: 28),
             ], _buildLiveUpdates(),
@@ -518,6 +518,145 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildDepartmentCards() {
+    // Admin can see all department cards. Other roles see exactly one.
+    if (_userRole == 'admin') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Department Overview',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => context.push('/planning-dashboard'),
+                  child: _buildDepartmentCard(
+                    'Planning',
+                    'Get comprehensive overview of planning activities',
+                    Icons.analytics_outlined,
+                    Colors.blue,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => context.push('/printing-dashboard'),
+                  child: _buildDepartmentCard(
+                    'Printing Manager',
+                    'Manage printing operations and schedules',
+                    Icons.print_outlined,
+                    Colors.indigo,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => context.push('/production-dashboard'),
+                  child: _buildDepartmentCard(
+                    'Production Head',
+                    'Monitor production metrics and performance',
+                    Icons.factory_outlined,
+                    Colors.cyan,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => context.push('/dispatch-dashboard'),
+                  child: _buildDepartmentCard(
+                    'Dispatch Executive',
+                    'Manage dispatch operations and logistics',
+                    Icons.local_shipping_outlined,
+                    Colors.blue,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => context.push('/qc-dashboard'),
+                  child: _buildDepartmentCard(
+                    'QC Manager',
+                    'Quality control and assurance management',
+                    Icons.verified_outlined,
+                    Colors.cyan,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(child: SizedBox()),
+            ],
+          ),
+        ],
+      );
+    }
+
+    // Non-admin roles: show only the relevant single card
+    String title;
+    String description;
+    IconData icon;
+    Color color;
+    VoidCallback onTap;
+
+    switch (_userRole) {
+      case 'planner':
+        title = 'Planning';
+        description = 'Get comprehensive overview of planning activities';
+        icon = Icons.analytics_outlined;
+        color = Colors.blue;
+        onTap = () => context.push('/planning-dashboard');
+        break;
+      case 'printer':
+        title = 'Printing Manager';
+        description = 'Manage printing operations and schedules';
+        icon = Icons.print_outlined;
+        color = Colors.indigo;
+        onTap = () => context.push('/printing-dashboard');
+        break;
+      case 'production_head':
+        title = 'Production Head';
+        description = 'Monitor production metrics and performance';
+        icon = Icons.factory_outlined;
+        color = Colors.cyan;
+        onTap = () => context.push('/production-dashboard');
+        break;
+      case 'dispatch_executive':
+        title = 'Dispatch Executive';
+        description = 'Manage dispatch operations and logistics';
+        icon = Icons.local_shipping_outlined;
+        color = Colors.blue;
+        onTap = () => context.push('/dispatch-dashboard');
+        break;
+      case 'qc_manager':
+        title = 'QC Manager';
+        description = 'Quality control and assurance management';
+        icon = Icons.verified_outlined;
+        color = Colors.cyan;
+        onTap = () => context.push('/qc-dashboard');
+        break;
+      default:
+        // Unknown role → no department cards
+        return const SizedBox.shrink();
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -530,79 +669,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: GestureDetector(
-                onTap: () => context.push('/planning-dashboard'),
-                child: _buildDepartmentCard(
-                  'Planning',
-                  'Get comprehensive overview of planning activities',
-                  Icons.analytics_outlined,
-                  Colors.blue,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: GestureDetector(
-                onTap: () => context.push('/printing-dashboard'),
-                child: _buildDepartmentCard(
-                  'Printing Manager',
-                  'Manage printing operations and schedules',
-                  Icons.print_outlined,
-                  Colors.indigo,
-                ),
-              ),
-            ), // Empty space for alignment
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: GestureDetector(
-                onTap: () => context.push('/production-dashboard'),
-                child: _buildDepartmentCard(
-                  'Production Head',
-                  'Monitor production metrics and performance',
-                  Icons.factory_outlined,
-                  Colors.cyan,
-                ),
-              ),
-            ),
-
-            Expanded(
-              child: GestureDetector(
-                onTap: () => context.push('/dispatch-dashboard'),
-                child: _buildDepartmentCard(
-                  'Dispatch Executive',
-                  'Manage dispatch operations and logistics',
-                  Icons.local_shipping_outlined,
-                  Colors.blue,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: GestureDetector(
-                onTap: () => context.push('/qc-dashboard'),
-                child: _buildDepartmentCard(
-                  'QC Manager',
-                  'Quality control and assurance management',
-                  Icons.verified_outlined,
-                  Colors.cyan,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(child: SizedBox()), // Empty space for alignment
-          ],
+        GestureDetector(
+          onTap: onTap,
+          child: _buildDepartmentCard(title, description, icon, color),
         ),
       ],
     );
