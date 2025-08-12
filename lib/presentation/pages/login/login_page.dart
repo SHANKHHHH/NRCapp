@@ -58,9 +58,21 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // Save role after login if present
       if (success) {
-        String? role = await _authRepository.getUserRole();
-        if (role != null) {
-          await userRoleManager.setUserRole(role);
+        // Explicitly refresh and persist fresh role details after login
+        final userId = await _authRepository.getUserId();
+        final accessToken = await _authRepository.getAccessToken();
+        if (userId != null && accessToken != null) {
+          final userData = await _authRepository.checkUserValidAndGetData(userId, accessToken);
+          final role = userData != null ? userData['role'] as String? : null;
+          if (role != null) {
+            await userRoleManager.setUserRole(role);
+          } else {
+            // Fallback to stored role if backend did not return role
+            final storedRole = await _authRepository.getUserRole();
+            if (storedRole != null) {
+              await userRoleManager.setUserRole(storedRole);
+            }
+          }
         }
       }
 
@@ -125,7 +137,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           TextFormField(
                             controller: _empIdController,
                             decoration: InputDecoration(
-                              hintText: 'Employee ID',
+                              hintText: 'ID',
                               filled: true,
                               fillColor: Colors.white,
                               contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 18),

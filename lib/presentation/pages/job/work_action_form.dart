@@ -747,32 +747,6 @@ class _WorkActionFormState extends State<WorkActionForm> {
                     ),
                   ],
                 ),
-                // Show timing information if available
-                if (_startTime != null || _endTime != null) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (_startTime != null)
-                          Text(
-                            'Started: ${_startTime!.toString().substring(0, 19)}',
-                            style: const TextStyle(fontSize: 12, color: Colors.black87),
-                          ),
-                        if (_endTime != null && _status == 'stopped')
-                          Text(
-                            'Ended: ${_endTime!.toString().substring(0, 19)}',
-                            style: const TextStyle(fontSize: 12, color: Colors.red),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
               ],
             ),
           ),

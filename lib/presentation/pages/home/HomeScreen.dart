@@ -17,7 +17,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  late String _userRole = 'Guest';
+  late String _userRole = '';
 
   // Status Overview state
   int totalOrders = 0;
@@ -40,7 +40,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _loadUserRole() async {
-    _userRole = UserRoleManager().userRole!; // Retrieve user role from UserRoleManager
+    await UserRoleManager().loadUserRole();
+    final role = UserRoleManager().userRole;
+    if (role == null || role.isEmpty) {
+      if (mounted) {
+        // No role should mean not logged in; redirect to login
+        context.pushReplacement('/');
+      }
+      return;
+    }
+    setState(() {
+      _userRole = role;
+    });
     print('User Role in HomeScreen: $_userRole');
   }
 
@@ -139,13 +150,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _logout() async {
+    // Clear in-memory and persisted role to avoid stale role on next login
+    await UserRoleManager().clearUserRole();
+
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.remove('userRole');
     await prefs.remove('accessToken');
     await prefs.remove('userId');
 
     print('All authentication data cleared during logout');
-    context.pushReplacement('/'); // Navigate back to the login screen
+    if (mounted) context.pushReplacement('/'); // Navigate back to the login screen
   }
 
   String _getTimeAgo(String createdAt) {
@@ -290,7 +303,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
 
-            if (_userRole == 'Planner' || _userRole == 'admin') ...[
+            if (_userRole == 'planner' || _userRole == 'admin') ...[
               ElevatedButton.icon(
                 onPressed: () {
                   context.push('/job-input');
@@ -432,7 +445,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ],
-            if (_userRole == 'Planner' || _userRole == 'admin') ...[
+            if (_userRole == 'planner' || _userRole == 'admin') ...[
               Row(
                 children: [
                   Expanded(

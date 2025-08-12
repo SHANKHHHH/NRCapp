@@ -26,6 +26,7 @@ class _CompletedJobsPageState extends State<CompletedJobsPage> {
   String? _error;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  final Set<String> _expandedJobNos = {};
 
   late JobApi _jobApi;
 
@@ -293,6 +294,8 @@ class _CompletedJobsPageState extends State<CompletedJobsPage> {
   Widget _buildCompletedJobCard(BuildContext context, Map<String, dynamic> job) {
     final jobDetails = job['jobDetails'] as Map<String, dynamic>? ?? {};
     final purchaseOrderDetails = job['purchaseOrderDetails'] as Map<String, dynamic>? ?? {};
+    final jobNo = (job['nrcJobNo'] ?? 'N/A').toString();
+    final isExpanded = _expandedJobNos.contains(jobNo);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -309,7 +312,7 @@ class _CompletedJobsPageState extends State<CompletedJobsPage> {
       ),
       child: Column(
         children: [
-          // Header Section
+          // Header (small card always visible)
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -339,7 +342,7 @@ class _CompletedJobsPageState extends State<CompletedJobsPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        job['nrcJobNo'] ?? 'N/A',
+                        jobNo,
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -374,113 +377,125 @@ class _CompletedJobsPageState extends State<CompletedJobsPage> {
                     ),
                   ),
                 ),
+                IconButton(
+                  tooltip: isExpanded ? 'Collapse' : 'Expand',
+                  icon: Icon(
+                    isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                    color: Colors.grey[700],
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      if (isExpanded) {
+                        _expandedJobNos.remove(jobNo);
+                      } else {
+                        _expandedJobNos.add(jobNo);
+                      }
+                    });
+                  },
+                ),
               ],
             ),
           ),
 
-          // Content Section
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                // Basic Job Information
-                _buildInfoSection(
-                  title: 'Job Information',
-                  children: [
-                    _buildInfoRow('Customer', jobDetails['customerName'] ?? 'N/A'),
-                    _buildInfoRow('Style/SKU', jobDetails['styleItemSKU'] ?? 'N/A'),
-                    _buildInfoRow('Demand Level', job['jobDemand']?.toString().toUpperCase() ?? 'N/A'),
-                    _buildInfoRow('Latest Rate', jobDetails['latestRate'] != null ? '₹${jobDetails['latestRate']}' : 'N/A'),
-                  ],
-                ),
-
-                const SizedBox(height: 16),
-
-                // Specifications
-                _buildInfoSection(
-                  title: 'Specifications',
-                  children: [
-                    _buildInfoRow('Dimensions (L×W×H)',
-                        '${jobDetails['length'] ?? 'N/A'}×${jobDetails['width'] ?? 'N/A'}×${jobDetails['height'] ?? 'N/A'} mm'),
-                    _buildInfoRow('Board Size', jobDetails['boardSize'] ?? 'N/A'),
-                    _buildInfoRow('Board Category', jobDetails['boardCategory'] ?? 'N/A'),
-                    _buildInfoRow('Flute Type', jobDetails['fluteType'] ?? 'N/A'),
-                    _buildInfoRow('Process Colors', jobDetails['processColors'] ?? 'N/A'),
-                    _buildInfoRow('No. of UPS', jobDetails['noUps']?.toString() ?? 'N/A'),
-                  ],
-                ),
-
-                const SizedBox(height: 16),
-
-                // Purchase Order Details
-                if (purchaseOrderDetails.isNotEmpty)
+          // Expanded details (visible only when dropdown is open)
+          if (isExpanded)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
                   _buildInfoSection(
-                    title: 'Purchase Order',
+                    title: 'Job Information',
                     children: [
-                      _buildInfoRow('PO Quantity', purchaseOrderDetails['totalPOQuantity']?.toString() ?? 'N/A'),
-                      _buildInfoRow('No. of Sheets', purchaseOrderDetails['noOfSheets']?.toString() ?? 'N/A'),
-                      _buildInfoRow('Unit', purchaseOrderDetails['unit'] ?? 'N/A'),
-                      _buildInfoRow('Delivery Date', _formatDate(purchaseOrderDetails['deliveryDate'])),
-                      _buildInfoRow('Dispatch Date', _formatDate(purchaseOrderDetails['dispatchDate'])),
+                      _buildInfoRow('Customer', jobDetails['customerName'] ?? 'N/A'),
+                      _buildInfoRow('Style/SKU', jobDetails['styleItemSKU'] ?? 'N/A'),
+                      _buildInfoRow('Demand Level', job['jobDemand']?.toString().toUpperCase() ?? 'N/A'),
+                      _buildInfoRow('Latest Rate', jobDetails['latestRate'] != null ? '₹${jobDetails['latestRate']}' : 'N/A'),
                     ],
                   ),
 
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
 
-                // Completion Details
-                _buildInfoSection(
-                  title: 'Completion Details',
-                  children: [
-                    _buildInfoRow('Completed By', job['completedBy'] ?? 'N/A'),
-                    _buildInfoRow('Completed At', _formatDate(job['completedAt'])),
-                    _buildInfoRow('Total Duration', '${job['totalDuration'] ?? 0} minutes'),
-                    _buildInfoRow('Final Status', (job['finalStatus'] ?? 'N/A').toString().toUpperCase()),
-                    if (job['remarks'] != null && job['remarks'].toString().isNotEmpty)
-                      _buildInfoRow('Remarks', job['remarks']),
-                  ],
-                ),
+                  _buildInfoSection(
+                    title: 'Specifications',
+                    children: [
+                      _buildInfoRow('Dimensions (L×W×H)',
+                          '${jobDetails['length'] ?? 'N/A'}×${jobDetails['width'] ?? 'N/A'}×${jobDetails['height'] ?? 'N/A'} mm'),
+                      _buildInfoRow('Board Size', jobDetails['boardSize'] ?? 'N/A'),
+                      _buildInfoRow('Board Category', jobDetails['boardCategory'] ?? 'N/A'),
+                      _buildInfoRow('Flute Type', jobDetails['fluteType'] ?? 'N/A'),
+                      _buildInfoRow('Process Colors', jobDetails['processColors'] ?? 'N/A'),
+                      _buildInfoRow('No. of UPS', jobDetails['noUps']?.toString() ?? 'N/A'),
+                    ],
+                  ),
 
-                const SizedBox(height: 20),
+                  const SizedBox(height: 16),
 
-                // Action Buttons
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _showProcessSteps(context, job),
-                        icon: const Icon(Icons.timeline_rounded, size: 18),
-                        label: const Text('Process Steps'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.maincolor,
-                          side: BorderSide(color: AppColors.maincolor),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                  if (purchaseOrderDetails.isNotEmpty)
+                    _buildInfoSection(
+                      title: 'Purchase Order',
+                      children: [
+                        _buildInfoRow('PO Quantity', purchaseOrderDetails['totalPOQuantity']?.toString() ?? 'N/A'),
+                        _buildInfoRow('No. of Sheets', purchaseOrderDetails['noOfSheets']?.toString() ?? 'N/A'),
+                        _buildInfoRow('Unit', purchaseOrderDetails['unit'] ?? 'N/A'),
+                        _buildInfoRow('Delivery Date', _formatDate(purchaseOrderDetails['deliveryDate'])),
+                        _buildInfoRow('Dispatch Date', _formatDate(purchaseOrderDetails['dispatchDate'])),
+                      ],
+                    ),
+
+                  const SizedBox(height: 16),
+
+                  _buildInfoSection(
+                    title: 'Completion Details',
+                    children: [
+                      _buildInfoRow('Completed By', job['completedBy'] ?? 'N/A'),
+                      _buildInfoRow('Completed At', _formatDate(job['completedAt'])),
+                      _buildInfoRow('Total Duration', '${job['totalDuration'] ?? 0} minutes'),
+                      _buildInfoRow('Final Status', (job['finalStatus'] ?? 'N/A').toString().toUpperCase()),
+                      if (job['remarks'] != null && job['remarks'].toString().isNotEmpty)
+                        _buildInfoRow('Remarks', job['remarks']),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _showProcessSteps(context, job),
+                          icon: const Icon(Icons.timeline_rounded, size: 18),
+                          label: const Text('Process Steps'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.maincolor,
+                            side: BorderSide(color: AppColors.maincolor),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
                           ),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _showDetailedView(context, job),
-                        icon: const Icon(Icons.visibility_rounded, size: 18),
-                        label: const Text('Full Details'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.black,
-                          side: const BorderSide(color: Colors.black),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _showDetailedView(context, job),
+                          icon: const Icon(Icons.visibility_rounded, size: 18),
+                          label: const Text('Full Details'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.black,
+                            side: const BorderSide(color: Colors.black),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
                           ),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );

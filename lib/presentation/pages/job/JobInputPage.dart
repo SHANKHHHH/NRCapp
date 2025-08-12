@@ -51,7 +51,7 @@ class _JobInputPageState extends State<JobInputPage> {
   final Map<String, List<String>> dropdownOptions = {
     'Flute Type': ['Blank','2PLY','3PLY','4PLY','5PLY','6PLY','7PLY','8PLY'],
 
-    'Job Status': ['Active','Inactive','Hold'],
+    'Job Status': ['ACTIVE','INACTIVE'],
 
     'Board Category': [  'Blank',
       'Art board',
@@ -254,7 +254,7 @@ class _JobInputPageState extends State<JobInputPage> {
           'styleItemSKU': _styleItemSKUController.text.isEmpty ? null : _styleItemSKUController.text,
           'customerName': _customerNameController.text.isEmpty ? null : _customerNameController.text,
           'fluteType': _fluteTypeController.text.isEmpty ? null : _fluteTypeController.text,
-          'status': _jobStatusController.text.isEmpty ? null : _jobStatusController.text.toLowerCase(),
+          'status': _jobStatusController.text.isEmpty ? null : _jobStatusController.text.toUpperCase(),
           'latestRate': _latestRateController.text.isEmpty ? null : double.tryParse(_latestRateController.text),
           'preRate': _preRateController.text.isEmpty ? null : double.tryParse(_preRateController.text),
           'length': _lengthController.text.isEmpty ? null : double.tryParse(_lengthController.text),

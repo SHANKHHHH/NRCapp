@@ -20,6 +20,14 @@ class StepDataManager {
   // Role-based step filtering
   static List<StepType> getStepsForRole(String? userRole) {
     switch (userRole?.toLowerCase()) {
+      case 'corrugator':
+        return [StepType.corrugation];
+      case 'flutelaminator':
+        return [StepType.fluteLamination];
+      case 'pasting_operator':
+        return [StepType.flapPasting];
+      case 'punching_operator':
+        return [StepType.punching];
       case 'production_head':
       case 'production head':
         return [

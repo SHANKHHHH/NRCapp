@@ -7,6 +7,7 @@ import '../../../data/models/WorkStepAssignment.dart';
 import '../job/JobStep.dart';
 import 'WorkDetailsScreen.dart';
 import '../../../data/datasources/job_api.dart';
+import '../../routes/UserRoleManager.dart';
 
 class WorkScreen extends StatefulWidget {
   const WorkScreen({Key? key}) : super(key: key);
@@ -24,6 +25,13 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
   late AnimationController _blinkController;
   late Animation<double> _blinkAnimation;
+  final Set<String> _expandedJobNos = {};
+  String? _userRole;
+
+  bool get _isAdminOrPlanner {
+    final role = _userRole?.toLowerCase() ?? UserRoleManager().userRole?.toLowerCase();
+    return role == 'admin' || role == 'planner';
+  }
 
   String _formatJobDemand(String demand) {
     switch (demand.toLowerCase()) {
@@ -47,8 +55,16 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
       CurvedAnimation(parent: _blinkController, curve: Curves.easeInOut),
     );
     _blinkController.repeat(reverse: true);
-    _fetchAllJobPlannings();
     _searchController.addListener(_filterJobs);
+    _initializePage();
+  }
+
+  Future<void> _initializePage() async {
+    await UserRoleManager().loadUserRole();
+    setState(() {
+      _userRole = UserRoleManager().userRole;
+    });
+    await _fetchAllJobPlannings();
   }
 
   @override
@@ -129,9 +145,69 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
 
       final statuses = await fetchStatusesInChunks(plannings, 5);
 
+      // For specific operator roles, show only jobs where their target step is ready (planned/start)
+      Future<List<Map<String, dynamic>>> _filterPlanningsForOperatorRoles(
+          List<Map<String, dynamic>> allPlannings) async {
+        final role = _userRole?.toLowerCase();
+        const Map<String, String> roleToTargetStepName = {
+          'corrugator': 'Corrugation',
+          'flutelaminator': 'FluteLaminateBoardConversion',
+          'pasting_operator': 'SideFlapPasting',
+          'punching_operator': 'Punching',
+          'printer': 'PrintingDetails',
+          'qc_manager': 'QualityDept',
+          'qc manager': 'QualityDept',
+          'dispatch_executive': 'DispatchProcess',
+          'dispatch executive': 'DispatchProcess',
+        };
+
+        if (role == null || !roleToTargetStepName.containsKey(role)) {
+          return allPlannings;
+        }
+
+        final String targetStep = roleToTargetStepName[role]!;
+
+        Future<Set<String>> eligibleJobNosInChunks(
+            List<Map<String, dynamic>> items, int chunkSize) async {
+          final Set<String> eligible = {};
+          for (int i = 0; i < items.length; i += chunkSize) {
+            final chunk = items.sublist(i, i + chunkSize > items.length ? items.length : i + chunkSize);
+            final results = await Future.wait(chunk.map((planning) async {
+              final nrcJobNo = planning['nrcJobNo']?.toString();
+              if (nrcJobNo == null) return null;
+              try {
+                final planningData = await jobApi.getJobPlanningStepsByNrcJobNo(nrcJobNo);
+                final steps = planningData?['steps'];
+                if (steps is List) {
+                  for (final s in steps) {
+                    if (s is Map) {
+                      final name = s['stepName']?.toString();
+                      final status = s['status']?.toString().toLowerCase();
+                      if (name == targetStep && (status == 'planned' || status == 'start')) {
+                        return nrcJobNo;
+                      }
+                    }
+                  }
+                }
+              } catch (_) {}
+              return null;
+            }));
+            for (final jobNo in results) {
+              if (jobNo != null) eligible.add(jobNo);
+            }
+          }
+          return eligible;
+        }
+
+        final eligibleNos = await eligibleJobNosInChunks(allPlannings, 5);
+        return allPlannings.where((p) => eligibleNos.contains(p['nrcJobNo']?.toString())).toList();
+      }
+
+      final roleFilteredPlannings = await _filterPlanningsForOperatorRoles(plannings);
+
       setState(() {
-        jobPlannings = plannings;
-        filteredJobPlannings = plannings; // Initialize filtered list
+        jobPlannings = roleFilteredPlannings;
+        filteredJobPlannings = roleFilteredPlannings; // Initialize filtered list
         jobStatuses = statuses;
         _isLoading = false;
       });
@@ -257,203 +333,231 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildSummaryCard(BuildContext context, Map<String, dynamic> jobPlanning) {
-    print(jobStatuses);
-    print('this is Jon Status');
-    final nrcJobNo = jobPlanning['nrcJobNo'];
+    final nrcJobNo = jobPlanning['nrcJobNo']?.toString() ?? '';
     final status = jobStatuses[nrcJobNo] ?? '';
-    // Avoid triggering network calls during build; fetch on tap only
     final isHold = status == 'HOLD';
 
-    return GestureDetector(
-      onTap: () async {
-        if (isHold) {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              title: const Text('Work on Hold'),
-              content: const Text('This Work is in hold, Contact to admin'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-          );
-        } else {
-          // Fetch job planning steps and navigate to JobTimelinePage
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => const Center(child: CircularProgressIndicator()),
-          );
-          final dio = Dio();
-          final jobApi = JobApi(dio);
-          final planning = await jobApi.getJobPlanningStepsByNrcJobNo(jobPlanning['nrcJobNo']);
-          Navigator.of(context).pop(); // Remove loader
-          final steps = planning?['steps'] ?? [];
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => JobTimelinePage(
-                jobNumber: jobPlanning['nrcJobNo'],
-                assignedSteps: steps,
-              ),
-            ),
-          );
-        }
-      },
-      child: Card(
-        elevation: 6,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        margin: const EdgeInsets.only(bottom: 16),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.white,
-                Colors.grey[50]!,
-              ],
-            ),
+    return Card
+      (
+      elevation: 6,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white,
+              Colors.grey[50]!,
+            ],
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'WORK ASSIGNMENT',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.maincolor,
-                            letterSpacing: 1.2,
-                          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          child: Column(
+            children: [
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () async {
+                  if (isHold) {
+                    showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                      ],
+                        title: const Text('Work on Hold'),
+                        content: const Text('This Work is in hold, Contact to admin'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text('OK'),
+                          ),
+                        ],
+                      ),
+                    );
+                    return;
+                  }
+                  // Navigate to JobTimelinePage
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => const Center(child: CircularProgressIndicator()),
+                  );
+                  final dio = Dio();
+                  final jobApi = JobApi(dio);
+                  final planning = await jobApi.getJobPlanningStepsByNrcJobNo(nrcJobNo);
+                  if (mounted) Navigator.of(context).pop();
+                  final steps = planning?['steps'] ?? [];
+                  if (!mounted) return;
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => JobTimelinePage(
+                        jobNumber: nrcJobNo,
+                        assignedSteps: steps,
+                      ),
                     ),
-                    Row(
-                      children: [
-                        if (isHold)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[200],
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              'HOLD',
+                  );
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'WORK ASSIGNMENT',
                               style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.grey[700],
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.maincolor,
+                                letterSpacing: 1.2,
                               ),
                             ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'NRC Job No: $nrcJobNo',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[800],
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Job Plan ID: ${jobPlanning['jobPlanId']}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (isHold)
+                        Container(
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[200],
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                        if (_formatJobDemand(jobPlanning['jobDemand'] ?? '').toLowerCase() == 'urgent')
-                          AnimatedBuilder(
-                            animation: _blinkAnimation,
-                            builder: (context, child) {
-                              return Container(
-                                margin: const EdgeInsets.only(right: 8),
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.red,
-                                  borderRadius: BorderRadius.circular(12),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.red.withOpacity(_blinkAnimation.value * 0.6),
-                                      blurRadius: 6,
-                                      spreadRadius: 1,
-                                    ),
-                                  ],
+                          child: Text(
+                            'HOLD',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey[700],
+                            ),
+                          ),
+                        ),
+                      if (_formatJobDemand(jobPlanning['jobDemand'] ?? '').toLowerCase() == 'urgent')
+                        AnimatedBuilder(
+                          animation: _blinkAnimation,
+                          builder: (context, child) {
+                            return Container(
+                              margin: const EdgeInsets.only(right: 8),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.red,
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.red.withOpacity(_blinkAnimation.value * 0.6),
+                                    blurRadius: 6,
+                                    spreadRadius: 1,
+                                  ),
+                                ],
+                              ),
+                              child: const Text(
+                                'U',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
                                 ),
-                                child: Text(
-                                  'U',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
+                              ),
+                            );
+                          },
+                        ),
+                      IconButton(
+                        tooltip: _expandedJobNos.contains(nrcJobNo) ? 'Collapse' : 'Expand',
+                        icon: Icon(
+                          _expandedJobNos.contains(nrcJobNo)
+                              ? Icons.keyboard_arrow_up
+                              : Icons.keyboard_arrow_down,
+                          color: Colors.grey[700],
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            if (_expandedJobNos.contains(nrcJobNo)) {
+                              _expandedJobNos.remove(nrcJobNo);
+                            } else {
+                              _expandedJobNos.add(nrcJobNo);
+                            }
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (_expandedJobNos.contains(nrcJobNo))
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 8),
+                      _buildSummaryItem(
+                        icon: Icons.trending_up,
+                        title: 'Job Demand',
+                        value: _formatJobDemand(jobPlanning['jobDemand'] ?? ''),
+                        color: Colors.purple,
+                      ),
+                      const SizedBox(height: 10),
+                      if (_isAdminOrPlanner)
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => WorkDetailsScreen(
+                                    nrcJobNo: nrcJobNo,
                                   ),
                                 ),
                               );
                             },
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                _buildSummaryItem(
-                  icon: Icons.confirmation_number,
-                  title: 'Job Plan ID',
-                  value: jobPlanning['jobPlanId'].toString(),
-                  color: Colors.blue,
-                ),
-                _buildSummaryItem(
-                  icon: Icons.work,
-                  title: 'NRC Job No',
-                  value: jobPlanning['nrcJobNo'] ?? '',
-                  color: Colors.blue,
-                ),
-                _buildSummaryItem(
-                  icon: Icons.trending_up,
-                  title: 'Job Demand',
-                  value: _formatJobDemand(jobPlanning['jobDemand'] ?? ''),
-                  color: Colors.purple,
-                ),
-                _buildSummaryItem(
-                  icon: Icons.calendar_today,
-                  title: 'Created At',
-                  value: jobPlanning['createdAt'] ?? '',
-                  color: Colors.green,
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => WorkDetailsScreen(
-                            nrcJobNo: jobPlanning['nrcJobNo'],
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.maincolor,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              elevation: 2,
+                            ),
+                            child: const Text(
+                              'View Complete Details',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 16,
+                              ),
+                            ),
                           ),
                         ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.maincolor,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      elevation: 2,
-                    ),
-                    child: const Text(
-                      'View Complete Details',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 16,
-                      ),
-                    ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+            ],
           ),
         ),
       ),
