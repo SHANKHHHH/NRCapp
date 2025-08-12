@@ -7,6 +7,7 @@ import 'package:dio/dio.dart';
 import '../../../constants/strings.dart';
 import '../../../data/datasources/job_api.dart';
 import 'dart:convert'; // Added for jsonDecode
+import '../activity/UserOwnActivityPage.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -378,6 +379,24 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: _logout,
               icon: const Icon(Icons.logout, color: AppColors.white,),
               label: const Text('Logout',style: TextStyle(color: AppColors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.maincolor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const UserOwnActivityPage(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.history, color: AppColors.white),
+              label: const Text('Your Activity', style: TextStyle(color: AppColors.white)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.maincolor,
                 shape: RoundedRectangleBorder(

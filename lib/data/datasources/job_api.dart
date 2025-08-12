@@ -764,6 +764,32 @@ class JobApi {
     }
   }
 
+  Future<List<Map<String, dynamic>>> getActivityLogsByUser(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    print('[getActivityLogsByUser] Token: $token');
+    try {
+      final response = await dio.get(
+        '${AppStrings.baseUrl}/api/activity-logs/user/$userId',
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            if (token != null) 'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      print('[getActivityLogsByUser] Response: ${response.statusCode} ${response.data}');
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        final logs = response.data['data'] as List;
+        return logs.cast<Map<String, dynamic>>();
+      }
+      return [];
+    } catch (e) {
+      print('[getActivityLogsByUser] Error: $e');
+      return [];
+    }
+  }
+
   Future<List<Map<String, dynamic>>> getCompletedJobs() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');

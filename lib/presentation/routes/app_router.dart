@@ -25,6 +25,7 @@ import 'UserRoleManager.dart';
 import '../pages/job/PendingJobsWorkPage.dart';
 import '../pages/job/CompletedJobsPage.dart';
 import '../pages/activity/UserActivityPage.dart';
+import '../pages/activity/UserOwnActivityPage.dart';
 
 final UserRoleManager userRoleManager = UserRoleManager();
 
@@ -105,6 +106,10 @@ final GoRouter router = GoRouter(
     GoRoute(
       path: '/user-activity',
       builder: (context, state) => const UserActivityPage(),
+    ),
+    GoRoute(
+      path: '/my-activity',
+      builder: (context, state) => const UserOwnActivityPage(),
     ),
   ],
 );
