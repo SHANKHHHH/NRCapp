@@ -3,6 +3,9 @@ import 'package:go_router/go_router.dart';
 import 'package:nrc/constants/colors.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../routes/UserRoleManager.dart';
+import 'package:nrc/core/services/auth_service.dart';
+import 'package:nrc/data/repositories/auth_repository.dart';
+import 'package:dio/dio.dart';
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -14,47 +17,74 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
-  String? _selectedRole;
-  final List<String> _roles = [
-    'Admin',
-    'Planner',
-    'Production Head',
-    'Dispatch Executive',
-    'QC Manager',
-  ];
-
   final UserRoleManager userRoleManager = UserRoleManager();
+  final AuthRepository _authRepository = AuthRepository(AuthService());
+
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
     print('LoginScreen initialized');
-    print('Initial selectedRole: $_selectedRole');
+    _checkExistingSession();
+  }
+
+  void _checkExistingSession() async {
+    setState(() { _isLoading = true; });
+    String? userId = await _authRepository.getUserId();
+    String? accessToken = await _authRepository.getAccessToken();
+    if (userId != null && accessToken != null) {
+      final userData = await _authRepository.checkUserValidAndGetData(userId, accessToken);
+      if (userData != null && userData['role'] != null) {
+        await userRoleManager.setUserRole(userData['role']);
+        setState(() { _isLoading = false; });
+        if (mounted) context.pushReplacement('/home');
+        return;
+      }
+    }
+    setState(() { _isLoading = false; });
   }
 
   void _performLogin() async {
     if (_formKey.currentState!.validate()) {
-      print('Employee ID: ${_empIdController.text}');
-      print('Password: ${_passwordController.text}');
-      print('Role: $_selectedRole');
+      setState(() { _isLoading = true; });
+      // Remove hardcoded role setting
+      // await userRoleManager.setUserRole('admin');
 
-      if (_selectedRole != null) {
-        print('Selected Role: $_selectedRole');
+      bool success = await _authRepository.login(
+        id: _empIdController.text,
+        password: _passwordController.text,
+      );
 
-        // Save the selected role using UserRoleManager
-        await userRoleManager.setUserRole(_selectedRole!);
+      // Save role after login if present
+      if (success) {
+        // Explicitly refresh and persist fresh role details after login
+        final userId = await _authRepository.getUserId();
+        final accessToken = await _authRepository.getAccessToken();
+        if (userId != null && accessToken != null) {
+          final userData = await _authRepository.checkUserValidAndGetData(userId, accessToken);
+          final role = userData != null ? userData['role'] as String? : null;
+          if (role != null) {
+            await userRoleManager.setUserRole(role);
+          } else {
+            // Fallback to stored role if backend did not return role
+            final storedRole = await _authRepository.getUserRole();
+            if (storedRole != null) {
+              await userRoleManager.setUserRole(storedRole);
+            }
+          }
+        }
+      }
 
-        // Clear the form after successful validation
+      setState(() { _isLoading = false; });
+
+      if (success) {
         _empIdController.clear();
         _passwordController.clear();
-
-        // Navigate to home
         context.pushReplacement('/home');
-        print('Navigating to home with role: ${userRoleManager.userRole}'); // Debug print
       } else {
-        print('No role selected.'); // Debug print
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Please select a role.')),
+          SnackBar(content: Text('Login failed. Please check your credentials.')),
         );
       }
     }
@@ -65,143 +95,121 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       backgroundColor: Color(0xFFF2F4F7),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(24, 150, 24, 24),
-          child: Column(
-            children: [
-              // Logo
-              Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(38),
-                  image: DecorationImage(
-                    image: AssetImage('assets/images/nrcLogo.jpg'),
-                  ),
-                ),
-              ),
-
-              SizedBox(height: 40),
-
-              // Form Card
-              Container(
-                padding: EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.95),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 15,
-                      offset: Offset(0, 8),
+        child: Stack(
+          children: [
+            SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(24, 150, 24, 24),
+              child: Column(
+                children: [
+                  // Logo
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(38),
+                      image: DecorationImage(
+                        image: AssetImage('assets/images/nrcLogo.jpg'),
+                      ),
                     ),
-                  ],
-                ),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    children: [
-                      // Employee ID
-                      TextFormField(
-                        controller: _empIdController,
-                        decoration: InputDecoration(
-                          hintText: 'Employee ID',
-                          filled: true,
-                          fillColor: Colors.white,
-                          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter your Employee ID';
-                          }
-                          return null;
-                        },
-                      ),
-                      SizedBox(height: 16),
-
-                      // Password
-                      TextFormField(
-                        controller: _passwordController,
-                        obscureText: true,
-                        decoration: InputDecoration(
-                          hintText: 'Password',
-                          filled: true,
-                          fillColor: Colors.white,
-                          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter your Password';
-                          }
-                          return null;
-                        },
-                      ),
-                      SizedBox(height: 16),
-
-                      // Role Dropdown
-                      DropdownButtonFormField<String>(
-                        value: _selectedRole,
-                        decoration: InputDecoration(
-                          filled: true,
-                          fillColor: Colors.white,
-                          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        hint: Text('Select your Role'),
-                        items: _roles.map((String role) {
-                          return DropdownMenuItem<String>(
-                            value: role,
-                            child: Text(role),
-                          );
-                        }).toList(),
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedRole = value;
-                            print('Role selected: $_selectedRole'); // Debug print
-                          });
-                        },
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please select your Role';
-                          }
-                          return null;
-                        },
-                      ),
-                      SizedBox(height: 24),
-
-                      // Continue Button
-                      ElevatedButton(
-                        onPressed: _performLogin,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.maincolor,
-                          minimumSize: Size(double.infinity, 56),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: Text(
-                          'Login',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
+
+                  SizedBox(height: 40),
+
+                  // Form Card
+                  Container(
+                    padding: EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.95),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 15,
+                          offset: Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        children: [
+                          // Employee ID
+                          TextFormField(
+                            controller: _empIdController,
+                            decoration: InputDecoration(
+                              hintText: 'ID',
+                              filled: true,
+                              fillColor: Colors.white,
+                              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please enter your Employee ID';
+                              }
+                              return null;
+                            },
+                          ),
+                          SizedBox(height: 16),
+
+                          // Password
+                          TextFormField(
+                            controller: _passwordController,
+                            obscureText: true,
+                            decoration: InputDecoration(
+                              hintText: 'Password',
+                              filled: true,
+                              fillColor: Colors.white,
+                              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please enter your Password';
+                              }
+                              return null;
+                            },
+                          ),
+                          SizedBox(height: 24),
+
+                          // Continue Button
+                          ElevatedButton(
+                            onPressed: _performLogin,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.maincolor,
+                              minimumSize: Size(double.infinity, 56),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: Text(
+                              'Login',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (_isLoading)
+              Container(
+                color: Colors.black.withOpacity(0.3),
+                child: const Center(
+                  child: CircularProgressIndicator(),
                 ),
               ),
-            ],
-          ),
+          ],
         ),
       ),
     );
