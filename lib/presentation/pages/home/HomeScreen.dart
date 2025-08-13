@@ -273,19 +273,17 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 24),
             if (_userRole == 'admin')...[
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => context.push('/create-id'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.maincolor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
-                    ),
+              ElevatedButton(
+                onPressed: () => context.push('/create-id'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.maincolor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                  child: const Text(
-                    'Add New Account',
-                    style: TextStyle(color: AppColors.white),
-                  ),
+                ),
+                child: const Text(
+                  'Add New Account',
+                  style: TextStyle(color: AppColors.white),
                 ),
               ),
               const SizedBox(height: 12),
