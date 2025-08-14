@@ -3,6 +3,7 @@ import 'dart:math' as MainSize;
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../../data/datasources/job_api.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 class DispatchBoard extends StatefulWidget {
   const DispatchBoard({Key? key}) : super(key: key);
@@ -14,7 +15,8 @@ class DispatchBoard extends StatefulWidget {
 class _DispatchBoardState extends State<DispatchBoard>
     with TickerProviderStateMixin {
   late final JobApi jobApi;
-  late TabController _tabController;
+  late TabController _tabController; // status tabs
+  late TabController _dateTabController; // date tabs
 
   bool isLoading = true;
   String? error;
@@ -23,16 +25,19 @@ class _DispatchBoardState extends State<DispatchBoard>
   int completedJobsCount = 0;
 
   String searchQuery = '';
-  String selectedFilter = 'All';
+  String selectedStatusFilter = 'All';
+  String selectedDateFilter = 'All';
   DateTimeRange? customDateRange;
 
   final TextEditingController _searchController = TextEditingController();
-  final List<String> filterOptions = ['All', 'Daily', 'Weekly', 'Monthly', 'Custom'];
+  final List<String> statusFilterOptions = ['All', 'Planned', 'Accepted', 'Completed'];
+  final List<String> dateFilterOptions = ['All', 'Daily', 'Weekly', 'Monthly', 'Custom'];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
+    _dateTabController = TabController(length: 5, vsync: this);
     jobApi = JobApi(Dio());
     _fetchDispatchJobs();
   }
@@ -40,6 +45,7 @@ class _DispatchBoardState extends State<DispatchBoard>
   @override
   void dispose() {
     _tabController.dispose();
+    _dateTabController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -156,9 +162,31 @@ class _DispatchBoardState extends State<DispatchBoard>
       }).toList();
     }
 
+    // Apply status filter
+    switch (selectedStatusFilter) {
+      case 'Planned':
+        filtered = filtered
+            .where((job) => (job.dispatchStatus ?? '').toLowerCase() == 'planned')
+            .toList();
+        break;
+      case 'Accepted':
+        filtered = filtered
+            .where((job) => (job.dispatchStatus ?? '').toLowerCase() == 'accept')
+            .toList();
+        break;
+      case 'Completed':
+        filtered = filtered
+            .where((job) => (job.dispatchStatus ?? '').toLowerCase() == 'stop')
+            .toList();
+        break;
+      case 'All':
+      default:
+        break;
+    }
+
     // Apply date filter
     final now = DateTime.now();
-    switch (selectedFilter) {
+    switch (selectedDateFilter) {
       case 'Daily':
         filtered = filtered.where((job) {
           if (job.dispatchDate == null) return false;
@@ -202,6 +230,10 @@ class _DispatchBoardState extends State<DispatchBoard>
           }).toList();
         }
         break;
+
+      case 'All':
+      default:
+        break;
     }
 
     setState(() {
@@ -232,7 +264,7 @@ class _DispatchBoardState extends State<DispatchBoard>
     if (picked != null) {
       setState(() {
         customDateRange = picked;
-        selectedFilter = 'Custom';
+        selectedDateFilter = 'Custom';
       });
       _applyFilters();
     }
@@ -308,7 +340,7 @@ class _DispatchBoardState extends State<DispatchBoard>
                 ),
               ),
 
-              // Filter Tabs
+              // Status Filter Tabs
               Container(
                 height: 50,
                 margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -322,25 +354,17 @@ class _DispatchBoardState extends State<DispatchBoard>
                   labelStyle: const TextStyle(fontWeight: FontWeight.w600),
                   onTap: (index) {
                     setState(() {
-                      selectedFilter = filterOptions[index];
-                      if (selectedFilter == 'Custom' && customDateRange == null) {
-                        _selectCustomDateRange();
-                      }
+                      selectedStatusFilter = statusFilterOptions[index];
                     });
                     _applyFilters();
                   },
-                  tabs: filterOptions.map((filter) {
+                  tabs: statusFilterOptions.map((filter) {
                     return Tab(
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Row(
                           children: [
                             Text(filter),
-                            if (filter == 'Custom' && customDateRange != null)
-                              GestureDetector(
-                                onTap: _selectCustomDateRange,
-                                child: const Icon(Icons.edit, size: 16),
-                              ),
                           ],
                         ),
                       ),
@@ -348,6 +372,7 @@ class _DispatchBoardState extends State<DispatchBoard>
                   }).toList(),
                 ),
               ),
+
               const SizedBox(height: 8),
             ],
           ),
@@ -404,77 +429,142 @@ class _DispatchBoardState extends State<DispatchBoard>
           ],
         ),
       )
-          : filteredJobs.isEmpty
-          ? Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.inbox_outlined, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              searchQuery.isNotEmpty
-                  ? 'No jobs found for "$searchQuery"'
-                  : 'No dispatch jobs found',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
+          : RefreshIndicator(
+        onRefresh: _fetchDispatchJobs,
+        color: Colors.blueAccent,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (filteredJobs.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 80),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.inbox_outlined, size: 64, color: Colors.grey[400]),
+                      const SizedBox(height: 16),
+                      Text(
+                        searchQuery.isNotEmpty
+                            ? 'No jobs found for "$searchQuery"'
+                            : 'No dispatch jobs found',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (searchQuery.isNotEmpty || selectedStatusFilter != 'All' || selectedDateFilter != 'All') ...[
+                        const SizedBox(height: 8),
+                        TextButton(
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() {
+                              searchQuery = '';
+                              selectedStatusFilter = 'All';
+                              selectedDateFilter = 'All';
+                              _tabController.animateTo(0);
+                              _dateTabController.animateTo(0);
+                            });
+                            _applyFilters();
+                          },
+                          child: const Text('Clear Filters'),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+
+              // Stats Header
+              Container(
+                margin: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: _buildStatsRow(),
               ),
-            ),
-            if (searchQuery.isNotEmpty || selectedFilter != 'All') ...[
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () {
-                  _searchController.clear();
-                  setState(() {
-                    searchQuery = '';
-                    selectedFilter = 'All';
-                    _tabController.animateTo(0);
-                  });
-                  _applyFilters();
-                },
-                child: const Text('Clear Filters'),
+
+              // Status Chart
+              Container(
+                margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: _buildStatusChart(),
+              ),
+
+              // Date Filter Tabs (moved here)
+              Container(
+                height: 50,
+                margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: TabBar(
+                  controller: _dateTabController,
+                  isScrollable: true,
+                  indicatorColor: Colors.deepPurple,
+                  indicatorWeight: 3,
+                  labelColor: Colors.deepPurple,
+                  unselectedLabelColor: Colors.grey[600],
+                  labelStyle: const TextStyle(fontWeight: FontWeight.w600),
+                  onTap: (index) {
+                    setState(() {
+                      selectedDateFilter = dateFilterOptions[index];
+                      if (selectedDateFilter == 'Custom' && customDateRange == null) {
+                        _selectCustomDateRange();
+                      }
+                    });
+                    _applyFilters();
+                  },
+                  tabs: dateFilterOptions.map((filter) {
+                    return Tab(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          children: [
+                            Text(filter),
+                            if (filter == 'Custom' && customDateRange != null)
+                              const Padding(
+                                padding: EdgeInsets.only(left: 6.0),
+                                child: Icon(Icons.edit_calendar, size: 16),
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+
+              // Job Cards
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Column(
+                  children: [
+                    for (final job in filteredJobs) _buildJobCard(job),
+                  ],
+                ),
               ),
             ],
-          ],
+          ),
         ),
-      )
-          : Column(
-        children: [
-          // Stats Header
-          Container(
-            margin: const EdgeInsets.all(16),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: _buildStatsRow(),
-          ),
-
-          // Job List
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: _fetchDispatchJobs,
-              color: Colors.blueAccent,
-              child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                itemCount: filteredJobs.length,
-                itemBuilder: (context, index) {
-                  final job = filteredJobs[index];
-                  return _buildJobCard(job);
-                },
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -522,6 +612,104 @@ class _DispatchBoardState extends State<DispatchBoard>
       stats[status] = (stats[status] ?? 0) + 1;
     }
     return stats;
+  }
+
+  Widget _buildStatusChart() {
+    final stats = _calculateStats();
+
+    final entries = [
+      {
+        'label': 'In Progress',
+        'key': 'start',
+        'count': stats['start'] ?? 0,
+        'color': _statusColor('start'),
+      },
+      {
+        'label': 'Planned',
+        'key': 'planned',
+        'count': stats['planned'] ?? 0,
+        'color': _statusColor('planned'),
+      },
+      {
+        'label': 'Accepted',
+        'key': 'accept',
+        'count': stats['accept'] ?? 0,
+        'color': _statusColor('accept'),
+      },
+      {
+        'label': 'Completed',
+        'key': 'stop',
+        'count': stats['stop'] ?? 0,
+        'color': _statusColor('stop'),
+      },
+    ].where((e) => (e['count'] as int) > 0).toList();
+
+    if (entries.isEmpty) {
+      return Center(
+        child: Text(
+          'No status data to display',
+          style: TextStyle(color: Colors.grey[600]),
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        SizedBox(
+          height: 200,
+          child: PieChart(
+            PieChartData(
+              sectionsSpace: 2,
+              centerSpaceRadius: 36,
+              sections: entries
+                  .map(
+                    (e) => PieChartSectionData(
+                      color: e['color'] as Color,
+                      value: (e['count'] as int).toDouble(),
+                      title: (e['count'] as int).toString(),
+                      titleStyle: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 8,
+          children: entries
+              .map(
+                (e) => Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: e['color'] as Color,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${e['label']}: ${e['count']}',
+                      style: TextStyle(
+                        color: Colors.grey[700],
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+              .toList(),
+        ),
+      ],
+    );
   }
 
   Widget _buildJobCard(_DispatchJobInfo job) {

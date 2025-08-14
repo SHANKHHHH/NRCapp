@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../../constants/colors.dart';
 import '../../../data/datasources/job_api.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 
 
@@ -491,6 +492,7 @@ class _QualityBoardState extends State<QualityBoard>
           : Column(
         children: [
           _buildStatsCards(),
+          _buildQCStatusChart(),
           _buildSearchAndFilter(),
           Expanded(
             child: TabBarView(
@@ -504,6 +506,96 @@ class _QualityBoardState extends State<QualityBoard>
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQCStatusChart() {
+    final total = filteredJobs.length;
+    final accepted = filteredJobs.where((j) => j.qcStatus == 'accept').length;
+    final started = filteredJobs.where((j) => j.qcStatus == 'start').length;
+    final planned = filteredJobs.where((j) => j.qcStatus == 'planned').length;
+    final stopped = filteredJobs.where((j) => j.qcStatus == 'stop').length;
+
+    final entries = [
+      {'label': 'Completed', 'count': accepted, 'color': Colors.green},
+      {'label': 'In Progress', 'count': started, 'color': Colors.orange},
+      {'label': 'Planned', 'count': planned, 'color': Colors.blue},
+      {'label': 'Stopped', 'count': stopped, 'color': Colors.purple},
+    ].where((e) => (e['count'] as int) > 0).toList();
+
+    return Container(
+      margin: EdgeInsets.only(left: 16, right: 16, bottom: 8),
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'QC Status Overview${total > 0 ? ' ($total)' : ''}',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey[800]),
+          ),
+          SizedBox(height: 12),
+          if (entries.isEmpty)
+            Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Text('No QC data to display', style: TextStyle(color: Colors.grey[600])),
+              ),
+            )
+          else ...[
+            SizedBox(
+              height: 180,
+              child: PieChart(
+                PieChartData(
+                  sectionsSpace: 2,
+                  centerSpaceRadius: 36,
+                  sections: entries
+                      .map(
+                        (e) => PieChartSectionData(
+                          color: e['color'] as Color,
+                          value: (e['count'] as int).toDouble(),
+                          title: (e['count'] as int).toString(),
+                          titleStyle: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+            ),
+            SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: entries
+                  .map(
+                    (e) => Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(width: 10, height: 10, decoration: BoxDecoration(color: e['color'] as Color, shape: BoxShape.circle)),
+                        SizedBox(width: 6),
+                        Text('${e['label']}: ${e['count']}', style: TextStyle(color: Colors.grey[700], fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
         ],
       ),
     );

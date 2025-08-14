@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:nrc/constants/strings.dart';
 import 'package:collection/collection.dart';
 import 'package:intl/intl.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 class PrintingManagerBoard extends StatefulWidget {
   @override
@@ -317,6 +318,7 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
           _buildSliverAppBar(),
           SliverToBoxAdapter(child: _buildSearchAndFilters()),
           SliverToBoxAdapter(child: _buildStatsCard()),
+          SliverToBoxAdapter(child: _buildStatusChart()),
           _buildJobsList(),
         ],
       ),
@@ -493,6 +495,139 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
             _filteredJobs.where((j) => j['workflowStatus'] == 'Not Started').length.toString(),
             Icons.pending_outlined,
             Colors.grey,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusChart() {
+    final int completed = _filteredJobs.where((j) => (j['workflowStatus'] as String).toLowerCase() == 'completed').length;
+    final int inProgress = _filteredJobs.where((j) => (j['workflowStatus'] as String).toLowerCase() == 'in progress').length;
+    final int notStarted = _filteredJobs.where((j) => (j['workflowStatus'] as String).toLowerCase() == 'not started').length;
+
+    final entries = [
+      {
+        'label': 'Completed',
+        'count': completed,
+        'color': Colors.green,
+      },
+      {
+        'label': 'In Progress',
+        'count': inProgress,
+        'color': Colors.orange,
+      },
+      {
+        'label': 'Not Started',
+        'count': notStarted,
+        'color': Colors.grey,
+      },
+    ].where((e) => (e['count'] as int) > 0).toList();
+
+    if (entries.isEmpty) {
+      return Container(
+        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Center(
+          child: Text(
+            'No status data to display',
+            style: TextStyle(color: Colors.grey[600]),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: Text(
+              'Workflow Status',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: Colors.grey[800],
+              ),
+            ),
+          ),
+          SizedBox(
+            height: 200,
+            child: PieChart(
+              PieChartData(
+                sectionsSpace: 2,
+                centerSpaceRadius: 36,
+                sections: entries
+                    .map(
+                      (e) => PieChartSectionData(
+                        color: e['color'] as Color,
+                        value: (e['count'] as int).toDouble(),
+                        title: (e['count'] as int).toString(),
+                        titleStyle: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          ),
+          SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            children: entries
+                .map(
+                  (e) => Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: e['color'] as Color,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      SizedBox(width: 6),
+                      Text(
+                        '${e['label']}: ${e['count']}',
+                        style: TextStyle(
+                          color: Colors.grey[700],
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+                .toList(),
           ),
         ],
       ),

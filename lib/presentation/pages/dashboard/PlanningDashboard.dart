@@ -6,6 +6,7 @@ import '../../../data/datasources/job_api.dart';
 import '../../../constants/strings.dart';
 import '../../pages/job/PendingJobsWorkPage.dart';
 import '../../pages/job/AllRecentActivitiesPage.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 class PlanningDashboard extends StatefulWidget {
   const PlanningDashboard({super.key});
@@ -24,6 +25,8 @@ class _PlanningDashboardState extends State<PlanningDashboard> with TickerProvid
   int _pendingPlanningCount = 0;
   Map<String, List<Map<String, String>>> _pendingFieldsByJob = {};
   int _completedToday = 0;
+  int _artworkPending = 0;
+  int _artworkComplete = 0;
 
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -105,6 +108,8 @@ class _PlanningDashboardState extends State<PlanningDashboard> with TickerProvid
       // Pending Jobs details: count all missing fields for each job
       _pendingJobsDetails = [];
       _pendingFieldsByJob = {};
+      int artworkPending = 0;
+      int artworkComplete = 0;
       for (final job in activeJobs) {
         final List<Map<String, String>> pendingFields = [];
         if (job.artworkReceivedDate == null || job.artworkReceivedDate.toString().isEmpty) {
@@ -125,6 +130,9 @@ class _PlanningDashboardState extends State<PlanningDashboard> with TickerProvid
             'pendingCount': pendingFields.length,
           });
           _pendingFieldsByJob[job.nrcJobNo ?? ''] = pendingFields;
+          artworkPending++;
+        } else {
+          artworkComplete++;
         }
       }
       final pendingPlanningCount = _pendingJobsDetails.length;
@@ -149,6 +157,8 @@ class _PlanningDashboardState extends State<PlanningDashboard> with TickerProvid
         _activeJobs = activeJobs.length;
         _pendingPlanningCount = pendingPlanningCount;
         _completedToday = completedToday;
+        _artworkPending = artworkPending;
+        _artworkComplete = artworkComplete;
         _isLoading = false;
       });
 
@@ -275,6 +285,10 @@ class _PlanningDashboardState extends State<PlanningDashboard> with TickerProvid
                     _buildQuickActions(),
                     const SizedBox(height: 32),
                     _buildMetricsGrid(),
+                    const SizedBox(height: 32),
+                    _buildPlanningStatusChart(),
+                    const SizedBox(height: 24),
+                    _buildMissingFieldsBarChart(),
                     const SizedBox(height: 32),
                     _buildPendingJobs(),
                     const SizedBox(height: 32),
@@ -550,6 +564,200 @@ class _PlanningDashboardState extends State<PlanningDashboard> with TickerProvid
           ],
         ),
       ],
+    );
+  }
+
+  Widget _buildPlanningStatusChart() {
+    final entries = [
+      {
+        'label': 'Artwork Complete',
+        'count': _artworkComplete,
+        'color': const Color(0xFF4CAF50),
+      },
+      {
+        'label': 'Pending Artwork',
+        'count': _artworkPending,
+        'color': Colors.orange,
+      },
+    ].where((e) => (e['count'] as int) > 0).toList();
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+        border: Border.all(color: lightGrey, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Artwork Status',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Colors.grey[800],
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (entries.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Text('No data to display', style: TextStyle(color: Colors.grey[600])),
+              ),
+            )
+          else ...[
+            SizedBox(
+              height: 200,
+              child: PieChart(
+                PieChartData(
+                  sectionsSpace: 4,
+                  centerSpaceRadius: 36,
+                  sections: entries
+                      .map(
+                        (e) => PieChartSectionData(
+                          color: e['color'] as Color,
+                          value: (e['count'] as int).toDouble(),
+                          title: (e['count'] as int).toString(),
+                          titleStyle: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: entries
+                  .map(
+                    (e) => Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(width: 10, height: 10, decoration: BoxDecoration(color: e['color'] as Color, shape: BoxShape.circle)),
+                        const SizedBox(width: 6),
+                        Text('${e['label']}: ${e['count']}', style: TextStyle(color: Colors.grey[700], fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMissingFieldsBarChart() {
+    if (_pendingJobsDetails.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 15,
+              offset: const Offset(0, 5),
+            ),
+          ],
+          border: Border.all(color: lightGrey, width: 1.5),
+        ),
+        child: Center(
+          child: Text('No pending fields to display', style: TextStyle(color: Colors.grey[600])),
+        ),
+      );
+    }
+
+    final top = _pendingJobsDetails.take(5).toList();
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+        border: Border.all(color: lightGrey, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Top Pending Jobs (by missing fields)',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Colors.grey[800],
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 220,
+            child: BarChart(
+              BarChartData(
+                barGroups: [
+                  for (int i = 0; i < top.length; i++)
+                    BarChartGroupData(
+                      x: i,
+                      barRods: [
+                        BarChartRodData(
+                          toY: (top[i]['pendingCount'] as int).toDouble(),
+                          color: AppColors.maincolor,
+                          width: 14,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ],
+                    ),
+                ],
+                gridData: FlGridData(show: true, drawVerticalLine: false),
+                borderData: FlBorderData(show: false),
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true)),
+                  rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (value, meta) {
+                        final idx = value.toInt();
+                        if (idx < 0 || idx >= top.length) return SizedBox.shrink();
+                        final jobNo = (top[idx]['nrcJobNo'] as String);
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            jobNo,
+                            style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                          ),
+                        );
+                      },
+                      reservedSize: 44,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

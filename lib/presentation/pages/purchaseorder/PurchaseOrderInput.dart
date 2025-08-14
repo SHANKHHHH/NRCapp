@@ -31,7 +31,6 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
   late TextEditingController _poNumberController;
   late TextEditingController _deliverDateController;
   late TextEditingController _totalPoController;
-  late TextEditingController _dispatchDateController;
   late TextEditingController _locationController;
   late TextEditingController _noOfSheetsController;
 
@@ -47,7 +46,6 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
     _poNumberController = TextEditingController();
     _deliverDateController = TextEditingController();
     _totalPoController = TextEditingController();
-    _dispatchDateController = TextEditingController();
     _locationController = TextEditingController();
     _noOfSheetsController = TextEditingController();
 
@@ -57,7 +55,6 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
       _poNumberController.text = widget.existingPo!.poNumber ?? '';
       _deliverDateController.text = widget.existingPo!.deliveryDate.toIso8601String();
       _totalPoController.text = widget.existingPo!.totalPOQuantity.toString();
-      _dispatchDateController.text = widget.existingPo!.dispatchDate.toIso8601String();
       _locationController.text = widget.existingPo!.unit;
       _noOfSheetsController.text = widget.existingPo!.noOfSheets.toString();
     }
@@ -72,7 +69,6 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
     _poNumberController.dispose();
     _deliverDateController.dispose();
     _totalPoController.dispose();
-    _dispatchDateController.dispose();
     _locationController.dispose();
     _noOfSheetsController.dispose();
     super.dispose();
@@ -461,19 +457,6 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
                     validator: (value) {
                       if (value == null || value.isEmpty) {
                         return 'Please select delivery date';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 20),
-
-                  _buildDateFormField(
-                    controller: _dispatchDateController,
-                    label: 'Dispatch Date',
-                    icon: Icons.schedule_outlined,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please select dispatch date';
                       }
                       return null;
                     },
@@ -996,7 +979,6 @@ class _PurchaseOrderInputState extends State<PurchaseOrderInput> {
         'poDate': _formatDate(poDate),
         'poNumber': _poNumberController.text,
         'deliveryDate': _formatDate(DateTime.parse(_deliverDateController.text)),
-        'dispatchDate': _formatDate(DateTime.parse(_dispatchDateController.text)),
         'unit': _locationController.text,
         'totalPOQuantity': totalPoQty,
         'pendingValidity': pendingValidity,

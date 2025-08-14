@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nrc/constants/colors.dart';
 import 'package:nrc/data/datasources/job_api.dart';
 import 'package:dio/dio.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 class ProductionBoard extends StatefulWidget {
   @override
@@ -421,6 +422,10 @@ class _ProductionBoardState extends State<ProductionBoard>
                   SizedBox(height: 24),
                   _buildQuickStats(),
                   SizedBox(height: 24),
+                  _buildStatusPieChart(),
+                  SizedBox(height: 24),
+                  _buildStepBarChart(),
+                  SizedBox(height: 24),
                   _buildViewModeSelector(),
                   SizedBox(height: 24),
                   _buildContentBasedOnMode(),
@@ -721,6 +726,232 @@ class _ProductionBoardState extends State<ProductionBoard>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildStatusPieChart() {
+    final counts = _getStatusCounts();
+    final entries = [
+      {'label': 'Planned', 'count': counts['planned'] ?? 0, 'color': Colors.blue},
+      {'label': 'In Progress', 'count': counts['start'] ?? 0, 'color': Colors.orange},
+      {'label': 'Completed', 'count': counts['stop'] ?? 0, 'color': Colors.green},
+    ].where((e) => (e['count'] as int) > 0).toList();
+
+    return Container(
+      padding: EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 25,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Status Distribution',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey[800],
+            ),
+          ),
+          SizedBox(height: 16),
+          if (entries.isEmpty)
+            Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Text('No data to display', style: TextStyle(color: Colors.grey[600])),
+              ),
+            )
+          else ...[
+            SizedBox(
+              height: 200,
+              child: PieChart(
+                PieChartData(
+                  sectionsSpace: 4,
+                  centerSpaceRadius: 36,
+                  sections: entries
+                      .map(
+                        (e) => PieChartSectionData(
+                          color: e['color'] as Color,
+                          value: (e['count'] as int).toDouble(),
+                          title: (e['count'] as int).toString(),
+                          titleStyle: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+            ),
+            SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: entries
+                  .map((e) => Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              color: e['color'] as Color,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            '${e['label']}: ${e['count']}',
+                            style: TextStyle(
+                              color: Colors.grey[700],
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ))
+                  .toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepBarChart() {
+    final grouped = _groupStepsByName();
+    final stepNames = stepOrder.where((s) => grouped.containsKey(s)).toList();
+    if (stepNames.isEmpty) {
+      return Container(
+        padding: EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 25,
+              offset: Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Center(
+          child: Text('No step data to display', style: TextStyle(color: Colors.grey[600])),
+        ),
+      );
+    }
+
+    final bars = <BarChartGroupData>[];
+    for (int i = 0; i < stepNames.length; i++) {
+      final name = stepNames[i];
+      final steps = grouped[name]!;
+      final planned = steps.where((s) => s['status'] == 'planned').length.toDouble();
+      final started = steps.where((s) => s['status'] == 'start').length.toDouble();
+      final stopped = steps.where((s) => s['status'] == 'stop').length.toDouble();
+
+      bars.add(
+        BarChartGroupData(
+          x: i,
+          barsSpace: 4,
+          barRods: [
+            BarChartRodData(toY: planned, color: Colors.blue, width: 8),
+            BarChartRodData(toY: started, color: Colors.orange, width: 8),
+            BarChartRodData(toY: stopped, color: Colors.green, width: 8),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 25,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Steps by Status',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey[800],
+            ),
+          ),
+          SizedBox(height: 16),
+          SizedBox(
+            height: 220,
+            child: BarChart(
+              BarChartData(
+                barGroups: bars,
+                gridData: FlGridData(show: true, drawVerticalLine: false),
+                borderData: FlBorderData(show: false),
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true)),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (value, meta) {
+                        final idx = value.toInt();
+                        if (idx < 0 || idx >= stepNames.length) return SizedBox.shrink();
+                        final label = _getStepDisplayName(stepNames[idx]);
+                        return Padding(
+                          padding: EdgeInsets.only(top: 6),
+                          child: Text(
+                            label,
+                            style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                          ),
+                        );
+                      },
+                      reservedSize: 44,
+                    ),
+                  ),
+                  rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                ),
+              ),
+            ),
+          ),
+          SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              _legendDot('Planned', Colors.blue),
+              _legendDot('In Progress', Colors.orange),
+              _legendDot('Completed', Colors.green),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _legendDot(String label, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        SizedBox(width: 6),
+        Text(label, style: TextStyle(color: Colors.grey[700], fontWeight: FontWeight.w600)),
+      ],
     );
   }
 

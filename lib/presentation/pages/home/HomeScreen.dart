@@ -19,6 +19,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   late String _userRole = '';
+  bool _dashboardExpanded = false;
 
   // Status Overview state
   int totalOrders = 0;
@@ -475,7 +476,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       child: const Text(
-                        'Create New Job',
+                        'All Jobs',
                         style: TextStyle(color: AppColors.maincolor),
                       ),
                     ),
@@ -491,7 +492,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       child: const Text(
-                        'Jobs',
+                        'Plan Jobs',
                         style: TextStyle(color: AppColors.maincolor),
                       ),
                     ),
@@ -500,11 +501,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
             if (_userRole.isNotEmpty) ...[
-              _buildDepartmentCards(),
+              _buildDashboardDropdown(),
               const SizedBox(height: 28),
-            ], _buildLiveUpdates(),
-            const SizedBox(height: 28),
+            ],
             _buildStatusOverview(),
+            const SizedBox(height: 28),
+            _buildLiveUpdates(),
             const SizedBox(height: 28),
             _buildDailySnapshots(),
             const SizedBox(height: 28),
@@ -515,21 +517,23 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildDepartmentCards() {
+  Widget _buildDepartmentCards({bool showHeader = true}) {
     // Admin can see all department cards. Other roles see exactly one.
     if (_userRole == 'admin') {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Department Overview',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
+          if (showHeader) ...[
+            const Text(
+              'Department Overview',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
+          ],
           Row(
             children: [
               Expanded(
@@ -658,20 +662,73 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Department Overview',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
+        if (showHeader) ...[
+          const Text(
+            'Department Overview',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
           ),
-        ),
-        const SizedBox(height: 16),
+          const SizedBox(height: 16),
+        ],
         GestureDetector(
           onTap: onTap,
           child: _buildDepartmentCard(title, description, icon, color),
         ),
       ],
+    );
+  }
+
+  Widget _buildDashboardDropdown() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+        border: Border.all(color: Colors.grey.withOpacity(0.15)),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: _dashboardExpanded,
+          onExpansionChanged: (expanded) => setState(() => _dashboardExpanded = expanded),
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.maincolor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.dashboard_rounded, color: AppColors.maincolor, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Dashboard',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ],
+          ),
+          children: [
+            _buildDepartmentCards(showHeader: false),
+          ],
+        ),
+      ),
     );
   }
 
