@@ -8,6 +8,7 @@ import '../../../constants/strings.dart';
 import '../../../data/datasources/job_api.dart';
 import 'dart:convert'; // Added for jsonDecode
 import '../activity/UserOwnActivityPage.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,7 +19,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  late String _userRole = '';
+  List<String> _userRoles = [];
+  String _primaryRole = '';
   bool _dashboardExpanded = false;
 
   // Status Overview state
@@ -34,6 +36,29 @@ class _HomeScreenState extends State<HomeScreen> {
   bool isLoadingLogs = false;
   int activeMemberCount = 0;
 
+  // Derived for insights
+  int get _notStarted => (totalOrders - completedOrders - inProgress).clamp(0, totalOrders);
+
+  // Check if user has any dashboard cards to show
+  bool _hasDashboardCards() {
+    // Admin can see all department cards
+    if (_userRoles.contains('admin')) {
+      return true;
+    }
+
+    // Define valid roles that have dashboard cards
+    final validDashboardRoles = {
+      'planner',
+      'printer',
+      'production_head',
+      'dispatch_executive',
+      'qc_manager',
+    };
+
+    // Check if user has any of the valid dashboard roles
+    return _userRoles.any((role) => validDashboardRoles.contains(role));
+  }
+
   @override
   void initState() {
     super.initState();
@@ -42,19 +67,29 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _loadUserRole() async {
+    print('HomeScreen: Loading user role...');
     await UserRoleManager().loadUserRole();
-    final role = UserRoleManager().userRole;
-    if (role == null || role.isEmpty) {
+    final roles = UserRoleManager().userRoles;
+    print('HomeScreen: Loaded roles: $roles');
+    print('HomeScreen: Roles length: ${roles.length}');
+    
+    if (roles.isEmpty) {
+      print('HomeScreen: No roles found, redirecting to login');
       if (mounted) {
         // No role should mean not logged in; redirect to login
         context.pushReplacement('/');
       }
       return;
     }
+    
+    // Check if widget is still mounted before setting state
+    if (!mounted) return;
     setState(() {
-      _userRole = role;
+      _userRoles = roles;
+      _primaryRole = roles.isNotEmpty ? roles.first : '';
     });
-    print('User Role in HomeScreen: $_userRole');
+    print('User Roles in HomeScreen: $_userRoles');
+    print('Primary Role: $_primaryRole');
   }
 
   void _initializeApiAndFetch() {
@@ -72,7 +107,11 @@ class _HomeScreenState extends State<HomeScreen> {
       print('JobApi not initialized for activity logs!');
       return;
     }
+    
+    // Check if widget is still mounted before setting state
+    if (!mounted) return;
     setState(() { isLoadingLogs = true; });
+    
     try {
       final allLogs = await _jobApi!.getActivityLogs();
 
@@ -90,17 +129,25 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
 
+      // Check if widget is still mounted before setting state
+      if (!mounted) return;
       setState(() {
         activityLogs = filteredLogs;
         activeMemberCount = uniqueUsers.length;
       });
     } catch (e) {
       print('Error fetching activity logs: $e');
+      
+      // Check if widget is still mounted before setting state
+      if (!mounted) return;
       setState(() {
         activityLogs = [];
         activeMemberCount = 0;
       });
     }
+    
+    // Check if widget is still mounted before setting state
+    if (!mounted) return;
     setState(() { isLoadingLogs = false; });
   }
 
@@ -110,16 +157,26 @@ class _HomeScreenState extends State<HomeScreen> {
       print('JobApi not initialized!');
       return;
     }
+    
+    // Check if widget is still mounted before setting state
+    if (!mounted) return;
     setState(() { isLoadingStatus = true; });
+    
     try {
       print('Fetching job plannings...');
       final planningList = await _jobApi!.getAllJobPlannings();
       print('Planning List: ' + planningList.toString());
+      
+      // Check if widget is still mounted before updating state
+      if (!mounted) return;
       totalOrders = planningList.length;
       
       // Fetch completed jobs using getCompletedJobs endpoint
       print('Fetching completed jobs...');
       final completedJobsList = await _jobApi!.getCompletedJobs();
+      
+      // Check if widget is still mounted before updating state
+      if (!mounted) return;
       completedOrders = completedJobsList.length;
       print('Completed Jobs Count: $completedOrders');
       
@@ -139,25 +196,36 @@ class _HomeScreenState extends State<HomeScreen> {
       print('Fetching jobs...');
       final jobs = await _jobApi!.getJobs();
       print('Jobs List: ' + jobs.toString());
+      
+      // Check if widget is still mounted before updating state
+      if (!mounted) return;
       // Only count jobs where status == ACTIVE (case-insensitive)
       activeJobs = jobs.where((j) => (j.status).toString().toUpperCase() == 'ACTIVE').length;
     } catch (e) {
       print('Error fetching status overview: ' + e.toString());
+      
+      // Check if widget is still mounted before updating state
+      if (!mounted) return;
       totalOrders = 0;
       activeJobs = 0;
       inProgress = 0;
       completedOrders = 0;
     }
+    
+    // Check if widget is still mounted before setting state
+    if (!mounted) return;
     setState(() { isLoadingStatus = false; });
   }
 
   void _logout() async {
-    // Clear in-memory and persisted role to avoid stale role on next login
+    // Clear in-memory and persisted roles to avoid stale roles on next login
     await UserRoleManager().clearUserRole();
 
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.remove('accessToken');
     await prefs.remove('userId');
+    await prefs.remove('userRole');
+    await prefs.remove('userRoles');
 
     print('All authentication data cleared during logout');
     if (mounted) context.pushReplacement('/'); // Navigate back to the login screen
@@ -273,7 +341,7 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.maincolor),
             ),
             const SizedBox(height: 24),
-            if (_userRole == 'admin')...[
+            if (_userRoles.contains('admin'))...[
               ElevatedButton(
                 onPressed: () => context.push('/create-id'),
                 style: ElevatedButton.styleFrom(
@@ -303,27 +371,13 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
 
-            if (_userRole == 'planner' || _userRole == 'admin') ...[
+            if (_userRoles.contains('planner') || _userRoles.contains('admin')) ...[
               ElevatedButton.icon(
                 onPressed: () {
                   context.push('/job-input');
                 },
                 icon: const Icon(Icons.add,color: AppColors.white),
                 label: const Text('Add New Customer',style: TextStyle(color: AppColors.white)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.maincolor,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              ElevatedButton.icon(
-                onPressed: () {
-                  context.push('/job-list', extra: _userRole);
-                },
-                icon: const Icon(Icons.list_alt,color: AppColors.white),
-                label: const Text('Jobs',style: TextStyle(color: AppColors.white)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.maincolor,
                   shape: RoundedRectangleBorder(
@@ -352,6 +406,21 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
                 icon: const Icon(Icons.build,color: AppColors.white),
                 label: const Text('Edit Machines',style: TextStyle(color: AppColors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.maincolor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: () {
+                  print('Edit Working Details button clicked');
+                  context.push('/edit-working-details');
+                },
+                icon: const Icon(Icons.edit_note,color: AppColors.white),
+                label: const Text('Edit Working Details',style: TextStyle(color: AppColors.white)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.maincolor,
                   shape: RoundedRectangleBorder(
@@ -442,7 +511,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (_userRole.isNotEmpty) ...[
+            if (_userRoles.isNotEmpty) ...[
               Container(
                 padding: const EdgeInsets.all(12),
                 margin: const EdgeInsets.only(bottom: 20),
@@ -451,19 +520,31 @@ class _HomeScreenState extends State<HomeScreen> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.blue.withOpacity(0.3)),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.person, color: Colors.blue),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Logged in as: $_userRole',
-                      style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blue[800]),
+                    Row(
+                      children: [
+                        const Icon(Icons.person, color: Colors.blue),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Logged in as: ${UserRoleManager().rolesDisplayString}',
+                          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blue[800]),
+                        ),
+                      ],
                     ),
+                    if (UserRoleManager().hasMultipleRoles) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Primary role: $_primaryRole',
+                        style: TextStyle(fontSize: 12, color: Colors.blue[600]),
+                      ),
+                    ],
                   ],
                 ),
               ),
             ],
-            if (_userRole == 'planner' || _userRole == 'admin') ...[
+            if (_userRoles.contains('planner') || _userRoles.contains('admin')) ...[
               Row(
                 children: [
                   Expanded(
@@ -500,11 +581,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ],
-            if (_userRole.isNotEmpty) ...[
+            if (_userRoles.isNotEmpty && _hasDashboardCards()) ...[
               _buildDashboardDropdown(),
               const SizedBox(height: 28),
             ],
             _buildStatusOverview(),
+            const SizedBox(height: 20),
+            _buildWorkInsights(),
             const SizedBox(height: 28),
             _buildLiveUpdates(),
             const SizedBox(height: 28),
@@ -518,8 +601,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildDepartmentCards({bool showHeader = true}) {
-    // Admin can see all department cards. Other roles see exactly one.
-    if (_userRole == 'admin') {
+    // Admin can see all department cards. Other roles see cards based on their roles.
+    if (_userRoles.contains('admin')) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -611,52 +694,92 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    // Non-admin roles: show only the relevant single card
-    String title;
-    String description;
-    IconData icon;
-    Color color;
-    VoidCallback onTap;
+    // Non-admin roles: show cards for all user roles
+    List<Widget> departmentCards = [];
+    
+    // Define role to card mapping
+    final roleCardMap = {
+      'planner': {
+        'title': 'Planning',
+        'description': 'Get comprehensive overview of planning activities',
+        'icon': Icons.analytics_outlined,
+        'color': Colors.blue,
+        'onTap': () => context.push('/planning-dashboard'),
+      },
+      'printer': {
+        'title': 'Printing Manager',
+        'description': 'Manage printing operations and schedules',
+        'icon': Icons.print_outlined,
+        'color': Colors.indigo,
+        'onTap': () => context.push('/printing-dashboard'),
+      },
+      'production_head': {
+        'title': 'Production Head',
+        'description': 'Monitor production metrics and performance',
+        'icon': Icons.factory_outlined,
+        'color': Colors.cyan,
+        'onTap': () => context.push('/production-dashboard'),
+      },
+      'dispatch_executive': {
+        'title': 'Dispatch Executive',
+        'description': 'Manage dispatch operations and logistics',
+        'icon': Icons.local_shipping_outlined,
+        'color': Colors.blue,
+        'onTap': () => context.push('/dispatch-dashboard'),
+      },
+      'qc_manager': {
+        'title': 'QC Manager',
+        'description': 'Quality control and assurance management',
+        'icon': Icons.verified_outlined,
+        'color': Colors.cyan,
+        'onTap': () => context.push('/qc-dashboard'),
+      },
+    };
 
-    switch (_userRole) {
-      case 'planner':
-        title = 'Planning';
-        description = 'Get comprehensive overview of planning activities';
-        icon = Icons.analytics_outlined;
-        color = Colors.blue;
-        onTap = () => context.push('/planning-dashboard');
-        break;
-      case 'printer':
-        title = 'Printing Manager';
-        description = 'Manage printing operations and schedules';
-        icon = Icons.print_outlined;
-        color = Colors.indigo;
-        onTap = () => context.push('/printing-dashboard');
-        break;
-      case 'production_head':
-        title = 'Production Head';
-        description = 'Monitor production metrics and performance';
-        icon = Icons.factory_outlined;
-        color = Colors.cyan;
-        onTap = () => context.push('/production-dashboard');
-        break;
-      case 'dispatch_executive':
-        title = 'Dispatch Executive';
-        description = 'Manage dispatch operations and logistics';
-        icon = Icons.local_shipping_outlined;
-        color = Colors.blue;
-        onTap = () => context.push('/dispatch-dashboard');
-        break;
-      case 'qc_manager':
-        title = 'QC Manager';
-        description = 'Quality control and assurance management';
-        icon = Icons.verified_outlined;
-        color = Colors.cyan;
-        onTap = () => context.push('/qc-dashboard');
-        break;
-      default:
-        // Unknown role → no department cards
-        return const SizedBox.shrink();
+    // Create cards for each user role
+    for (String role in _userRoles) {
+      if (roleCardMap.containsKey(role)) {
+        final cardData = roleCardMap[role]!;
+        departmentCards.add(
+          GestureDetector(
+            onTap: cardData['onTap'] as VoidCallback,
+            child: _buildDepartmentCard(
+              cardData['title'] as String,
+              cardData['description'] as String,
+              cardData['icon'] as IconData,
+              cardData['color'] as Color,
+            ),
+          ),
+        );
+      }
+    }
+
+    // If no valid roles found, return empty
+    if (departmentCards.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // Arrange cards in rows of 2
+    List<Widget> cardRows = [];
+    for (int i = 0; i < departmentCards.length; i += 2) {
+      if (i + 1 < departmentCards.length) {
+        // Two cards in a row
+        cardRows.add(
+          Row(
+            children: [
+              Expanded(child: departmentCards[i]),
+              const SizedBox(width: 12),
+              Expanded(child: departmentCards[i + 1]),
+            ],
+          ),
+        );
+        if (i + 2 < departmentCards.length) {
+          cardRows.add(const SizedBox(height: 12));
+        }
+      } else {
+        // Single card in a row
+        cardRows.add(departmentCards[i]);
+      }
     }
 
     return Column(
@@ -673,10 +796,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 16),
         ],
-        GestureDetector(
-          onTap: onTap,
-          child: _buildDepartmentCard(title, description, icon, color),
-        ),
+        ...cardRows,
       ],
     );
   }
@@ -700,7 +820,11 @@ class _HomeScreenState extends State<HomeScreen> {
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           initiallyExpanded: _dashboardExpanded,
-          onExpansionChanged: (expanded) => setState(() => _dashboardExpanded = expanded),
+          onExpansionChanged: (expanded) {
+            if (mounted) {
+              setState(() => _dashboardExpanded = expanded);
+            }
+          },
           tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           title: Row(
@@ -959,6 +1083,93 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildWorkInsights() {
+    final entries = [
+      {'label': 'In Progress', 'count': inProgress, 'color': Colors.orange},
+      {'label': 'Completed', 'count': completedOrders, 'color': Colors.green},
+      {'label': 'Not Started', 'count': _notStarted, 'color': Colors.grey},
+    ].where((e) => (e['count'] as int) > 0).toList();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Work Insights',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (entries.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Text('No data to display', style: TextStyle(color: Colors.grey[600])),
+              ),
+            )
+          else ...[
+            SizedBox(
+              height: 180,
+              child: PieChart(
+                PieChartData(
+                  sectionsSpace: 2,
+                  centerSpaceRadius: 36,
+                  sections: entries
+                      .map(
+                        (e) => PieChartSectionData(
+                          color: e['color'] as Color,
+                          value: (e['count'] as int).toDouble(),
+                          title: (e['count'] as int).toString(),
+                          titleStyle: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: entries
+                  .map(
+                    (e) => Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(width: 10, height: 10, decoration: BoxDecoration(color: e['color'] as Color, shape: BoxShape.circle)),
+                        const SizedBox(width: 6),
+                        Text('${e['label']}: ${e['count']}', style: TextStyle(color: Colors.grey[700], fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildOverviewCard(String title, String value, Color color) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1157,6 +1368,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    // Cancel any ongoing operations to prevent setState calls after dispose
+    _jobApi = null;
     super.dispose();
   }
 }

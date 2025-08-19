@@ -6,6 +6,7 @@ import '../../routes/UserRoleManager.dart';
 import 'package:nrc/core/services/auth_service.dart';
 import 'package:nrc/data/repositories/auth_repository.dart';
 import 'package:dio/dio.dart';
+import 'dart:convert';
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -33,15 +34,30 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() { _isLoading = true; });
     String? userId = await _authRepository.getUserId();
     String? accessToken = await _authRepository.getAccessToken();
+    print('Checking existing session - userId: $userId, accessToken: ${accessToken != null ? 'present' : 'null'}');
+    
     if (userId != null && accessToken != null) {
       final userData = await _authRepository.checkUserValidAndGetData(userId, accessToken);
-      if (userData != null && userData['role'] != null) {
-        await userRoleManager.setUserRole(userData['role']);
+      print('User data from session check: $userData');
+      
+      // The auth repository should have already saved the roles to SharedPreferences
+      // Just reload them using UserRoleManager
+      await userRoleManager.loadUserRole();
+      final roles = userRoleManager.userRoles;
+      print('Session check: Loaded roles from UserRoleManager: $roles');
+      
+      if (roles.isNotEmpty) {
         setState(() { _isLoading = false; });
-        if (mounted) context.pushReplacement('/home');
+        print('Session valid, navigating to /home');
+        if (mounted) {
+          context.pushReplacement('/home');
+        } else {
+          print('Widget not mounted during session check');
+        }
         return;
       }
     }
+    print('No valid session found');
     setState(() { _isLoading = false; });
   }
 
@@ -63,14 +79,21 @@ class _LoginScreenState extends State<LoginScreen> {
         final accessToken = await _authRepository.getAccessToken();
         if (userId != null && accessToken != null) {
           final userData = await _authRepository.checkUserValidAndGetData(userId, accessToken);
-          final role = userData != null ? userData['role'] as String? : null;
-          if (role != null) {
-            await userRoleManager.setUserRole(role);
-          } else {
+          print('LoginPage: User data received: $userData');
+          
+          // The auth repository should have already saved the roles to SharedPreferences
+          // Just reload them using UserRoleManager
+          await userRoleManager.loadUserRole();
+          final roles = userRoleManager.userRoles;
+          print('LoginPage: Loaded roles from UserRoleManager: $roles');
+          
+          if (roles.isEmpty) {
+            print('LoginPage: No roles found, trying fallback');
             // Fallback to stored role if backend did not return role
             final storedRole = await _authRepository.getUserRole();
             if (storedRole != null) {
               await userRoleManager.setUserRole(storedRole);
+              print('LoginPage: Set fallback role: $storedRole');
             }
           }
         }
@@ -81,8 +104,14 @@ class _LoginScreenState extends State<LoginScreen> {
       if (success) {
         _empIdController.clear();
         _passwordController.clear();
-        context.pushReplacement('/home');
+        print('Login successful, navigating to /home');
+        if (mounted) {
+          context.pushReplacement('/home');
+        } else {
+          print('Widget not mounted, cannot navigate');
+        }
       } else {
+        print('Login failed');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Login failed. Please check your credentials.')),
         );

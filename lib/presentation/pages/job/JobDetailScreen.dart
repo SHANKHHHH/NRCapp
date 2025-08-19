@@ -245,13 +245,18 @@ class JobDetailScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text(
-          job.nrcJobNo,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-            letterSpacing: -0.3,
+        title: Tooltip(
+          message: job.nrcJobNo,
+          child: Text(
+            job.nrcJobNo,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+              letterSpacing: -0.3,
+            ),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
           ),
         ),
         backgroundColor: AppColors.maincolor,
@@ -306,38 +311,50 @@ class JobDetailScreen extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Colors.blue.withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Text(
-                  job.nrcJobNo,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.maincolor,
-                    letterSpacing: 0.3,
+              Flexible(
+                child: Tooltip(
+                  message: job.nrcJobNo,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.blue.withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Text(
+                      job.nrcJobNo,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.maincolor,
+                        letterSpacing: 0.3,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
                   ),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               _buildStatusChip(),
             ],
           ),
           const SizedBox(height: 20),
-          Text(
-            job.customerName,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF1A1A1A),
-              letterSpacing: -0.3,
+          Tooltip(
+            message: job.customerName,
+            child: Text(
+              job.customerName,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF1A1A1A),
+                letterSpacing: -0.3,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
             ),
           ),
           const SizedBox(height: 8),
@@ -359,22 +376,6 @@ class JobDetailScreen extends StatelessWidget {
               ),
             ],
           ),
-          if (job.jobDemand != null && job.jobDemand!.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                const Text(
-                  'Job Demand: ',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF757575),
-                  ),
-                ),
-                _buildJobDemandChip(),
-              ],
-            ),
-          ],
         ],
       ),
     );
@@ -506,12 +507,17 @@ class JobDetailScreen extends StatelessWidget {
           ),
           const SizedBox(width: 16),
           Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF1A1A1A),
+            child: Tooltip(
+              message: value,
+              child: Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF1A1A1A),
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 2,
               ),
             ),
           ),
@@ -562,55 +568,6 @@ class JobDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildJobDemandChip() {
-    if (job.jobDemand == null || job.jobDemand!.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    Color backgroundColor;
-    Color borderColor;
-    Color textColor;
-
-    switch (job.jobDemand!.toLowerCase()) {
-      case 'high':
-        backgroundColor = Colors.red.withOpacity(0.1);
-        borderColor = Colors.red.withOpacity(0.3);
-        textColor = Colors.red;
-        break;
-      case 'medium':
-        backgroundColor = Colors.orange.withOpacity(0.1);
-        borderColor = Colors.orange.withOpacity(0.3);
-        textColor = Colors.orange;
-        break;
-      case 'low':
-        backgroundColor = Colors.green.withOpacity(0.1);
-        borderColor = Colors.green.withOpacity(0.3);
-        textColor = Colors.green;
-        break;
-      default:
-        backgroundColor = const Color(0xFFFAFAFA);
-        borderColor = const Color(0xFFE8E8E8);
-        textColor = const Color(0xFF757575);
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: borderColor, width: 1),
-      ),
-      child: Text(
-        job.jobDemand!.toUpperCase(),
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: textColor,
-          letterSpacing: 0.3,
-        ),
-      ),
-    );
-  }
 
   Widget _buildActionButton(BuildContext context) {
     if (job.status.toUpperCase() == 'INACTIVE') {

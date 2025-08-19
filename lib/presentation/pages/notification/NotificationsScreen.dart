@@ -39,6 +39,35 @@ bool shouldNotifyUserForStep(String? currentUserRole, String stepName) {
   }
 }
 
+bool shouldNotifyUserForStepWithRoles(List<String> currentUserRoles, String stepName) {
+  // Admin can see everything
+  if (currentUserRoles.contains('admin')) return true;
+
+  switch (stepName) {
+    case 'PaperStore':
+      return currentUserRoles.contains('planner');
+    case 'PrintingDetails':
+      return currentUserRoles.contains('printer') || 
+             currentUserRoles.contains('printing manager') || 
+             currentUserRoles.contains('printing_manager');
+    case 'Corrugation':
+    case 'FluteLaminateBoardConversion':
+    case 'Punching':
+    case 'SideFlapPasting':
+      return currentUserRoles.contains('production head');
+    case 'QualityDept':
+      return currentUserRoles.contains('qc manager') || 
+             currentUserRoles.contains('quality dept') || 
+             currentUserRoles.contains('qualitydept') || 
+             currentUserRoles.contains('quality');
+    case 'DispatchProcess':
+      return currentUserRoles.contains('dispatch executive') || 
+             currentUserRoles.contains('dispatch');
+    default:
+      return false;
+  }
+}
+
 bool shouldShowNotificationForRole(Map<String, dynamic> notification, String? currentUserRole) {
   if (_normalizeRole(currentUserRole) == 'admin') return true;
 
@@ -47,6 +76,18 @@ bool shouldShowNotificationForRole(Map<String, dynamic> notification, String? cu
   }
   if (notification['type'] == 'completed') {
     return shouldNotifyUserForStep(currentUserRole, notification['completedStep']);
+  }
+  return false;
+}
+
+bool shouldShowNotificationForRoles(Map<String, dynamic> notification, List<String> currentUserRoles) {
+  if (currentUserRoles.contains('admin')) return true;
+
+  if (notification['type'] == 'next_step') {
+    return shouldNotifyUserForStepWithRoles(currentUserRoles, notification['nextStep']);
+  }
+  if (notification['type'] == 'completed') {
+    return shouldNotifyUserForStepWithRoles(currentUserRoles, notification['completedStep']);
   }
   return false;
 }
@@ -95,6 +136,7 @@ Future<int> fetchNotificationCountForBadge() async {
     }
     final roleManager = UserRoleManager();
     await roleManager.loadUserRole();
+    final roles = roleManager.userRoles;
     final role = roleManager.userRole;
 
     final api = JobApiService(JobApi(DioService.instance));
@@ -123,7 +165,7 @@ Future<int> fetchNotificationCountForBadge() async {
         final firstStatus = (firstStep['status'] ?? '').toString().toLowerCase();
         if (firstStep['stepName'] == 'PaperStore' && (firstStatus == 'planned' || firstStatus == 'start')) {
           final notif = {'type': 'next_step', 'nextStep': firstStep['stepName']};
-          if (shouldShowNotificationForRole(notif, role)) count += 1;
+          if (shouldShowNotificationForRoles(notif, roles)) count += 1;
         }
       }
 
@@ -132,14 +174,14 @@ Future<int> fetchNotificationCountForBadge() async {
         final stepStatus = (step['status'] ?? '').toString().toLowerCase();
         if (stepStatus == 'stop' || stepStatus == 'completed' || stepStatus == 'accept') {
           final completedNotif = {'type': 'completed', 'completedStep': step['stepName']};
-          if (shouldShowNotificationForRole(completedNotif, role)) count += 1;
+          if (shouldShowNotificationForRoles(completedNotif, roles)) count += 1;
 
           if (i + 1 < steps.length) {
             final nextStep = steps[i + 1];
             final nextStatus = (nextStep['status'] ?? '').toString().toLowerCase();
             if (nextStatus == 'planned' || nextStatus == 'start' || nextStatus == 'in_progress') {
               final nextStepNotif = {'type': 'next_step', 'nextStep': nextStep['stepName']};
-              if (shouldShowNotificationForRole(nextStepNotif, role)) count += 1;
+              if (shouldShowNotificationForRoles(nextStepNotif, roles)) count += 1;
             }
           }
         }
@@ -164,6 +206,7 @@ class NotificationsScreen extends StatefulWidget {
 class _NotificationsScreenState extends State<NotificationsScreen> {
   List<Map<String, dynamic>> bundledNotifications = [];
   bool isLoading = false;
+  List<String> currentUserRoles = [];
   String? currentUserRole;
   late JobApiService _apiService;
 
@@ -175,15 +218,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _loadUserRoleAndNotifications() async {
+    if (!mounted) return;
     setState(() => isLoading = true);
     try {
       final userRoleManager = UserRoleManager();
       await userRoleManager.loadUserRole();
+      currentUserRoles = userRoleManager.userRoles;
       currentUserRole = userRoleManager.userRole;
       await _loadNotifications();
     } catch (e) {
       print('Error loading notifications: $e');
     } finally {
+      if (!mounted) return;
       setState(() => isLoading = false);
     }
   }
@@ -199,6 +245,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return;
       }
       _lastRefreshAt = now;
+      if (!mounted) return;
       setState(() => _refreshDisabled = true);
 
       final allJobs = await _apiService.getAllJobPlannings();
@@ -308,6 +355,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return a['jobNumber'].compareTo(b['jobNumber']);
       });
 
+      if (!mounted) return;
       setState(() => bundledNotifications = bundles);
     } catch (e) {
       print('Error loading notifications: $e');
@@ -318,7 +366,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   bool _shouldShowNotification(Map<String, dynamic> notification) {
-    return shouldShowNotificationForRole(notification, currentUserRole);
+    return shouldShowNotificationForRoles(notification, currentUserRoles);
   }
 
   String _formatStepName(String stepName) {

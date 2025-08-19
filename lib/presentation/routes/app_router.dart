@@ -26,12 +26,14 @@ import '../pages/job/PendingJobsWorkPage.dart';
 import '../pages/job/CompletedJobsPage.dart';
 import '../pages/activity/UserActivityPage.dart';
 import '../pages/activity/UserOwnActivityPage.dart';
+import '../pages/work/EditWorkingDetailsPage.dart';
 
 final UserRoleManager userRoleManager = UserRoleManager();
 
 final GoRouter router = GoRouter(
   routes: [
     GoRoute(path: '/', builder: (context, state) => LoginScreen()),
+    GoRoute(path: '/edit-working-details', builder: (context, state) => const EditWorkingDetailsPage()),
     GoRoute(path: '/job-input', builder: (context, state) => JobInputPage()),
     GoRoute(path: '/create-id', builder: (context, state) => CreateID()),
     GoRoute(path: '/user-list', builder: (context, state) => UserListPage()),

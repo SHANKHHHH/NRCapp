@@ -197,7 +197,6 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
 
         // Prepare request body - match the structure used in _submitJobPlanning
         Map<String, dynamic> updateData = {
-          'status':'planned',
           'machineDetails': machineDetails,
         };
 

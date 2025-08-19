@@ -17,7 +17,7 @@ class StepDataManager {
     'DispatchProcess',
   ];
 
-  // Role-based step filtering
+  // Role-based step filtering for single role
   static List<StepType> getStepsForRole(String? userRole) {
     switch (userRole?.toLowerCase()) {
       case 'corrugator':
@@ -70,8 +70,44 @@ class StepDataManager {
     }
   }
 
+  // Role-based step filtering for multiple roles
+  static List<StepType> getStepsForRoles(List<String> userRoles) {
+    Set<StepType> allAllowedSteps = {};
+    
+    for (String role in userRoles) {
+      final roleSteps = getStepsForRole(role);
+      allAllowedSteps.addAll(roleSteps);
+    }
+    
+    // Convert back to list and sort by canonical order
+    List<StepType> orderedSteps = [];
+    final canonicalOrder = [
+      StepType.paperStore,
+      StepType.printing,
+      StepType.corrugation,
+      StepType.fluteLamination,
+      StepType.punching,
+      StepType.flapPasting,
+      StepType.qc,
+      StepType.dispatch,
+    ];
+    
+    for (StepType stepType in canonicalOrder) {
+      if (allAllowedSteps.contains(stepType)) {
+        orderedSteps.add(stepType);
+      }
+    }
+    
+    return orderedSteps;
+  }
+
   static bool isStepAllowedForRole(StepType stepType, String? userRole) {
     final allowedSteps = getStepsForRole(userRole);
+    return allowedSteps.contains(stepType);
+  }
+
+  static bool isStepAllowedForRoles(StepType stepType, List<String> userRoles) {
+    final allowedSteps = getStepsForRoles(userRoles);
     return allowedSteps.contains(stepType);
   }
 
@@ -198,9 +234,10 @@ class StepDataManager {
     }
   }
 
-  static List<StepData> initializeSteps(List<dynamic>? assignedSteps, {String? userRole}) {
+  static List<StepData> initializeSteps(List<dynamic>? assignedSteps, {String? userRole, List<String>? userRoles}) {
     print('DEBUG: Initializing steps with assignedSteps: $assignedSteps');
     print('DEBUG: User role: $userRole');
+    print('DEBUG: User roles: $userRoles');
     
     List<StepData> steps = [
       StepData(
@@ -243,10 +280,25 @@ class StepDataManager {
         
         print('DEBUG: Processing step - stepName: "$stepName", displayName: "$displayName", stepType: $stepType');
 
-        // Filter steps based on user role
-        if (userRole != null && !isStepAllowedForRole(stepType, userRole)) {
-          print('DEBUG: Skipping step "$displayName" - not allowed for role: $userRole');
-          continue; // Skip this step if not allowed for the user's role
+        // Filter steps based on user roles
+        bool isStepAllowed = false;
+        if (userRoles != null && userRoles.isNotEmpty) {
+          // Use multiple roles if available
+          isStepAllowed = isStepAllowedForRoles(stepType, userRoles);
+          if (!isStepAllowed) {
+            print('DEBUG: Skipping step "$displayName" - not allowed for roles: $userRoles');
+            continue; // Skip this step if not allowed for the user's roles
+          }
+        } else if (userRole != null) {
+          // Fallback to single role
+          isStepAllowed = isStepAllowedForRole(stepType, userRole);
+          if (!isStepAllowed) {
+            print('DEBUG: Skipping step "$displayName" - not allowed for role: $userRole');
+            continue; // Skip this step if not allowed for the user's role
+          }
+        } else {
+          // No role restrictions
+          isStepAllowed = true;
         }
 
         // Record the dynamic step number (prefer backend-provided stepNo)

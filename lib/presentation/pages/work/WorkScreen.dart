@@ -61,6 +61,9 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
 
   Future<void> _initializePage() async {
     await UserRoleManager().loadUserRole();
+    
+    // Check if widget is still mounted before setting state
+    if (!mounted) return;
     setState(() {
       _userRole = UserRoleManager().userRole;
     });
@@ -69,6 +72,7 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    // Cancel any ongoing operations to prevent setState calls after dispose
     _searchController.dispose();
     _blinkController.dispose();
     super.dispose();
@@ -79,6 +83,8 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
     print('Search query: "$query"');
     print('Total jobs: ${jobPlannings.length}');
     
+    // Check if widget is still mounted before setting state
+    if (!mounted) return;
     setState(() {
       if (query.isEmpty) {
         filteredJobPlannings = jobPlannings;
@@ -107,6 +113,8 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _fetchAllJobPlannings() async {
+    // Check if widget is still mounted before setting state
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _error = null;
@@ -205,6 +213,8 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
 
       final roleFilteredPlannings = await _filterPlanningsForOperatorRoles(plannings);
 
+      // Check if widget is still mounted before setting state
+      if (!mounted) return;
       setState(() {
         jobPlannings = roleFilteredPlannings;
         filteredJobPlannings = roleFilteredPlannings; // Initialize filtered list
@@ -212,6 +222,8 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
         _isLoading = false;
       });
     } catch (e) {
+      // Check if widget is still mounted before setting state
+      if (!mounted) return;
       setState(() {
         _error = 'Failed to load job plannings';
         _isLoading = false;
@@ -421,20 +433,30 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
                               ),
                             ),
                             const SizedBox(height: 6),
-                            Text(
-                              'NRC Job No: $nrcJobNo',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey[800],
-                                fontWeight: FontWeight.w600,
+                            Tooltip(
+                              message: 'NRC Job No: $nrcJobNo',
+                              child: Text(
+                                'NRC Job No: $nrcJobNo',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[800],
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
                               ),
                             ),
                             const SizedBox(height: 2),
-                            Text(
-                              'Job Plan ID: ${jobPlanning['jobPlanId']}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey[600],
+                            Tooltip(
+                              message: 'Job Plan ID: ${jobPlanning['jobPlanId']}',
+                              child: Text(
+                                'Job Plan ID: ${jobPlanning['jobPlanId']}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
                               ),
                             ),
                           ],
@@ -602,14 +624,21 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
                     color: Colors.grey[600],
                     fontSize: 14,
                   ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                    fontSize: 15,
+                Tooltip(
+                  message: value,
+                  child: Text(
+                    value,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                      fontSize: 15,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
                 ),
               ],

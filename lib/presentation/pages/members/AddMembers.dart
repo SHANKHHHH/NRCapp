@@ -19,7 +19,7 @@ class _CreateIDState extends State<CreateID> {
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-  String? selectedRole;
+  List<String> selectedRoles = [];
 
   @override
   Widget build(BuildContext context) {
@@ -115,26 +115,75 @@ class _CreateIDState extends State<CreateID> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Role Dropdown
-                  DropdownButtonFormField<String>(
-                    decoration: const InputDecoration(
-                      labelText: 'Select Role',
-                      border: OutlineInputBorder(),
+                  // Role Selection
+                  Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade400),
+                      borderRadius: BorderRadius.circular(4),
                     ),
-                    value: selectedRole,
-                    items: [
-                      'admin',
-                      'planner',
-                      'printer',
-                      'production_head',
-                      'dispatch_executive',
-                      'qc_manager'
-                    ]
-                        .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                        .toList(),
-                    onChanged: (value) {
-                      setState(() => selectedRole = value);
-                    },
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Select Roles (Multiple)',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            'admin',
+                            'planner',
+                            'production_head',
+                            'dispatch_executive',
+                            'qc_manager',
+                            'printer',
+                            'corrugator',
+                            'flutelaminator',
+                            'pasting_operator',
+                            'punching_operator'
+                          ].map((role) {
+                            return FilterChip(
+                              label: Text(role),
+                              selected: selectedRoles.contains(role),
+                              onSelected: (selected) {
+                                setState(() {
+                                  if (selected) {
+                                    selectedRoles.add(role);
+                                  } else {
+                                    selectedRoles.remove(role);
+                                  }
+                                });
+                              },
+                              selectedColor: AppColors.maincolor.withOpacity(0.2),
+                              checkmarkColor: AppColors.maincolor,
+                              side: BorderSide(
+                                color: selectedRoles.contains(role) 
+                                    ? AppColors.maincolor 
+                                    : Colors.grey.shade400,
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                        if (selectedRoles.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            'Selected: ${selectedRoles.join(", ")}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 24),
 
@@ -202,14 +251,19 @@ class _CreateIDState extends State<CreateID> {
                         print('Building request body');
                         final dio = Dio();
                         final jobApi = JobApi(dio);
+                        // Convert roles to the exact format you want: ["planner","admin"]
+                        final roleString = '[' + selectedRoles.map((role) => '"$role"').join(',') + ']';
+                        
                         final body = {
                           'email': emailController.text.trim(),
                           'password': passwordController.text,
-                          'role': (selectedRole ?? '').toLowerCase().replaceAll(' ', ''),
+                          'role': roleString,
                           'firstName': firstNameController.text.trim(),
                           'lastName': lastNameController.text.trim(),
                           'phonenumber': phoneController.text.trim(),
                         };
+                        print('Selected roles: $selectedRoles');
+                        print('Role string: $roleString');
                         print('Request body: $body');
                         try {
                           print('Calling addMember...');

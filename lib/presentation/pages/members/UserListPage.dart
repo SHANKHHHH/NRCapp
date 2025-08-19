@@ -253,7 +253,31 @@ class _UserListPageState extends State<UserListPage> {
     print(user['name']);
     final emailController = TextEditingController(text: user['email'] ?? '');
     final phoneController = TextEditingController(text: user['phoneNumber'] ?? '');
-    String role = user['role'] ?? '';
+    
+    // Parse roles from user data - handle both string and array formats
+    List<String> selectedRoles = [];
+    if (user['role'] != null) {
+      if (user['role'] is String) {
+        // If it's a string, try to parse it as JSON array or treat as single role
+        String roleStr = user['role'];
+        if (roleStr.startsWith('[') && roleStr.endsWith(']')) {
+          // Try to parse as JSON array
+          try {
+            roleStr = roleStr.replaceAll('"', '');
+            selectedRoles = roleStr.substring(1, roleStr.length - 1).split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+          } catch (e) {
+            // If parsing fails, treat as single role
+            selectedRoles = [roleStr];
+          }
+        } else {
+          // Single role
+          selectedRoles = [roleStr];
+        }
+      } else if (user['role'] is List) {
+        selectedRoles = List<String>.from(user['role']);
+      }
+    }
+    
     final passwordController = TextEditingController();
     passwordController.text = '';
 
@@ -344,33 +368,74 @@ class _UserListPageState extends State<UserListPage> {
                         ),
                         const SizedBox(height: 20),
 
-                        // Role Dropdown
+                        // Role Selection
                         Container(
                           decoration: BoxDecoration(
-                            color: Colors.grey[50],
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.grey[300]!),
+                            border: Border.all(color: Colors.grey.shade400),
+                            borderRadius: BorderRadius.circular(4),
                           ),
-                          child: DropdownButtonFormField<String>(
-                            value: role.isNotEmpty ? role : null,
-                            decoration: InputDecoration(
-                              labelText: 'Role',
-                              labelStyle: TextStyle(color: Colors.grey[600]),
-                              prefixIcon: Icon(Icons.work_outline, color: Colors.grey[600]),
-                              border: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            ),
-                            dropdownColor: Colors.white,
-                            items: ['admin', 'planner', 'production head', 'qc manager', 'dispatch executive']
-                                .map((r) => DropdownMenuItem(
-                              value: r,
-                              child: Text(
-                                r[0].toUpperCase() + r.substring(1),
-                                style: const TextStyle(color: Colors.black),
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Select Roles (Multiple)',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.black87,
+                                ),
                               ),
-                            ))
-                                .toList(),
-                            onChanged: (value) => setState(() => role = value ?? ''),
+                              const SizedBox(height: 12),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  'admin',
+                                  'planner',
+                                  'production_head',
+                                  'dispatch_executive',
+                                  'qc_manager',
+                                  'printer',
+                                  'corrugator',
+                                  'flutelaminator',
+                                  'pasting_operator',
+                                  'punching_operator'
+                                ].map((role) {
+                                  return FilterChip(
+                                    label: Text(role),
+                                    selected: selectedRoles.contains(role),
+                                    onSelected: (selected) {
+                                      setState(() {
+                                        if (selected) {
+                                          selectedRoles.add(role);
+                                        } else {
+                                          selectedRoles.remove(role);
+                                        }
+                                      });
+                                    },
+                                    selectedColor: Colors.blue.withOpacity(0.2),
+                                    checkmarkColor: Colors.blue,
+                                    side: BorderSide(
+                                      color: selectedRoles.contains(role) 
+                                          ? Colors.blue 
+                                          : Colors.grey.shade400,
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                              if (selectedRoles.isNotEmpty) ...[
+                                const SizedBox(height: 12),
+                                Text(
+                                  'Selected: ${selectedRoles.join(", ")}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade600,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ),
                         const SizedBox(height: 20),
@@ -409,11 +474,14 @@ class _UserListPageState extends State<UserListPage> {
                               onPressed: () async {
                                 final dio = Dio();
                                 final jobApi = JobApi(dio);
+                                // Convert roles to the exact format you want: ["planner","admin"]
+                                final roleString = '[' + selectedRoles.map((role) => '"$role"').join(',') + ']';
+                                
                                 final body = {
                                   'name': nameController.text.trim(),
                                   'email': emailController.text.trim(),
                                   'phoneNumber': phoneController.text.trim(),
-                                  'role': role,
+                                  'role': roleString,
                                 };
                                 if (passwordController.text.isNotEmpty) {
                                   body['password'] = passwordController.text;

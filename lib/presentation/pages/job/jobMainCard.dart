@@ -42,22 +42,29 @@ class JobMainCard extends StatelessWidget {
                 // Header Row
                 Row(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppColors.maincolor,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        job.nrcJobNo,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
+                    Flexible(
+                      child: Tooltip(
+                        message: job.nrcJobNo,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: AppColors.maincolor,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            job.nrcJobNo,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
                         ),
                       ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 8),
                     _buildStatusBadge(job.status),
                   ],
                 ),
@@ -148,12 +155,17 @@ class JobMainCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 2),
-              Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.black,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+              Tooltip(
+                message: value,
+                child: Text(
+                  value,
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
                 ),
               ),
             ],

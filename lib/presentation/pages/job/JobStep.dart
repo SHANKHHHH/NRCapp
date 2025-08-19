@@ -35,7 +35,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   bool _jobLoading = false;
   String? _jobError;
   late final JobApiService _apiService;
-  String? _userRole;
+  List<String> _userRoles = [];
+  String _primaryRole = '';
   bool _isInitializing = true;
   String _loadingMessage = 'Initializing...';
   List<String> _missingStepTitles = [];
@@ -57,18 +58,22 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   }
 
   Future<void> _loadUserRoleAndInitializeSteps() async {
+    if (!mounted) return;
     setState(() {
       _isInitializing = true;
       _loadingMessage = 'Loading user role...';
     });
 
-    // Load user role from UserRoleManager
+    // Load user roles from UserRoleManager
     final userRoleManager = UserRoleManager();
     await userRoleManager.loadUserRole();
-    _userRole = userRoleManager.userRole;
+    _userRoles = userRoleManager.userRoles;
+    _primaryRole = userRoleManager.userRole ?? '';
 
-    print('User Role in JobTimelinePage: $_userRole');
+    print('User Roles in JobTimelinePage: $_userRoles');
+    print('Primary Role: $_primaryRole');
 
+    if (!mounted) return;
     setState(() {
       _loadingMessage = 'Initializing steps...';
     });
@@ -76,6 +81,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     _initializeSteps();
     await _initializeStepsWithBackendSync();
 
+    if (!mounted) return;
     setState(() {
       _isInitializing = false;
     });
@@ -83,12 +89,12 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
   void _initializeSteps() {
     setState(() {
-      steps = StepDataManager.initializeSteps(widget.assignedSteps, userRole: _userRole);
+      steps = StepDataManager.initializeSteps(widget.assignedSteps, userRole: _primaryRole, userRoles: _userRoles);
       if (steps.length > 1) {
         currentActiveSteps = [1]; // Initialize with first step
       }
     });
-    print('Initialized ${steps.length} steps for user role: $_userRole');
+    print('Initialized ${steps.length} steps for user roles: $_userRoles');
 
     // Debug: Print all steps with their types
     for (int i = 0; i < steps.length; i++) {
@@ -149,9 +155,9 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
     print('Starting optimized backend sync for ${steps.length} steps...');
 
-    // Check if user has any steps available for their role
+    // Check if user has any steps available for their roles
     if (steps.isEmpty || steps.length <= 1) {
-      print('No steps available for user role: $_userRole');
+      print('No steps available for user roles: $_userRoles');
       return;
     }
 
@@ -439,9 +445,9 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
   void _determineCurrentActiveSteps() {
     setState(() {
-      // Check if user has any steps available for their role
+      // Check if user has any steps available for their roles
       if (steps.isEmpty || steps.length <= 1) {
-        print('No steps available for user role: $_userRole');
+        print('No steps available for user roles: $_userRoles');
         return;
       }
 
@@ -1439,7 +1445,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     if (widget.jobNumber == null) return;
 
     if (steps.isEmpty || steps.length <= 1) {
-      print('No steps available for user role: $_userRole');
+      print('No steps available for user role: $_userRoles');
       return;
     }
 
@@ -2025,7 +2031,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'No steps are available for your role: $_userRole\nPlease contact your administrator.',
+                        'No steps are available for your roles: ${_userRoles.join(', ')}\nPlease contact your administrator.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: Colors.orange[600],
@@ -2089,5 +2095,11 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    // Cancel any ongoing operations to prevent setState calls after dispose
+    super.dispose();
   }
 }
