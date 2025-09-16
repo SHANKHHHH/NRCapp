@@ -3,6 +3,12 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../constants/colors.dart';
 import '../../routes/UserRoleManager.dart';
+import 'package:dio/dio.dart';
+import '../../../constants/strings.dart';
+import '../../../data/datasources/job_api.dart';
+import 'dart:convert'; // Added for jsonDecode
+import '../activity/UserOwnActivityPage.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -13,25 +19,314 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  late String _userRole;
-  final TextEditingController _searchController = TextEditingController();
+  List<String> _userRoles = [];
+  String _primaryRole = '';
+  bool _dashboardExpanded = false;
+
+  // Status Overview state
+  int totalOrders = 0;
+  int activeJobs = 0;
+  int inProgress = 0;
+  int completedOrders = 0;
+  bool isLoadingStatus = false;
+  JobApi? _jobApi;
+
+  // Activity logs state
+  List<Map<String, dynamic>> activityLogs = [];
+  bool isLoadingLogs = false;
+  int activeMemberCount = 0;
+
+  // Derived for insights
+  int get _notStarted => (totalOrders - completedOrders - inProgress).clamp(0, totalOrders);
+
+  // Check if user has any dashboard cards to show
+  bool _hasDashboardCards() {
+    // Admin can see all department cards
+    if (_userRoles.contains('admin')) {
+      return true;
+    }
+
+    // Define valid roles that have dashboard cards
+    final validDashboardRoles = {
+      'planner',
+      'printer',
+      'production_head',
+      'dispatch_executive',
+      'qc_manager',
+    };
+
+    // Check if user has any of the valid dashboard roles
+    return _userRoles.any((role) => validDashboardRoles.contains(role));
+  }
 
   @override
   void initState() {
     super.initState();
     _loadUserRole();
+    _initializeApiAndFetch();
   }
 
   void _loadUserRole() async {
-    _userRole = UserRoleManager().userRole ?? 'Guest'; // Retrieve user role from UserRoleManager
-    print('User Role in HomeScreen: $_userRole');
+    print('HomeScreen: Loading user role...');
+    await UserRoleManager().loadUserRole();
+    final roles = UserRoleManager().userRoles;
+    print('HomeScreen: Loaded roles: $roles');
+    print('HomeScreen: Roles length: ${roles.length}');
+    
+    if (roles.isEmpty) {
+      print('HomeScreen: No roles found, redirecting to login');
+      if (mounted) {
+        // No role should mean not logged in; redirect to login
+        context.pushReplacement('/');
+      }
+      return;
+    }
+    
+    // Check if widget is still mounted before setting state
+    if (!mounted) return;
+    setState(() {
+      _userRoles = roles;
+      _primaryRole = roles.isNotEmpty ? roles.first : '';
+    });
+    print('User Roles in HomeScreen: $_userRoles');
+    print('Primary Role: $_primaryRole');
+  }
+
+  void _initializeApiAndFetch() {
+    print('Initializing JobApi...');
+    final dio = Dio();
+    dio.options.baseUrl = '${AppStrings.baseUrl}/api';
+    _jobApi = JobApi(dio);
+    print('JobApi initialized, calling _fetchStatusOverviewData...');
+    _fetchStatusOverviewData();
+    _fetchActivityLogs();
+  }
+
+  Future<void> _fetchActivityLogs() async {
+    if (_jobApi == null) {
+      print('JobApi not initialized for activity logs!');
+      return;
+    }
+    
+    // Check if widget is still mounted before setting state
+    if (!mounted) return;
+    setState(() { isLoadingLogs = true; });
+    
+    try {
+      final allLogs = await _jobApi!.getActivityLogs();
+
+      // Filter out "User Login" actions
+      final filteredLogs = allLogs.where((log) => 
+        log['action'] != null && 
+        log['action'] != 'User Login'
+      ).toList();
+
+      // Get unique users for active member count (excluding login actions)
+      final uniqueUsers = <String>{};
+      for (var log in filteredLogs) {
+        if (log['userId'] != null) {
+          uniqueUsers.add(log['userId']);
+        }
+      }
+
+      // Check if widget is still mounted before setting state
+      if (!mounted) return;
+      setState(() {
+        activityLogs = filteredLogs;
+        activeMemberCount = uniqueUsers.length;
+      });
+    } catch (e) {
+      print('Error fetching activity logs: $e');
+      
+      // Check if widget is still mounted before setting state
+      if (!mounted) return;
+      setState(() {
+        activityLogs = [];
+        activeMemberCount = 0;
+      });
+    }
+    
+    // Check if widget is still mounted before setting state
+    if (!mounted) return;
+    setState(() { isLoadingLogs = false; });
+  }
+
+  Future<void> _fetchStatusOverviewData() async {
+    print('_fetchStatusOverviewData called, _jobApi is: ${_jobApi == null ? "null" : "initialized"}');
+    if (_jobApi == null) {
+      print('JobApi not initialized!');
+      return;
+    }
+    
+    // Check if widget is still mounted before setting state
+    if (!mounted) return;
+    setState(() { isLoadingStatus = true; });
+    
+    try {
+      print('Fetching job plannings...');
+      final planningList = await _jobApi!.getAllJobPlannings();
+      print('Planning List: ' + planningList.toString());
+      
+      // Check if widget is still mounted before updating state
+      if (!mounted) return;
+      totalOrders = planningList.length;
+      
+      // Fetch completed jobs using getCompletedJobs endpoint
+      print('Fetching completed jobs...');
+      final completedJobsList = await _jobApi!.getCompletedJobs();
+      
+      // Check if widget is still mounted before updating state
+      if (!mounted) return;
+      completedOrders = completedJobsList.length;
+      print('Completed Jobs Count: $completedOrders');
+      
+      inProgress = 0;
+      for (var job in planningList) {
+        if (job['steps'] is List) {
+          final steps = job['steps'] as List;
+          final dispatchStep = steps.firstWhere(
+                (step) => step['stepName'] == 'DispatchProcess',
+            orElse: () => null,
+          );
+          if (dispatchStep != null && dispatchStep['status'] != 'stop') {
+            inProgress++;
+          }
+        }
+      }
+      print('Fetching jobs...');
+      final jobs = await _jobApi!.getJobs();
+      print('Jobs List: ' + jobs.toString());
+      
+      // Check if widget is still mounted before updating state
+      if (!mounted) return;
+      // Only count jobs where status == ACTIVE (case-insensitive)
+      activeJobs = jobs.where((j) => (j.status).toString().toUpperCase() == 'ACTIVE').length;
+    } catch (e) {
+      print('Error fetching status overview: ' + e.toString());
+      
+      // Check if widget is still mounted before updating state
+      if (!mounted) return;
+      totalOrders = 0;
+      activeJobs = 0;
+      inProgress = 0;
+      completedOrders = 0;
+    }
+    
+    // Check if widget is still mounted before setting state
+    if (!mounted) return;
+    setState(() { isLoadingStatus = false; });
   }
 
   void _logout() async {
+    // Clear in-memory and persisted roles to avoid stale roles on next login
+    await UserRoleManager().clearUserRole();
+
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.remove('userRole'); // Clear the user role
-    _userRole = 'Guest'; // Reset the local variable
-    context.pushReplacement('/'); // Navigate back to the login screen
+    await prefs.remove('accessToken');
+    await prefs.remove('userId');
+    await prefs.remove('userRole');
+    await prefs.remove('userRoles');
+
+    print('All authentication data cleared during logout');
+    if (mounted) context.pushReplacement('/'); // Navigate back to the login screen
+  }
+
+  String _getTimeAgo(String createdAt) {
+    try {
+      final dateTime = DateTime.parse(createdAt);
+      final now = DateTime.now();
+      final difference = now.difference(dateTime);
+
+      if (difference.inMinutes < 1) {
+        return 'Just now';
+      } else if (difference.inMinutes < 60) {
+        return '${difference.inMinutes} mins ago';
+      } else if (difference.inHours < 24) {
+        return '${difference.inHours} hours ago';
+      } else {
+        return '${difference.inDays} days ago';
+      }
+    } catch (e) {
+      return 'Unknown';
+    }
+  }
+
+  Color _getActionColor(String action) {
+    if (action.contains('Login')) {
+      return Colors.blue;
+    } else if (action.contains('Created')) {
+      return Colors.green;
+    } else if (action.contains('Updated')) {
+      return Colors.orange;
+    } else {
+      return Colors.grey;
+    }
+  }
+
+  String _formatActivityDetails(String details) {
+    try {
+      // Check if details contains JSON
+      if (details.contains('{') && details.contains('}')) {
+        // Extract JSON part and optional Resource part
+        final parts = details.split(' | Resource:');
+        final jsonPart = parts[0].trim();
+        final resourcePart = parts.length > 1 ? parts[1].trim() : null; // e.g., "JobStep (6)"
+
+        // Try to parse the JSON
+        final dynamic parsed = jsonDecode(jsonPart);
+        if (parsed is Map<String, dynamic>) {
+          final jsonData = parsed;
+          final message = (jsonData['message'] ?? '').toString();
+          final jobNo = (jsonData['nrcJobNo'] ?? jsonData['jobNo'] ?? '').toString();
+          final planId = (jsonData['jobPlanId'] ?? '').toString();
+          final stepNo = (jsonData['stepNo'] ?? '').toString();
+          final status = (jsonData['status'] ?? '').toString();
+
+          // Build a concise, human-friendly line
+          final List<String> chunks = [];
+          if (message.isNotEmpty) {
+            chunks.add(message);
+          } else if (status.isNotEmpty) {
+            chunks.add('Status: $status');
+          }
+          if (stepNo.isNotEmpty) chunks.add('Step #$stepNo');
+          if (jobNo.isNotEmpty) chunks.add('Job: $jobNo');
+          if (planId.isNotEmpty) chunks.add('Plan: $planId');
+          if (resourcePart != null && resourcePart.isNotEmpty) chunks.add(resourcePart);
+
+          if (chunks.isNotEmpty) {
+            return chunks.join(' — ');
+          }
+        }
+      }
+      
+      // For non-JSON details, clean up common patterns
+      String cleaned = details;
+      
+      // Remove jobStepId patterns
+      cleaned = cleaned.replaceAll(RegExp(r'for jobStepId: \d+'), '');
+      cleaned = cleaned.replaceAll(RegExp(r'jobStepId: \d+'), '');
+      
+      // Remove extra spaces and clean up
+      cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
+      
+      // Remove trailing | Resource part if present
+      if (cleaned.contains(' | Resource:')) {
+        cleaned = cleaned.split(' | Resource:')[0].trim();
+      }
+      
+      return cleaned;
+    } catch (e) {
+      // If parsing fails, clean up the original details
+      String cleaned = details;
+      cleaned = cleaned.replaceAll(RegExp(r'for jobStepId: \d+'), '');
+      cleaned = cleaned.replaceAll(RegExp(r'jobStepId: \d+'), '');
+      cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (cleaned.contains(' | Resource:')) {
+        cleaned = cleaned.split(' | Resource:')[0].trim();
+      }
+      return cleaned;
+    }
   }
 
   Widget _buildDrawer() {
@@ -43,54 +338,139 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             const Text(
               'Menu',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.maincolor),
             ),
             const SizedBox(height: 24),
-          if (_userRole == 'Admin')...[
-            Expanded(
-              child: ElevatedButton(
+            if (_userRoles.contains('admin'))...[
+              ElevatedButton(
                 onPressed: () => context.push('/create-id'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.white,
+                  backgroundColor: AppColors.maincolor,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
                 child: const Text(
                   'Add New Account',
-                  style: TextStyle(color: AppColors.maincolor),
+                  style: TextStyle(color: AppColors.white),
                 ),
-              ),
-            ),
-            ],
-
-            if (_userRole == 'Planner' || _userRole == 'Admin') ...[
-              ElevatedButton.icon(
-                onPressed: () {
-                  context.push('/purchase-order-input');
-                },
-                icon: const Icon(Icons.add),
-                label: const Text('Create New Job'),
               ),
               const SizedBox(height: 12),
               ElevatedButton.icon(
                 onPressed: () {
-                  context.push('/job-list', extra: _userRole);
+                  context.push('/user-activity');
                 },
-                icon: const Icon(Icons.list_alt),
-                label: const Text('Jobs'),
+                icon: const Icon(Icons.people,color: AppColors.white),
+                label: const Text('User Activity',style: TextStyle(color: AppColors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.maincolor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+            ],
+
+            if (_userRoles.contains('planner') || _userRoles.contains('admin')) ...[
+              ElevatedButton.icon(
+                onPressed: () {
+                  context.push('/job-input');
+                },
+                icon: const Icon(Icons.add,color: AppColors.white),
+                label: const Text('Add New Customer',style: TextStyle(color: AppColors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.maincolor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: () {
+                  context.push('/completed-jobs');
+                },
+                icon: const Icon(Icons.check_circle,color: AppColors.white),
+                label: const Text('Completed Jobs',style: TextStyle(color: AppColors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.maincolor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: () {
+                  context.push('/edit-machines');
+                },
+                icon: const Icon(Icons.build,color: AppColors.white),
+                label: const Text('Edit Machines',style: TextStyle(color: AppColors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.maincolor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: () {
+                  print('Edit Working Details button clicked');
+                  context.push('/edit-working-details');
+                },
+                icon: const Icon(Icons.edit_note,color: AppColors.white),
+                label: const Text('Edit Working Details',style: TextStyle(color: AppColors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.maincolor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: () {
+                  context.push('/user-activity');
+                },
+                icon: const Icon(Icons.people,color: AppColors.white),
+                label: const Text('User Activity',style: TextStyle(color: AppColors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.maincolor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
               ),
             ],
             ElevatedButton.icon(
               onPressed: _logout,
-              icon: const Icon(Icons.logout, color: AppColors.maincolor,),
-              label: const Text('Logout',style: TextStyle(color: AppColors.maincolor)),
+              icon: const Icon(Icons.logout, color: AppColors.white,),
+              label: const Text('Logout',style: TextStyle(color: AppColors.white)),
               style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.white,
-              shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(4),
+                backgroundColor: AppColors.maincolor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
                 ),
+              ),
             ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const UserOwnActivityPage(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.history, color: AppColors.white),
+              label: const Text('Your Activity', style: TextStyle(color: AppColors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.maincolor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
             ),
           ],
         ),
@@ -105,7 +485,7 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: Colors.white,
       drawer: _buildDrawer(),
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(80),
+        preferredSize: const Size.fromHeight(60),
         child: AppBar(
           backgroundColor: Colors.white,
           elevation: 0,
@@ -115,37 +495,15 @@ class _HomeScreenState extends State<HomeScreen> {
               _scaffoldKey.currentState!.openDrawer();
             },
           ),
-          title: Container(
-            height: 55,
-            decoration: BoxDecoration(
-              color: Colors.grey[200],
-              borderRadius: BorderRadius.circular(30),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Icon(Icons.search, color: Colors.grey[600], size: 20),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: const InputDecoration(
-                      hintText: 'Search for "Factory Portal"',
-                      border: InputBorder.none,
-                    ),
-                    style: const TextStyle(fontSize: 17),
-                  ),
-                ),
-              ],
+          title: const Text(
+            'Factory Portal',
+            style: TextStyle(
+              color: Colors.black87,
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.more_vert, color: Colors.black87, size: 28),
-              onPressed: () {},
-            ),
-            const SizedBox(width: 8),
-          ],
+          centerTitle: true,
         ),
       ),
       body: SingleChildScrollView(
@@ -153,7 +511,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (_userRole.isNotEmpty) ...[
+            if (_userRoles.isNotEmpty) ...[
               Container(
                 padding: const EdgeInsets.all(12),
                 margin: const EdgeInsets.only(bottom: 20),
@@ -162,24 +520,36 @@ class _HomeScreenState extends State<HomeScreen> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.blue.withOpacity(0.3)),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.person, color: Colors.blue),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Logged in as: $_userRole',
-                      style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blue[800]),
+                    Row(
+                      children: [
+                        const Icon(Icons.person, color: Colors.blue),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Logged in as: ${UserRoleManager().rolesDisplayString}',
+                          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blue[800]),
+                        ),
+                      ],
                     ),
+                    if (UserRoleManager().hasMultipleRoles) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Primary role: $_primaryRole',
+                        style: TextStyle(fontSize: 12, color: Colors.blue[600]),
+                      ),
+                    ],
                   ],
                 ),
               ),
             ],
-            if (_userRole == 'Planner' || _userRole == 'Admin') ...[
+            if (_userRoles.contains('planner') || _userRoles.contains('admin')) ...[
               Row(
                 children: [
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: () => context.push('/purchase-order-input'),
+                      onPressed: () => context.push('/all-Jobs'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.white,
                         shape: RoundedRectangleBorder(
@@ -187,7 +557,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       child: const Text(
-                        'Create New Job',
+                        'All Jobs',
                         style: TextStyle(color: AppColors.maincolor),
                       ),
                     ),
@@ -203,7 +573,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       child: const Text(
-                        'Jobs',
+                        'Plan Jobs',
                         style: TextStyle(color: AppColors.maincolor),
                       ),
                     ),
@@ -211,80 +581,278 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ],
-            if (_userRole == 'Admin') ...[
-              _buildDepartmentCards(),
+            if (_userRoles.isNotEmpty && _hasDashboardCards()) ...[
+              _buildDashboardDropdown(),
               const SizedBox(height: 28),
             ],
-            _buildQuickStatus(),
+            _buildStatusOverview(),
+            const SizedBox(height: 20),
+            _buildWorkInsights(),
             const SizedBox(height: 28),
             _buildLiveUpdates(),
             const SizedBox(height: 28),
-            _buildStatusOverview(),
-            const SizedBox(height: 28),
             _buildDailySnapshots(),
+            const SizedBox(height: 28),
+            _buildActiveMemberCount(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildDepartmentCards() {
+  Widget _buildDepartmentCards({bool showHeader = true}) {
+    // Admin can see all department cards. Other roles see cards based on their roles.
+    if (_userRoles.contains('admin')) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (showHeader) ...[
+            const Text(
+              'Department Overview',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => context.push('/planning-dashboard'),
+                  child: _buildDepartmentCard(
+                    'Planning',
+                    'Get comprehensive overview of planning activities',
+                    Icons.analytics_outlined,
+                    Colors.blue,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => context.push('/printing-dashboard'),
+                  child: _buildDepartmentCard(
+                    'Printing Manager',
+                    'Manage printing operations and schedules',
+                    Icons.print_outlined,
+                    Colors.indigo,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => context.push('/production-dashboard'),
+                  child: _buildDepartmentCard(
+                    'Production Head',
+                    'Monitor production metrics and performance',
+                    Icons.factory_outlined,
+                    Colors.cyan,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => context.push('/dispatch-dashboard'),
+                  child: _buildDepartmentCard(
+                    'Dispatch Executive',
+                    'Manage dispatch operations and logistics',
+                    Icons.local_shipping_outlined,
+                    Colors.blue,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => context.push('/qc-dashboard'),
+                  child: _buildDepartmentCard(
+                    'QC Manager',
+                    'Quality control and assurance management',
+                    Icons.verified_outlined,
+                    Colors.cyan,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(child: SizedBox()),
+            ],
+          ),
+        ],
+      );
+    }
+
+    // Non-admin roles: show cards for all user roles
+    List<Widget> departmentCards = [];
+    
+    // Define role to card mapping
+    final roleCardMap = {
+      'planner': {
+        'title': 'Planning',
+        'description': 'Get comprehensive overview of planning activities',
+        'icon': Icons.analytics_outlined,
+        'color': Colors.blue,
+        'onTap': () => context.push('/planning-dashboard'),
+      },
+      'printer': {
+        'title': 'Printing Manager',
+        'description': 'Manage printing operations and schedules',
+        'icon': Icons.print_outlined,
+        'color': Colors.indigo,
+        'onTap': () => context.push('/printing-dashboard'),
+      },
+      'production_head': {
+        'title': 'Production Head',
+        'description': 'Monitor production metrics and performance',
+        'icon': Icons.factory_outlined,
+        'color': Colors.cyan,
+        'onTap': () => context.push('/production-dashboard'),
+      },
+      'dispatch_executive': {
+        'title': 'Dispatch Executive',
+        'description': 'Manage dispatch operations and logistics',
+        'icon': Icons.local_shipping_outlined,
+        'color': Colors.blue,
+        'onTap': () => context.push('/dispatch-dashboard'),
+      },
+      'qc_manager': {
+        'title': 'QC Manager',
+        'description': 'Quality control and assurance management',
+        'icon': Icons.verified_outlined,
+        'color': Colors.cyan,
+        'onTap': () => context.push('/qc-dashboard'),
+      },
+    };
+
+    // Create cards for each user role
+    for (String role in _userRoles) {
+      if (roleCardMap.containsKey(role)) {
+        final cardData = roleCardMap[role]!;
+        departmentCards.add(
+          GestureDetector(
+            onTap: cardData['onTap'] as VoidCallback,
+            child: _buildDepartmentCard(
+              cardData['title'] as String,
+              cardData['description'] as String,
+              cardData['icon'] as IconData,
+              cardData['color'] as Color,
+            ),
+          ),
+        );
+      }
+    }
+
+    // If no valid roles found, return empty
+    if (departmentCards.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // Arrange cards in rows of 2
+    List<Widget> cardRows = [];
+    for (int i = 0; i < departmentCards.length; i += 2) {
+      if (i + 1 < departmentCards.length) {
+        // Two cards in a row
+        cardRows.add(
+          Row(
+            children: [
+              Expanded(child: departmentCards[i]),
+              const SizedBox(width: 12),
+              Expanded(child: departmentCards[i + 1]),
+            ],
+          ),
+        );
+        if (i + 2 < departmentCards.length) {
+          cardRows.add(const SizedBox(height: 12));
+        }
+      } else {
+        // Single card in a row
+        cardRows.add(departmentCards[i]);
+      }
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Department Overview',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
+        if (showHeader) ...[
+          const Text(
+            'Department Overview',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
           ),
-        ),
-        SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _buildDepartmentCard(
-                'Planning',
-                'Get comprehensive overview of planning activities',
-                Icons.analytics_outlined,
-                Colors.blue,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildDepartmentCard(
-                'Production Head',
-                'Monitor production metrics and performance',
-                Icons.factory_outlined,
-                Colors.cyan,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _buildDepartmentCard(
-                'Dispatch Executive',
-                'Manage dispatch operations and logistics',
-                Icons.local_shipping_outlined,
-                Colors.blue,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildDepartmentCard(
-                'QC Manager',
-                'Quality control and assurance management',
-                Icons.verified_outlined,
-                Colors.cyan,
-              ),
-            ),
-          ],
-        ),
+          const SizedBox(height: 16),
+        ],
+        ...cardRows,
       ],
+    );
+  }
+
+  Widget _buildDashboardDropdown() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+        border: Border.all(color: Colors.grey.withOpacity(0.15)),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: _dashboardExpanded,
+          onExpansionChanged: (expanded) {
+            if (mounted) {
+              setState(() => _dashboardExpanded = expanded);
+            }
+          },
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.maincolor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.dashboard_rounded, color: AppColors.maincolor, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Dashboard',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ],
+          ),
+          children: [
+            _buildDepartmentCards(showHeader: false),
+          ],
+        ),
+      ),
     );
   }
 
@@ -343,70 +911,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildQuickStatus() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Quick Status',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildStatusItem('Total Stock', Icons.inventory_2_outlined, Colors.grey),
-              _buildStatusItem('Production', Icons.precision_manufacturing, Colors.orange),
-              _buildStatusItem('Quality Issues', Icons.warning_outlined, Colors.green),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusItem(String label, IconData icon, Color color) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: color, size: 24),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: Colors.black87,
-          ),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
 
   Widget _buildLiveUpdates() {
     return Container(
@@ -426,18 +930,41 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Live Updates',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
+          Row(
+            children: [
+              const Text(
+                'Live Updates',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: isLoadingLogs
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.refresh),
+                onPressed: isLoadingLogs ? null : _fetchActivityLogs,
+              ),
+            ],
           ),
           const SizedBox(height: 16),
-          _buildUpdateItem('Job assigned to Machine A', '2 mins ago', Colors.blue),
-          _buildUpdateItem('Operator B downtime reported', '5 mins ago', Colors.orange),
-          _buildUpdateItem('Finished Goods for Job A', '8 mins ago', Colors.green),
+          if (isLoadingLogs)
+            const Center(child: CircularProgressIndicator())
+          else if (activityLogs.isEmpty)
+            const Center(
+              child: Text(
+                'No recent activity',
+                style: TextStyle(color: Colors.grey),
+              ),
+            )
+          else
+            ...activityLogs.take(3).map((log) => _buildUpdateItem(
+              _formatActivityDetails(log['details'] ?? log['action'] ?? 'Unknown action'),
+              _getTimeAgo(log['createdAt'] ?? ''),
+              _getActionColor(log['action'] ?? ''),
+            )).toList(),
         ],
       ),
     );
@@ -502,23 +1029,40 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Status Overview',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
+          Row(
+            children: [
+              const Text(
+                'Status Overview',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              Spacer(),
+              IconButton(
+                icon: isLoadingStatus
+                    ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Icon(Icons.refresh),
+                onPressed: isLoadingStatus ? null : () {
+                  if (_jobApi == null) {
+                    _initializeApiAndFetch();
+                  } else {
+                    _fetchStatusOverviewData();
+                  }
+                },
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
-                child: _buildOverviewCard('Work in Progress', '126', Colors.purple),
+                child: _buildOverviewCard('Total Orders', '$totalOrders', Colors.purple),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _buildOverviewCard('Jobs Completed', '108', Colors.teal),
+                child: _buildOverviewCard('Active Jobs', '$activeJobs', Colors.teal),
               ),
             ],
           ),
@@ -526,14 +1070,101 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             children: [
               Expanded(
-                child: _buildOverviewCard('Machine Under Maintenance', '3', Colors.orange),
+                child: _buildOverviewCard('In Progress', '$inProgress', Colors.orange),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _buildOverviewCard('QC Pending', '25', Colors.blue),
+                child: _buildOverviewCard('Completed Orders', '$completedOrders', Colors.blue),
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWorkInsights() {
+    final entries = [
+      {'label': 'In Progress', 'count': inProgress, 'color': Colors.orange},
+      {'label': 'Completed', 'count': completedOrders, 'color': Colors.green},
+      {'label': 'Not Started', 'count': _notStarted, 'color': Colors.grey},
+    ].where((e) => (e['count'] as int) > 0).toList();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Work Insights',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (entries.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Text('No data to display', style: TextStyle(color: Colors.grey[600])),
+              ),
+            )
+          else ...[
+            SizedBox(
+              height: 180,
+              child: PieChart(
+                PieChartData(
+                  sectionsSpace: 2,
+                  centerSpaceRadius: 36,
+                  sections: entries
+                      .map(
+                        (e) => PieChartSectionData(
+                          color: e['color'] as Color,
+                          value: (e['count'] as int).toDouble(),
+                          title: (e['count'] as int).toString(),
+                          titleStyle: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: entries
+                  .map(
+                    (e) => Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(width: 10, height: 10, decoration: BoxDecoration(color: e['color'] as Color, shape: BoxShape.circle)),
+                        const SizedBox(width: 6),
+                        Text('${e['label']}: ${e['count']}', style: TextStyle(color: Colors.grey[700], fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
         ],
       ),
     );
@@ -590,56 +1221,155 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Daily Snapshots',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
+          Row(
+            children: [
+              const Text(
+                'Daily Snapshots',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: isLoadingLogs
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.refresh),
+                onPressed: isLoadingLogs ? null : _fetchActivityLogs,
+              ),
+            ],
           ),
           const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildSnapshotItem('Planning', Icons.calendar_today_outlined, Colors.purple),
-              _buildSnapshotItem('Production Report', Icons.assessment_outlined, Colors.orange),
-              _buildSnapshotItem('Quality Report', Icons.verified_outlined, Colors.green),
-            ],
+          if (isLoadingLogs)
+            const Center(child: CircularProgressIndicator())
+          else if (activityLogs.isEmpty)
+            const Center(
+              child: Text(
+                'No recent activity',
+                style: TextStyle(color: Colors.grey),
+              ),
+            )
+          else
+            Column(
+              children: activityLogs.take(5).map((log) => Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: _getActionColor(log['action'] ?? ''),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _formatActivityDetails(log['details'] ?? log['action'] ?? 'Unknown action'),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      _getTimeAgo(log['createdAt'] ?? ''),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey[500],
+                      ),
+                    ),
+                  ],
+                ),
+              )).toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
+
+  Widget _buildActiveMemberCount() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.green.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.people, color: Colors.green, size: 24),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Active Members',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$activeMemberCount members currently active',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '$activeMemberCount',
+            style: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              color: Colors.green,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSnapshotItem(String label, IconData icon, Color color) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, color: color, size: 28),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: Colors.black87,
-          ),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
-
   @override
   void dispose() {
-    _searchController.dispose();
+    // Cancel any ongoing operations to prevent setState calls after dispose
+    _jobApi = null;
     super.dispose();
   }
 }
