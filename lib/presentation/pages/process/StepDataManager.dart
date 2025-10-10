@@ -12,28 +12,31 @@ class StepDataManager {
     'Corrugation', // Corrugation comes 4th
     'FluteLaminateBoardConversion',
     'Punching',
+    'Die Cutting', // Die Cutting step
     'SideFlapPasting',
     'QualityDept',
     'DispatchProcess',
   ];
 
   // Role-based step filtering for single role
+  // This mapping MUST match the backend roleStepMapping in machineAccess.ts
   static List<StepType> getStepsForRole(String? userRole) {
     switch (userRole?.toLowerCase()) {
       case 'corrugator':
         return [StepType.corrugation];
       case 'flutelaminator':
-        return [StepType.fluteLamination];
+        return [StepType.fluteLamination]; // Maps to FluteLaminateBoardConversion in backend
       case 'pasting_operator':
         return [StepType.flapPasting];
       case 'punching_operator':
-        return [StepType.punching];
+        return [StepType.punching, StepType.dieCutting];
       case 'production_head':
       case 'production head':
         return [
           StepType.corrugation,
           StepType.fluteLamination,
           StepType.punching,
+          StepType.dieCutting,
           StepType.flapPasting,
         ];
       case 'printer':
@@ -43,14 +46,27 @@ class StepDataManager {
         return [StepType.qc];
       case 'dispatch_executive':
       case 'dispatch executive':
-        return [StepType.dispatch];
-      case 'admin':
+        return [StepType.dispatch, StepType.paperStore];
+      case 'paperstore':
         return [
           StepType.paperStore,
           StepType.printing,
           StepType.corrugation,
           StepType.fluteLamination,
           StepType.punching,
+          StepType.dieCutting,
+          StepType.flapPasting,
+          StepType.qc,
+          StepType.dispatch,
+        ];
+      case 'flyingsquad':
+        return [
+          StepType.paperStore,
+          StepType.printing,
+          StepType.corrugation,
+          StepType.fluteLamination,
+          StepType.punching,
+          StepType.dieCutting,
           StepType.flapPasting,
           StepType.qc,
           StepType.dispatch,
@@ -63,6 +79,7 @@ class StepDataManager {
           StepType.corrugation,
           StepType.fluteLamination,
           StepType.punching,
+          StepType.dieCutting,
           StepType.flapPasting,
           StepType.qc,
           StepType.dispatch,
@@ -74,10 +91,15 @@ class StepDataManager {
   static List<StepType> getStepsForRoles(List<String> userRoles) {
     Set<StepType> allAllowedSteps = {};
     
+    print('DEBUG: getStepsForRoles called with roles: $userRoles');
+    
     for (String role in userRoles) {
       final roleSteps = getStepsForRole(role);
+      print('DEBUG: Role $role allows steps: $roleSteps');
       allAllowedSteps.addAll(roleSteps);
     }
+    
+    print('DEBUG: All allowed steps: $allAllowedSteps');
     
     // Convert back to list and sort by canonical order
     List<StepType> orderedSteps = [];
@@ -87,6 +109,7 @@ class StepDataManager {
       StepType.corrugation,
       StepType.fluteLamination,
       StepType.punching,
+      StepType.dieCutting,
       StepType.flapPasting,
       StepType.qc,
       StepType.dispatch,
@@ -118,6 +141,7 @@ class StepDataManager {
       case 'Corrugation': return 'Corrugation';
       case 'FluteLaminateBoardConversion': return 'Flute Lamination';
       case 'Punching': return 'Punching';
+      case 'Die Cutting': return 'Die Cutting';
       case 'SideFlapPasting': return 'Flap Pasting';
       case 'QualityDept': return 'Quality Control';
       case 'DispatchProcess': return 'Dispatch';
@@ -143,6 +167,9 @@ class StepDataManager {
       case 'punching':
         print('DEBUG: Converting to StepType.punching');
         return StepType.punching;
+      case 'die cutting':
+        print('DEBUG: Converting to StepType.dieCutting');
+        return StepType.dieCutting;
       case 'sideflappasting':
         print('DEBUG: Converting to StepType.flapPasting');
         return StepType.flapPasting;
@@ -170,6 +197,8 @@ class StepDataManager {
         return 'Apply flute lamination';
       case 'punching':
         return 'Punch holes as required';
+      case 'die cutting':
+        return 'Cut materials using die cutting process';
       case 'flap pasting':
         return 'Paste flaps and complete assembly';
       case 'quality control':
@@ -185,21 +214,23 @@ class StepDataManager {
   static List<String> getFieldNamesForStep(StepType type) {
     switch (type) {
       case StepType.paperStore:
-        return ['Sheet Size', 'Required Qty', 'Available Qty', 'Issue Date', 'GSM', 'Remarks'];
+        return ['Sheet Size', 'Required Qty', 'Available Qty', 'GSM', 'Mill', 'Extra Margin', 'Quality', 'Remarks'];
       case StepType.printing:
-        return ['Date', 'Operator Name', 'Colors Used', 'Quantity OK', 'Wastage', 'Machine', 'Remarks'];
+        return ['Quantity OK', 'Colors Used', 'Wastage', 'Inks Used', 'Coating Type', 'Separate Sheets', 'Extra Sheets', 'Remarks'];
       case StepType.corrugation:
-        return ['Date', 'Operator Name', 'Machine No', 'Sheets Count', 'Size', 'GSM', 'Flute Type', 'Remarks'];
+        return ['Sheets Count', 'Size', 'GSM1 (Top Face)', 'GSM2 (Bottom Face)', 'Flute Type', 'Remarks'];
       case StepType.fluteLamination:
-        return ['Date', 'Operator Name', 'Film Type', 'OK Quantity', 'Adhesive', 'Wastage', 'Remarks'];
+        return ['OK Quantity', 'Film Type', 'Adhesive', 'Wastage'];
       case StepType.punching:
-        return ['Date', 'Operator Name', 'Machine', 'OK Quantity', 'Die Used', 'Wastage', 'Remarks'];
+        return ['OK Quantity', 'Die Used (diePunchCode)', 'Wastage', 'Remarks'];
+      case StepType.dieCutting:
+        return ['OK Quantity', 'Die Used (diePunchCode)', 'Wastage', 'Remarks'];
       case StepType.flapPasting:
-        return ['Date', 'Operator Name', 'Machine No', 'Adhesive', 'Quantity', 'Wastage', 'Remarks'];
+        return ['Quantity', 'Adhesive', 'Wastage', 'Remarks'];
       case StepType.qc:
-        return ['Date', 'Checked By', 'Pass Quantity', 'Reject Quantity', 'Reason for Rejection', 'Remarks'];
+        return ['Pass Quantity', 'Reject Quantity', 'Reason for Rejection', 'Remarks'];
       case StepType.dispatch:
-        return ['Date', 'Operator Name', 'No of Boxes', 'Dispatch No', 'Dispatch Date', 'Balance Qty', 'Remarks'];
+        return ['No of Boxes', 'Dispatch No', 'Balance Qty', 'Remarks'];
       default:
         return [];
     }
@@ -223,12 +254,14 @@ class StepDataManager {
         return 4;
       case StepType.punching:
         return 5;
-      case StepType.flapPasting:
+      case StepType.dieCutting:
         return 6;
-      case StepType.qc:
+      case StepType.flapPasting:
         return 7;
-      case StepType.dispatch:
+      case StepType.qc:
         return 8;
+      case StepType.dispatch:
+        return 9;
       default:
         return 1;
     }

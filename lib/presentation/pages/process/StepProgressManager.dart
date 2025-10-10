@@ -120,6 +120,7 @@ class StepProgressManager {
         (step.status == StepStatus.pending && isActive) ||
         step.status == StepStatus.started ||
         step.status == StepStatus.inProgress ||
+        step.status == StepStatus.hold || // Add hold status as clickable
         (step.status == StepStatus.completed && step.formData.isNotEmpty);
   }
 }

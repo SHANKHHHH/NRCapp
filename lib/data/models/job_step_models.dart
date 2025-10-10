@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 // Enums for step status and type
-enum StepStatus { pending, started, inProgress, paused, completed }
+enum StepStatus { pending, started, inProgress, paused, hold, completed }
 
-enum StepType { jobAssigned, paperStore, printing, corrugation, fluteLamination, punching, flapPasting, qc, dispatch }
+enum StepType { jobAssigned, paperStore, printing, corrugation, fluteLamination, punching, dieCutting, flapPasting, qc, dispatch }
 
 // StepData model class
 class StepData {
@@ -12,6 +12,7 @@ class StepData {
   final String description;
   StepStatus status;
   Map<String, dynamic> formData;
+  String? internalStatus; // Internal status for hold/in_progress logic
 
   StepData({
     required this.type,
@@ -19,5 +20,6 @@ class StepData {
     required this.description,
     this.status = StepStatus.pending,
     this.formData = const {},
+    this.internalStatus,
   });
 } 

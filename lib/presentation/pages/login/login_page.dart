@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nrc/constants/colors.dart';
+import 'package:nrc/constants/strings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../routes/UserRoleManager.dart';
 import 'package:nrc/core/services/auth_service.dart';
@@ -14,7 +15,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _empIdController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
@@ -22,6 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final AuthRepository _authRepository = AuthRepository(AuthService());
 
   bool _isLoading = false;
+  bool _obscurePassword = true;
 
   @override
   void initState() {
@@ -29,6 +31,28 @@ class _LoginScreenState extends State<LoginScreen> {
     print('LoginScreen initialized');
     _checkExistingSession();
   }
+
+  Future<void> _clearAllCaches() async {
+    try {
+      print('🔍 [LoginScreen] Clearing all caches...');
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Clear all data caches
+      await prefs.remove('cached_job_plannings');
+      await prefs.remove('cached_jobs');
+      await prefs.remove('cached_machines');
+      await prefs.remove('cached_users');
+      await prefs.remove('cached_dashboard');
+      await prefs.remove('cached_purchase_orders');
+      await prefs.remove('cached_activity_logs');
+      await prefs.remove('cached_status_overview');
+      
+      print('🔍 [LoginScreen] All caches cleared');
+    } catch (e) {
+      print('❌ [LoginScreen] Error clearing caches: $e');
+    }
+  }
+
 
   void _checkExistingSession() async {
     setState(() { _isLoading = true; });
@@ -67,10 +91,17 @@ class _LoginScreenState extends State<LoginScreen> {
       // Remove hardcoded role setting
       // await userRoleManager.setUserRole('admin');
 
-      bool success = await _authRepository.login(
-        id: _empIdController.text,
-        password: _passwordController.text,
-      );
+      try {
+        print('🔐 [LoginScreen] Starting login process...');
+        print('🔐 [LoginScreen] Email: ${_emailController.text}');
+        print('🔐 [LoginScreen] Password: ${_passwordController.text}');
+        print('🔐 [LoginScreen] Backend URL: ${AppStrings.baseUrl}');
+        
+        bool success = await _authRepository.login(
+          email: _emailController.text,
+          password: _passwordController.text,
+        );
+        print('🔐 [LoginScreen] Login result: $success');
 
       // Save role after login if present
       if (success) {
@@ -102,8 +133,12 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() { _isLoading = false; });
 
       if (success) {
-        _empIdController.clear();
+        _emailController.clear();
         _passwordController.clear();
+        
+        // Clear all caches to prevent cross-user contamination
+        await _clearAllCaches();
+        
         print('Login successful, navigating to /home');
         if (mounted) {
           context.pushReplacement('/home');
@@ -115,6 +150,46 @@ class _LoginScreenState extends State<LoginScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Login failed. Please check your credentials.')),
         );
+      }
+      } catch (e) {
+        print('❌ [LoginScreen] Login error: $e');
+        setState(() { _isLoading = false; });
+        
+        String errorMessage = 'Login failed. Please try again.';
+        if (e is DioException) {
+          switch (e.type) {
+            case DioExceptionType.connectionTimeout:
+              errorMessage = 'Connection timeout. Please check your internet connection.';
+              break;
+            case DioExceptionType.receiveTimeout:
+              errorMessage = 'Server response timeout. Please try again.';
+              break;
+            case DioExceptionType.connectionError:
+              errorMessage = 'Cannot connect to server. Please check your internet connection.';
+              break;
+            case DioExceptionType.badResponse:
+              if (e.response?.statusCode == 401) {
+                errorMessage = 'Invalid email or password.';
+              } else if (e.response?.statusCode == 500) {
+                errorMessage = 'Server error. Please try again later.';
+              } else {
+                errorMessage = 'Server error (${e.response?.statusCode}). Please try again.';
+              }
+              break;
+            default:
+              errorMessage = 'Network error. Please check your connection.';
+          }
+        }
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMessage),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
       }
     }
   }
@@ -162,11 +237,19 @@ class _LoginScreenState extends State<LoginScreen> {
                       key: _formKey,
                       child: Column(
                         children: [
-                          // Employee ID
+                          // Email
                           TextFormField(
-                            controller: _empIdController,
+                            controller: _emailController,
+                            keyboardType: TextInputType.emailAddress,
+                            // Add test credentials for quick testing
+                            onChanged: (value) {
+                              if (value == 'admin') {
+                                _emailController.text = 'admin@nrcontainers.com';
+                                _passwordController.text = 'admin123';
+                              }
+                            },
                             decoration: InputDecoration(
-                              hintText: 'ID',
+                              hintText: 'Email',
                               filled: true,
                               fillColor: Colors.white,
                               contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 18),
@@ -176,7 +259,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             validator: (value) {
                               if (value == null || value.isEmpty) {
-                                return 'Please enter your Employee ID';
+                                return 'Please enter your Email';
+                              }
+                              final emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+                              if (!emailRegex.hasMatch(value)) {
+                                return 'Please enter a valid Email';
                               }
                               return null;
                             },
@@ -186,7 +273,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           // Password
                           TextFormField(
                             controller: _passwordController,
-                            obscureText: true,
+                            obscureText: _obscurePassword,
                             decoration: InputDecoration(
                               hintText: 'Password',
                               filled: true,
@@ -194,6 +281,17 @@ class _LoginScreenState extends State<LoginScreen> {
                               contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 18),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
+                              ),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                                  color: Colors.grey,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _obscurePassword = !_obscurePassword;
+                                  });
+                                },
                               ),
                             ),
                             validator: (value) {
@@ -246,7 +344,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
-    _empIdController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }

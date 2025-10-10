@@ -20,7 +20,10 @@ class AppColors {
   static const grey800 = Color(0xFF424242);
   static const green = Colors.green;
   static const blue = Colors.blue;
-
-
-
+  
+  // Additional colors for SettingsScreen
+  static const background = Color(0xFFF8F9FA);
+  static const textPrimary = Color(0xFF212529);
+  static const textSecondary = Color(0xFF6C757D);
+  static const border = Color(0xFFDEE2E6);
 }

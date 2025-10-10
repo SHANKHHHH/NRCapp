@@ -53,6 +53,8 @@ class _HomeScreenState extends State<HomeScreen> {
       'production_head',
       'dispatch_executive',
       'qc_manager',
+      'qc_manager_flying',
+      'flyingsquad',
     };
 
     // Check if user has any of the valid dashboard roles
@@ -95,7 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _initializeApiAndFetch() {
     print('Initializing JobApi...');
     final dio = Dio();
-    dio.options.baseUrl = '${AppStrings.baseUrl}/api';
+    dio.options.baseUrl = AppStrings.baseUrl;
     _jobApi = JobApi(dio);
     print('JobApi initialized, calling _fetchStatusOverviewData...');
     _fetchStatusOverviewData();
@@ -163,44 +165,63 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() { isLoadingStatus = true; });
     
     try {
-      print('Fetching job plannings...');
-      final planningList = await _jobApi!.getAllJobPlannings();
-      print('Planning List: ' + planningList.toString());
+      print('Fetching job plannings (role-filtered)...');
+      
+      final jobPlannings = await _jobApi!.getAllJobPlanningsFresh();
+      
+      print('Job Plannings List: ${jobPlannings.length} items');
       
       // Check if widget is still mounted before updating state
       if (!mounted) return;
-      totalOrders = planningList.length;
       
-      // Fetch completed jobs using getCompletedJobs endpoint
-      print('Fetching completed jobs...');
-      final completedJobsList = await _jobApi!.getCompletedJobs();
+      // Use job plannings count (already filtered by role)
+      totalOrders = jobPlannings.length;
+      print('Total Orders (Role-filtered): $totalOrders');
       
-      // Check if widget is still mounted before updating state
-      if (!mounted) return;
-      completedOrders = completedJobsList.length;
-      print('Completed Jobs Count: $completedOrders');
+      // Count active jobs based on job plannings
+      activeJobs = jobPlannings.where((j) => 
+        (j['status'] ?? '').toString().toUpperCase() == 'ACTIVE' ||
+        (j['jobDemand'] ?? '').toString().toLowerCase() == 'high'
+      ).length;
+      print('Active Jobs: $activeJobs');
       
-      inProgress = 0;
-      for (var job in planningList) {
-        if (job['steps'] is List) {
-          final steps = job['steps'] as List;
-          final dispatchStep = steps.firstWhere(
-                (step) => step['stepName'] == 'DispatchProcess',
-            orElse: () => null,
-          );
-          if (dispatchStep != null && dispatchStep['status'] != 'stop') {
-            inProgress++;
+      // Fetch completed jobs
+      try {
+        print('Fetching completed jobs...');
+        final completedJobs = await _jobApi!.getCompletedJobs();
+        print('Completed Jobs: ${completedJobs.length} items');
+        
+        if (!mounted) return;
+        completedOrders = completedJobs.length;
+      } catch (e) {
+        print('Error fetching completed jobs: $e');
+        completedOrders = 0;
+      }
+      
+      // Fetch job plannings for in-progress calculation
+      try {
+        print('Fetching job plannings for in-progress calculation...');
+        final planningList = await _jobApi!.getAllJobPlannings();
+        
+        inProgress = 0;
+        for (var job in planningList) {
+          if (job['steps'] is List) {
+            final steps = job['steps'] as List;
+            final dispatchStep = steps.firstWhere(
+                  (step) => step['stepName'] == 'DispatchProcess',
+              orElse: () => null,
+            );
+            if (dispatchStep != null && dispatchStep['status'] != 'stop') {
+              inProgress++;
+            }
           }
         }
+        print('In Progress: $inProgress');
+      } catch (e) {
+        print('Error fetching planning list: $e');
+        inProgress = 0;
       }
-      print('Fetching jobs...');
-      final jobs = await _jobApi!.getJobs();
-      print('Jobs List: ' + jobs.toString());
       
-      // Check if widget is still mounted before updating state
-      if (!mounted) return;
-      // Only count jobs where status == ACTIVE (case-insensitive)
-      activeJobs = jobs.where((j) => (j.status).toString().toUpperCase() == 'ACTIVE').length;
     } catch (e) {
       print('Error fetching status overview: ' + e.toString());
       
@@ -687,7 +708,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(width: 12),
-              const Expanded(child: SizedBox()),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => context.push('/flying-squad-dashboard'),
+                  child: _buildDepartmentCard(
+                    'Flying Squad',
+                    'Monitor all job steps and perform QC checks',
+                    Icons.flight_takeoff,
+                    Colors.purple,
+                  ),
+                ),
+              ),
             ],
           ),
         ],
@@ -733,6 +764,20 @@ class _HomeScreenState extends State<HomeScreen> {
         'icon': Icons.verified_outlined,
         'color': Colors.cyan,
         'onTap': () => context.push('/qc-dashboard'),
+      },
+      'qc_manager_flying': {
+        'title': 'QC Checks',
+        'description': 'Perform QC checks on all job steps',
+        'icon': Icons.flight_takeoff,
+        'color': Colors.purple,
+        'onTap': () => context.push('/flying-squad-dashboard'),
+      },
+      'flyingsquad': {
+        'title': 'Flying Squad',
+        'description': 'Monitor all job steps and perform QC checks',
+        'icon': Icons.flight_takeoff,
+        'color': Colors.purple,
+        'onTap': () => context.push('/flying-squad-dashboard'),
       },
     };
 

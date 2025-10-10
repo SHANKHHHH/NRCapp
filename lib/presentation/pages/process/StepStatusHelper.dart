@@ -22,6 +22,16 @@ class StepStatusHelper {
         return 'Work completed ✓';
       case StepStatus.paused:
         return 'Work paused - Click to resume or edit';
+      case StepStatus.hold:
+        // Enhanced text for hold status with better UX
+        if (step.type == StepType.paperStore) {
+          return 'Paper preparation paused - Click to resume work';
+        } else if (step.type == StepType.qc) {
+          return 'Quality check paused - Click to resume work';
+        } else if (step.type == StepType.dispatch) {
+          return 'Dispatch paused - Click to resume work';
+        }
+        return 'Work paused - Click to resume or edit';
     }
   }
 
@@ -37,6 +47,8 @@ class StepStatusHelper {
         return Colors.green[200]!;
       case StepStatus.paused:
         return Colors.blue[200]!;
+      case StepStatus.hold:
+        return Colors.orange[300]!;
     }
   }
 
@@ -75,6 +87,12 @@ class StepStatusHelper {
           color: Colors.blue,
           size: 24,
         );
+      case StepStatus.hold:
+        return Icon(
+          Icons.pause_circle_outlined,
+          color: Colors.orange[700],
+          size: 24,
+        );
     }
   }
 
@@ -90,6 +108,8 @@ class StepStatusHelper {
         return Colors.green[700]!;
       case StepStatus.paused:
         return Colors.blue;
+      case StepStatus.hold:
+        return Colors.orange[700]!;
     }
   }
 
@@ -98,6 +118,8 @@ class StepStatusHelper {
       return Icons.play_arrow;
     } else if (step.status == StepStatus.started || step.status == StepStatus.inProgress) {
       return Icons.edit;
+    } else if (step.status == StepStatus.hold) {
+      return Icons.play_circle_outline;
     } else if (step.status == StepStatus.completed) {
       return Icons.visibility;
     } else if (step.type == StepType.jobAssigned) {
@@ -111,6 +133,8 @@ class StepStatusHelper {
       return AppColors.maincolor;
     } else if (step.status == StepStatus.started || step.status == StepStatus.inProgress) {
       return AppColors.maincolor;
+    } else if (step.status == StepStatus.hold) {
+      return Colors.orange[700]!;
     } else if (step.status == StepStatus.completed && step.formData.isNotEmpty) {
       return Colors.grey[600]!;
     }

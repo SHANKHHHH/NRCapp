@@ -127,17 +127,26 @@ class _EditMachinesPageState extends State<EditMachinesPage> {
     final machineDetails = step['machineDetails'] as List<dynamic>? ?? [];
     
     Machine? selectedMachine;
-    if (machineDetails.isNotEmpty) {
-      final machineDetail = machineDetails.first;
+    List<Machine> selectedMachines = [];
+    
+    // Load all machines from existing data
+    for (final machineDetail in machineDetails) {
       final machineId = machineDetail['machineId'];
       if (machineId != null) {
-        selectedMachine = _findMachineById(machineId.toString());
+        final machine = _findMachineById(machineId.toString());
+        if (machine != null) {
+          selectedMachines.add(machine);
+          if (selectedMachine == null) {
+            selectedMachine = machine; // Set first machine as selectedMachine for compatibility
+          }
+        }
       }
     }
 
     final assignment = WorkStepAssignment(
       workStep: workStep,
       selectedMachine: selectedMachine,
+      selectedMachines: selectedMachines,
     );
 
     print('Created assignment: ${assignment.workStep.step}');

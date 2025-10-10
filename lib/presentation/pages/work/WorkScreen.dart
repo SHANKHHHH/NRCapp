@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nrc/constants/colors.dart';
 import '../../../data/models/Job.dart';
 import '../../../data/models/purchase_order.dart';
@@ -8,6 +9,8 @@ import '../job/JobStep.dart';
 import 'WorkDetailsScreen.dart';
 import '../../../data/datasources/job_api.dart';
 import '../../routes/UserRoleManager.dart';
+import '../../../core/services/dio_service.dart';
+import '../process/JobApiService.dart';
 
 class WorkScreen extends StatefulWidget {
   const WorkScreen({Key? key}) : super(key: key);
@@ -16,7 +19,7 @@ class WorkScreen extends StatefulWidget {
   State<WorkScreen> createState() => _WorkScreenState();
 }
 
-class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
+class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
   List<Map<String, dynamic>> jobPlannings = [];
   List<Map<String, dynamic>> filteredJobPlannings = [];
   bool _isLoading = true;
@@ -47,6 +50,7 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _blinkController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
@@ -62,6 +66,9 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
   Future<void> _initializePage() async {
     await UserRoleManager().loadUserRole();
     
+    // Clear all caches to prevent cross-user contamination
+    await _clearAllCaches();
+    
     // Check if widget is still mounted before setting state
     if (!mounted) return;
     setState(() {
@@ -71,8 +78,18 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      // Clear caches and refresh data when app becomes active again
+      _clearAllCaches().then((_) => _fetchAllJobPlannings());
+    }
+  }
+
+  @override
   void dispose() {
     // Cancel any ongoing operations to prevent setState calls after dispose
+    WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
     _blinkController.dispose();
     super.dispose();
@@ -112,6 +129,52 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
     });
   }
 
+  Future<void> _clearAllCaches() async {
+    print('DEBUG: Manual cache clear triggered...');
+    
+    // Clear JobApi cache (data cache only)
+    JobApi.clearCache();
+    print('DEBUG: Cleared JobApi cache');
+    
+    // Clear JobApiService cache
+    try {
+      final dio = DioService.instance;
+      final jobApi = JobApi(dio);
+      final jobApiService = JobApiService(jobApi);
+      jobApiService.invalidateJobCaches('ALL_JOBS');
+      print('DEBUG: Cleared JobApiService cache');
+    } catch (e) {
+      print('DEBUG: Error clearing JobApiService cache: $e');
+    }
+    
+    // Clear only data-related SharedPreferences, keep auth data
+    final prefs = await SharedPreferences.getInstance();
+    // Remove only data cache keys, keep authentication
+    await prefs.remove('cached_jobs');
+    await prefs.remove('cached_job_plannings');
+    await prefs.remove('cached_machines');
+    await prefs.remove('cached_users');
+    await prefs.remove('cached_dashboard');
+    await prefs.remove('cached_purchase_orders');
+    print('DEBUG: Cleared data cache, kept authentication');
+    
+    // Show success message
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Jobs reloaded successfully!'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+    
+    // Refresh the data immediately
+    await _fetchAllJobPlannings();
+    
+    print('DEBUG: Data cache cleared and refreshed.');
+  }
+
   Future<void> _fetchAllJobPlannings() async {
     // Check if widget is still mounted before setting state
     if (!mounted) return;
@@ -120,11 +183,43 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
       _error = null;
     });
     try {
-      final dio = Dio();
+      final dio = DioService.instance;
       final jobApi = JobApi(dio);
-      // Ensure fresh data from endpoint instead of cached data
+      // Force clear all caches to ensure fresh data
       JobApi.clearCache();
-      final plannings = await jobApi.getAllJobPlannings();
+      
+      // DEBUG: Clear all SharedPreferences cache
+      final prefs = await SharedPreferences.getInstance();
+      print('🔍 [Frontend] Clearing all cached data...');
+      print('🔍 [Frontend] Current user ID: ${await prefs.getString('userId')}');
+      print('🔍 [Frontend] Current access token: ${await prefs.getString('accessToken')}');
+      print('🔍 [Frontend] Current user role: ${await prefs.getString('userRole')}');
+      print('🔍 [Frontend] Current user roles: ${await prefs.getString('userRoles')}');
+      
+      // Clear ALL data caches, keep only authentication
+      await prefs.remove('cached_jobs');
+      await prefs.remove('cached_job_plannings');
+      await prefs.remove('cached_machines');
+      await prefs.remove('cached_users');
+      await prefs.remove('cached_dashboard');
+      await prefs.remove('cached_purchase_orders');
+      await prefs.remove('cached_activity_logs');
+      await prefs.remove('cached_status_overview');
+      print('🔍 [Frontend] Cleared all data cache, kept authentication');
+      
+      // Clear JobApiService cache as well
+      try {
+        final jobApiService = JobApiService(jobApi);
+        // Clear all caches in JobApiService
+        jobApiService.invalidateJobCaches('ALL_JOBS');
+        print('DEBUG: Cleared JobApiService cache');
+      } catch (e) {
+        print('DEBUG: Error clearing JobApiService cache: $e');
+      }
+      
+      // Show debug info
+      print('🔍 [Frontend] Data cache cleared, proceeding with fresh data fetch...');
+      final plannings = await jobApi.getAllJobPlanningsFresh();
 
       // Fetch statuses in small batches to avoid server overload
       Future<Map<String, String>> fetchStatusesInChunks(
@@ -153,71 +248,53 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
 
       final statuses = await fetchStatusesInChunks(plannings, 5);
 
-      // For specific operator roles, show only jobs where their target step is ready (planned/start)
+      // For specific operator roles, show all jobs assigned to them (backend already filters correctly)
+      // The backend filtering is sufficient - no need for additional frontend filtering
       Future<List<Map<String, dynamic>>> _filterPlanningsForOperatorRoles(
           List<Map<String, dynamic>> allPlannings) async {
-        final role = _userRole?.toLowerCase();
-        const Map<String, String> roleToTargetStepName = {
-          'corrugator': 'Corrugation',
-          'flutelaminator': 'FluteLaminateBoardConversion',
-          'pasting_operator': 'SideFlapPasting',
-          'punching_operator': 'Punching',
-          'printer': 'PrintingDetails',
-          'qc_manager': 'QualityDept',
-          'qc manager': 'QualityDept',
-          'dispatch_executive': 'DispatchProcess',
-          'dispatch executive': 'DispatchProcess',
-        };
-
-        if (role == null || !roleToTargetStepName.containsKey(role)) {
-          return allPlannings;
-        }
-
-        final String targetStep = roleToTargetStepName[role]!;
-
-        Future<Set<String>> eligibleJobNosInChunks(
-            List<Map<String, dynamic>> items, int chunkSize) async {
-          final Set<String> eligible = {};
-          for (int i = 0; i < items.length; i += chunkSize) {
-            final chunk = items.sublist(i, i + chunkSize > items.length ? items.length : i + chunkSize);
-            final results = await Future.wait(chunk.map((planning) async {
-              final nrcJobNo = planning['nrcJobNo']?.toString();
-              if (nrcJobNo == null) return null;
-              try {
-                final planningData = await jobApi.getJobPlanningStepsByNrcJobNo(nrcJobNo);
-                final steps = planningData?['steps'];
-                if (steps is List) {
-                  for (final s in steps) {
-                    if (s is Map) {
-                      final name = s['stepName']?.toString();
-                      final status = s['status']?.toString().toLowerCase();
-                      if (name == targetStep && (status == 'planned' || status == 'start')) {
-                        return nrcJobNo;
-                      }
-                    }
-                  }
-                }
-              } catch (_) {}
-              return null;
-            }));
-            for (final jobNo in results) {
-              if (jobNo != null) eligible.add(jobNo);
-            }
-          }
-          return eligible;
-        }
-
-        final eligibleNos = await eligibleJobNosInChunks(allPlannings, 5);
-        return allPlannings.where((p) => eligibleNos.contains(p['nrcJobNo']?.toString())).toList();
+        // Return all plannings as backend already handles proper filtering based on user role and machine access
+        return allPlannings;
       }
 
       final roleFilteredPlannings = await _filterPlanningsForOperatorRoles(plannings);
 
+      // Use only job plannings data (backend already filters by role)
+      // Don't fetch additional jobs as it returns unfiltered data (5921 jobs)
+      print('🔍 [Frontend] Using only job plannings data: ${roleFilteredPlannings.length} jobs');
+      
+      // Job plannings are already filtered by backend based on user role
+      
+      // Use job plannings directly (already filtered by backend)
+      List<Map<String, dynamic>> finalJobList = [];
+      List<Map<String, dynamic>> highDemandJobs = [];
+      List<Map<String, dynamic>> regularJobs = [];
+      
+      for (var planning in roleFilteredPlannings) {
+        final nrcJobNo = planning['nrcJobNo'] as String;
+        final jobDemand = planning['jobDemand'] as String?;
+        print('🔍 [Frontend] Processing planning: $nrcJobNo, demand: $jobDemand');
+        
+        // Add job status
+        planning['status'] = statuses[nrcJobNo] ?? 'UNKNOWN';
+        
+        // Separate high-demand jobs from regular jobs
+        if (jobDemand?.toLowerCase() == 'high') {
+          highDemandJobs.add(planning);
+          print('🔍 [Frontend] High-demand job found: $nrcJobNo');
+        } else {
+          regularJobs.add(planning);
+        }
+      }
+      
+      // Prioritize high-demand jobs at the top
+      finalJobList = [...highDemandJobs, ...regularJobs];
+      print('🔍 [Frontend] Total jobs: ${finalJobList.length}, High-demand: ${highDemandJobs.length}');
+
       // Check if widget is still mounted before setting state
       if (!mounted) return;
       setState(() {
-        jobPlannings = roleFilteredPlannings;
-        filteredJobPlannings = roleFilteredPlannings; // Initialize filtered list
+        jobPlannings = finalJobList;
+        filteredJobPlannings = finalJobList; // Initialize filtered list
         jobStatuses = statuses;
         _isLoading = false;
       });
@@ -242,6 +319,12 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
         elevation: 0,
         centerTitle: true,
         actions: [
+          // Debug clear cache button
+          IconButton(
+            icon: const Icon(Icons.clear_all, color: Colors.white),
+            onPressed: _isLoading ? null : _clearAllCaches,
+            tooltip: 'Clear All Caches',
+          ),
           IconButton(
             icon: _isLoading
                 ? const SizedBox(
@@ -253,7 +336,7 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
               ),
             )
                 : const Icon(Icons.refresh),
-            onPressed: _isLoading ? null : _fetchAllJobPlannings,
+            onPressed: _isLoading ? null : _clearAllCaches,
             tooltip: 'Reload',
           ),
         ],
@@ -348,6 +431,12 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin {
     final nrcJobNo = jobPlanning['nrcJobNo']?.toString() ?? '';
     final status = jobStatuses[nrcJobNo] ?? '';
     final isHold = status == 'HOLD';
+    final jobDemand = jobPlanning['jobDemand']?.toString() ?? '';
+    
+    // Debug logging for high-demand jobs
+    if (jobDemand.toLowerCase() == 'high') {
+      print('🔍 [Frontend] High-demand job card: $nrcJobNo, demand: $jobDemand');
+    }
 
     return Card
       (

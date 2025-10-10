@@ -78,6 +78,18 @@ class _JobListPageState extends State<JobListPage> {
         _jobs = activeJobs;
         _isLoading = false;
       });
+      
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Jobs reloaded successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      
       // Re-apply current filters/search on fresh data
       _applyFilters();
     } catch (e) {

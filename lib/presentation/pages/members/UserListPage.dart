@@ -662,26 +662,8 @@ class _UserListPageState extends State<UserListPage> {
   }
 
   void _showErrorDialog(String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: const [
-            Icon(Icons.error, color: Colors.red),
-            SizedBox(width: 8),
-            Text('Error', style: TextStyle(color: Colors.red)),
-          ],
-        ),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
+    // Error logging only - no UI display
+    print('Error: $message');
   }
 
   @override

@@ -3,6 +3,7 @@ import 'package:nrc/data/models/Job.dart';
 
 import '../../../data/datasources/job_api.dart';
 import '../../../data/models/job_step_models.dart';
+import '../../../utils/field_editability.dart';
 
 class JobApiService {
   final JobApi _jobApi;
@@ -81,6 +82,25 @@ class JobApiService {
     if (stepNo != null) keys.add(_keyPlanningStep(jobNumber, stepNo));
     if (stepType != null) keys.add(_keyStepType(jobNumber, stepType));
     _invalidateKeys(keys);
+    
+    print('🔄 Cache invalidated for job: $jobNumber, stepNo: $stepNo, stepType: $stepType');
+  }
+
+  /// Clear all caches for a specific job (more aggressive cache clearing)
+  void clearAllJobCaches(String jobNumber) {
+    final keys = <String>{
+      _keyPlanningSteps(jobNumber),
+      _keyPaperStore(jobNumber),
+      _keyJobDetails(jobNumber),
+    };
+    
+    // Clear all step-specific caches for this job
+    for (int i = 1; i <= 9; i++) {
+      keys.add(_keyPlanningStep(jobNumber, i));
+    }
+    
+    _invalidateKeys(keys);
+    print('🧹 Cleared all caches for job: $jobNumber');
   }
 
   /// Helper: return current time in IST (UTC+05:30) with milliseconds and proper offset
@@ -138,6 +158,56 @@ class JobApiService {
     }
   }
 
+  /// Get Paper Store step by job number with editability information
+  Future<List<StepDataWithEditability>> getPaperStoreStepByJobWithEditability(String jobNumber) async {
+    try {
+      final response = await _jobApi.getPaperStoreStepByJobWithEditability(jobNumber);
+      return StepDataWithEditability.fromBackendResponseList(response);
+    } catch (e) {
+      print('Error getting paper store step with editability: $e');
+      return [];
+    }
+  }
+
+  /// Get step details by job number with editability information
+  Future<List<StepDataWithEditability>> getStepDetailsWithEditability(String jobNumber, StepType stepType) async {
+    try {
+      List<Map<String, dynamic>> response;
+      switch (stepType) {
+        case StepType.paperStore:
+          response = await _jobApi.getPaperStoreStepByJobWithEditability(jobNumber);
+          break;
+        case StepType.printing:
+          response = await _jobApi.getPrintingDetailsByJobWithEditability(jobNumber);
+          break;
+        case StepType.corrugation:
+          response = await _jobApi.getCorrugationByJobWithEditability(jobNumber);
+          break;
+        case StepType.fluteLamination:
+          response = await _jobApi.getFluteLaminationByJobWithEditability(jobNumber);
+          break;
+        case StepType.punching:
+          response = await _jobApi.getPunchingByJobWithEditability(jobNumber);
+          break;
+        case StepType.flapPasting:
+          response = await _jobApi.getSideFlapPastingByJobWithEditability(jobNumber);
+          break;
+        case StepType.qc:
+          response = await _jobApi.getQualityDeptByJobWithEditability(jobNumber);
+          break;
+        case StepType.dispatch:
+          response = await _jobApi.getDispatchProcessByJobWithEditability(jobNumber);
+          break;
+        default:
+          return [];
+      }
+      return StepDataWithEditability.fromBackendResponseList(response);
+    } catch (e) {
+      print('Error getting step details with editability for $stepType: $e');
+      return [];
+    }
+  }
+
   /// Fetch job details
   Future<List<Job>?> fetchJobDetails(String jobNumber) async {
     final key = _keyJobDetails(jobNumber);
@@ -145,6 +215,16 @@ class JobApiService {
       return await _getOrFetchJobList(key, () => _jobApi.getJobsByNo(jobNumber));
     } catch (e) {
       print('Error fetching job details: $e');
+      return null;
+    }
+  }
+
+  /// Fetch job details with comprehensive PO details
+  Future<Map<String, dynamic>?> fetchJobWithPODetails(String jobNumber) async {
+    try {
+      return await _jobApi.getJobWithPODetails(jobNumber);
+    } catch (e) {
+      print('Error fetching job with PO details: $e');
       return null;
     }
   }
@@ -167,8 +247,6 @@ class JobApiService {
     }
 
     final body = {
-      "jobStepId": jobStepId, // Use the ID from job planning step details
-      'jobNrcJobNo': jobNumber,
       'status': 'in_progress',
       'sheetSize': jobDetails['boardSize'] ?? '',
       'quantity': int.tryParse(jobDetails['noUps']?.toString() ?? '0') ?? 0,
@@ -176,22 +254,53 @@ class JobApiService {
       'issuedDate': _formatDateWithMilliseconds(),
     };
 
-    await _jobApi.postPaperStore(body);
+    // Use PUT to update existing Paper Store record instead of POST to create new one
+    await _jobApi.putPaperStore(jobNumber, body);
   }
   /// Update job planning step status and dates
-  Future<void> updateJobPlanningStepComplete(String jobNumber, int stepNo, String status, {String? user}) async {
+  Future<void> updateJobPlanningStepComplete(String jobNumber, int stepNo, String status, {String? user, Map<String, dynamic>? additionalFields}) async {
     try {
+      // Get step details to determine step type
+      final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
+      final stepName = stepDetails?['stepName']?.toString().toLowerCase() ?? '';
+      
+      // Prepare additional fields for validation based on step type
+      Map<String, dynamic> fieldsToSend = {
+        'user': user ?? 'NRC015',
+      };
+      
+      // If additionalFields are provided, use them instead of defaults
+      if (additionalFields != null) {
+        fieldsToSend.addAll(additionalFields);
+      } else {
+        // Add step-specific required fields as defaults
+        if (stepName.contains('qualitydept') || stepName.contains('quality')) {
+          // QualityDept requires passQuantity and checkedBy
+          fieldsToSend['passQuantity'] = 1000; // Default pass quantity
+          fieldsToSend['checkedBy'] = user ?? 'System';
+        } else if (stepName.contains('dispatchprocess') || stepName.contains('dispatch')) {
+          // DispatchProcess requires noOfBoxes and dispatchNo
+          fieldsToSend['noOfBoxes'] = 100; // Default number of boxes
+          fieldsToSend['dispatchNo'] = 'DISP-${DateTime.now().millisecondsSinceEpoch}';
+        } else {
+          // Other steps require quantity, oprName, size
+          fieldsToSend['quantity'] = 1000; // Default quantity
+          fieldsToSend['oprName'] = user ?? 'System'; // Use user as operator name
+          fieldsToSend['size'] = 'A4'; // Default size for PaperStore
+        }
+      }
+      
       // If user is provided, update with user information
       if (user != null && user.isNotEmpty) {
         await _jobApi.updateJobPlanningStepFields(jobNumber, stepNo, {
           'status': status,
           'user': user,
+          ...fieldsToSend,
         });
       } else {
-        await _jobApi.updateJobPlanningStepComplete(jobNumber, stepNo, status);
+        await _jobApi.updateJobPlanningStepComplete(jobNumber, stepNo, status, additionalFields: fieldsToSend);
       }
 
-      final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
       if (status == 'start') {
         final postBody = {
           'jobStepId': stepDetails!['id'],
@@ -301,30 +410,103 @@ class JobApiService {
 
   /// Post step details for different step types
   Future<void> putStepDetails(StepType stepType, String jobNumber, Map<String, String> formData, int stepNo) async {
-    switch (stepType) {
-      case StepType.printing:
-        await _putPrintingDetails(jobNumber, formData, stepNo); // uses PUT
-        break;
-      case StepType.corrugation:
-        await _putCorrugationDetails(jobNumber, formData, stepNo); // uses PUT
-        break;
-      case StepType.fluteLamination:
-        await _putFluteLaminationDetails(jobNumber, formData, stepNo); // uses PUT
-        break;
-      case StepType.punching:
-        await _putPunchingDetails(jobNumber, formData, stepNo); // uses PUT
-        break;
-      case StepType.flapPasting:
-        await _putFlapPastingDetails(jobNumber, formData, stepNo); // uses PUT
-        break;
-      case StepType.qc:
-        await _putQCDetails(jobNumber, formData, stepNo); // uses PUT
-        break;
-      case StepType.dispatch:
-        await _putDispatchDetails(jobNumber, formData, stepNo); // uses PUT
-        break;
-      default:
-        break;
+    // Instead of calling separate step-specific APIs, send form data directly to job planning step completion
+    await _putJobPlanningStepFormData(jobNumber, stepNo, formData);
+  }
+
+  /// Send form data directly to job planning step completion endpoint
+  Future<void> _putJobPlanningStepFormData(String jobNumber, int stepNo, Map<String, String> formData) async {
+    try {
+      print('[_putJobPlanningStepFormData] Sending form data to job planning step completion');
+      print('Job Number: $jobNumber, Step No: $stepNo');
+      print('Form Data: $formData');
+      
+      // Get step details to determine step type
+      final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
+      final stepName = stepDetails?['stepName']?.toString() ?? '';
+      
+      // Map frontend form data to backend expected field names
+      Map<String, dynamic> requestBody = {
+        'status': 'stop',
+        'user': 'NRC015', // Default user
+      };
+      
+        // Map form data based on step type
+        if (stepName.toLowerCase().contains('paperstore')) {
+          requestBody['quantity'] = formData['Required Qty'] ?? formData['quantity'];
+          requestBody['available'] = formData['Available Qty'] ?? formData['available'];
+          requestBody['sheetSize'] = formData['Sheet Size'] ?? formData['sheetSize'] ?? 'A4';
+          requestBody['mill'] = formData['mill'] ?? formData['Mill'] ?? '';
+          requestBody['gsm'] = formData['GSM'] ?? formData['gsm'] ?? '';
+          requestBody['quality'] = formData['quality'] ?? formData['Quality'] ?? '';
+          requestBody['extraMargin'] = formData['extraMargin'] ?? formData['Extra Margin'] ?? '';
+          requestBody['issuedDate'] = formData['Issue Date'] ?? formData['issuedDate'];
+          // QC fields are only updated by Flying Squad, not by regular operators
+        } else if (stepName.toLowerCase().contains('printing')) {
+        requestBody['quantity'] = formData['Quantity OK'] ?? formData['quantity'];
+        requestBody['wastage'] = formData['Wastage'] ?? formData['wastage'];
+        requestBody['noOfColours'] = formData['Colors Used'] ?? formData['noOfColours'];
+        requestBody['inksUsed'] = formData['Inks Used'] ?? formData['inksUsed'];
+        requestBody['coatingType'] = formData['Coating Type'] ?? formData['coatingType'];
+        requestBody['separateSheets'] = formData['Separate Sheets'] ?? formData['separateSheets'];
+        requestBody['extraSheets'] = formData['Extra Sheets'] ?? formData['extraSheets'];
+        requestBody['remarks'] = formData['Remarks'] ?? formData['remarks'];
+        // Machine, operator, date, shift, and QC fields are auto-populated, not user input
+      } else if (stepName.toLowerCase().contains('corrugation')) {
+        requestBody['quantity'] = formData['Sheets Count'] ?? formData['quantity'];
+        requestBody['size'] = formData['Size'] ?? formData['size'];
+        requestBody['gsm1'] = formData['GSM1'] ?? formData['gsm1'];
+        requestBody['gsm2'] = formData['GSM2'] ?? formData['gsm2'];
+        requestBody['flute'] = formData['Flute Type'] ?? formData['flute'];
+        requestBody['remarks'] = formData['Remarks'] ?? formData['remarks'];
+        // Machine, operator, date, shift, and QC fields are auto-populated, not user input
+      } else if (stepName.toLowerCase().contains('flute')) {
+        requestBody['quantity'] = formData['OK Quantity'] ?? formData['quantity'];
+        requestBody['film'] = formData['Film Type'] ?? formData['film'];
+        requestBody['adhesive'] = formData['Adhesive'] ?? formData['adhesive'];
+        requestBody['wastage'] = formData['Wastage'] ?? formData['wastage'];
+        // Machine, operator, date, shift, and QC fields are auto-populated, not user input
+      } else if (stepName.toLowerCase().contains('punching') || stepName.toLowerCase().contains('die cutting')) {
+        requestBody['quantity'] = formData['OK Quantity'] ?? formData['quantity'];
+        requestBody['die'] = formData['Die Used'] ?? formData['die'];
+        requestBody['wastage'] = formData['Wastage'] ?? formData['wastage'];
+        requestBody['remarks'] = formData['Remarks'] ?? formData['remarks'];
+        // Machine, operator, date, shift, and QC fields are auto-populated, not user input
+      } else if (stepName.toLowerCase().contains('flap')) {
+        requestBody['quantity'] = formData['Quantity'] ?? formData['quantity'];
+        requestBody['adhesive'] = formData['Adhesive'] ?? formData['adhesive'];
+        requestBody['wastage'] = formData['Wastage'] ?? formData['wastage'];
+        requestBody['remarks'] = formData['Remarks'] ?? formData['remarks'];
+        // Machine, operator, date, shift, and QC fields are auto-populated, not user input
+      } else if (stepName.toLowerCase().contains('quality')) {
+        requestBody['passQuantity'] = formData['Pass Quantity'] ?? formData['passQuantity'];
+        requestBody['rejectedQty'] = formData['Reject Quantity'] ?? formData['rejectedQty'];
+        requestBody['reasonForRejection'] = formData['Reason for Rejection'] ?? formData['reasonForRejection'];
+        requestBody['remarks'] = formData['Remarks'] ?? formData['remarks'];
+        // Machine, operator, date, shift, and QC fields are auto-populated, not user input
+      } else if (stepName.toLowerCase().contains('dispatch')) {
+        requestBody['noOfBoxes'] = formData['No of Boxes'] ?? formData['noOfBoxes'];
+        requestBody['dispatchNo'] = formData['Dispatch No'] ?? formData['dispatchNo'] ?? 'DISP-${DateTime.now().millisecondsSinceEpoch}';
+        requestBody['dispatchDate'] = formData['Dispatch Date'] ?? formData['dispatchDate'];
+        requestBody['balanceQty'] = formData['Balance Qty'] ?? formData['balanceQty'];
+        requestBody['remarks'] = formData['Remarks'] ?? formData['remarks'];
+        // Machine, operator, date, shift, and QC fields are auto-populated, not user input
+      } else {
+        // Default mapping for unknown steps
+        requestBody['quantity'] = formData['quantity'];
+        requestBody['remarks'] = formData['remarks'];
+        // Machine, operator, date, shift, and QC fields are auto-populated, not user input
+      }
+      
+      print('[_putJobPlanningStepFormData] Mapped request body: $requestBody');
+      
+      // Send directly to job planning step endpoint
+      await _jobApi.updateJobPlanningStepFields(jobNumber, stepNo, requestBody);
+      
+      print('[_putJobPlanningStepFormData] Successfully sent form data to backend');
+    } catch (e) {
+      print('[_putJobPlanningStepFormData] Error sending form data: $e');
+      rethrow;
     }
   }
 
@@ -362,6 +544,8 @@ class JobApiService {
 
   Future<void> _putCorrugationDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
     print("Comes to Corrugation");
+    print('[_putCorrugationDetails] DEBUG: jobNumber parameter = "$jobNumber"');
+    print('[_putCorrugationDetails] DEBUG: stepNo parameter = $stepNo');
     final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
 
     print("Steps Details will come here");
@@ -396,6 +580,7 @@ class JobApiService {
     print("Corrugation Details Body:");
     print(body);
 
+    print('[_putCorrugationDetails] DEBUG: About to call _jobApi.putCorrugationDetails with jobNumber = "$jobNumber"');
     await _jobApi.putCorrugationDetails(body,jobNumber);
     invalidateJobCaches(jobNumber, stepNo: stepNo, stepType: StepType.corrugation);
   }
@@ -485,8 +670,9 @@ class JobApiService {
       "jobStepId": jobStepId,
       "status": "accept",
       "date": _formatDateWithMilliseconds(),
-      "checkedBy": formData['Checked By'] ?? '',
-      "quantity": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
+      "checkedBy": formData['Checked By'] ?? formData['Emp Id'] ?? 'System',
+      "passQuantity": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
+      "quantity": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0, // Keep for backward compatibility
       "rejectedQty": int.tryParse(formData['Reject Quantity'] ?? '0') ?? 0,
       "reasonForRejection": formData['Reason for Rejection'].toString() ?? '',
       "remarks": formData['Remarks'] ?? '',
@@ -525,28 +711,34 @@ class JobApiService {
   }
 
   Future<void> _putDispatchDetails(String jobNumber, Map<String, String> formData, int stepNo) async {
-    print("Comes to FlapPasting");
+    print("Comes to Dispatch");
     final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
 
     print("Steps Details will come here");
     if (stepDetails == null) {
-      throw Exception('Failed to get job planning step details for Corrugation Store');
+      throw Exception('Failed to get job planning step details for Dispatch');
     }
 
     final jobStepId = stepDetails['id'];
-    print("FlapPasting job step number is $jobStepId");
+    print("Dispatch job step number is $jobStepId");
+    print('JobApiService - Dispatch formData received:');
+    print('Qty Sheet: ${formData['Qty Sheet']}');
+    print('Full formData: $formData');
+    
     final body = {
       "jobNrcJobNo": jobNumber,
       "jobStepId": jobStepId,
       "status": "accept",
       "date": _formatDateWithMilliseconds(),
-      "operatorName": formData['Operator Name'] ?? '',
-      "quantity": int.tryParse(formData['Quantity'] ?? '0') ?? 0,
-      "dispatchNo": formData['Dispatch No'] ?? '',
+      "operatorName": formData['Operator Name'] ?? formData['Emp Id'] ?? 'System',
+      "quantity": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
+      "noOfBoxes": int.tryParse(formData['No of Boxes'] ?? '100') ?? 100, // Required field for validation
+      "dispatchNo": formData['Dispatch No'] ?? 'DISP-${DateTime.now().millisecondsSinceEpoch}',
       "dispatchDate": _formatDateWithMilliseconds(),
       "balanceQty": int.tryParse(formData['Balance Qty'] ?? '0') ?? 0,
       "remarks": formData['Remarks'] ?? '',
     };
+    print('Dispatch body: $body');
     await _jobApi.putDispatchDetails(body,jobNumber);
     invalidateJobCaches(jobNumber, stepNo: stepNo, stepType: StepType.dispatch);
   }
@@ -577,6 +769,8 @@ class JobApiService {
         return _extractStatus(await _jobApi.getFluteLaminationDetails(jobNumber));
       case StepType.punching:
         return _extractStatus(await _jobApi.getPunchingDetails(jobNumber));
+      case StepType.dieCutting:
+        return _extractStatus(await _jobApi.getPunchingDetails(jobNumber)); // uses same API as punching
       case StepType.flapPasting:
         return _extractStatus(await _jobApi.getFlapPastingDetails(jobNumber));
       case StepType.qc:
@@ -606,6 +800,11 @@ class JobApiService {
   Future<Map<String, dynamic>?> getPunchingDetails(String jobNumber) async {
     final key = _keyStepType(jobNumber, StepType.punching);
     return await _getOrFetchMap(key, () => _jobApi.getPunchingDetails(jobNumber));
+  }
+
+  Future<Map<String, dynamic>?> getDieCuttingDetails(String jobNumber) async {
+    final key = _keyStepType(jobNumber, StepType.dieCutting);
+    return await _getOrFetchMap(key, () => _jobApi.getPunchingDetails(jobNumber)); // uses same API as punching
   }
 
   Future<Map<String, dynamic>?> getFlapPastingDetails(String jobNumber) async {
@@ -656,6 +855,242 @@ class JobApiService {
       return null;
     }
   }
+
+  /// Hold PaperStore step with remarks
+  Future<Map<String, dynamic>?> holdPaperStoreStep(String jobNumber, String remarks) async {
+    try {
+      final result = await _jobApi.holdPaperStoreStep(jobNumber, remarks);
+      // Clear cache to ensure fresh data on next fetch
+      _clearCacheForJob(jobNumber);
+      return result;
+    } catch (e) {
+      print('Error holding PaperStore step: $e');
+      return null;
+    }
+  }
+
+  /// Resume PaperStore step with remarks
+  Future<Map<String, dynamic>?> resumePaperStoreStep(String jobNumber, String remarks) async {
+    try {
+      final result = await _jobApi.resumePaperStoreStep(jobNumber, remarks);
+      // Clear cache to ensure fresh data on next fetch
+      _clearCacheForJob(jobNumber);
+      return result;
+    } catch (e) {
+      print('Error resuming PaperStore step: $e');
+      return null;
+    }
+  }
+
+  /// Clear all caches for a specific job
+  void _clearCacheForJob(String jobNumber) {
+    final keysToRemove = _cache.keys.where((key) => key.contains(jobNumber)).toList();
+    for (final key in keysToRemove) {
+      _cache.remove(key);
+    }
+  }
+
+  /// Hold any step with remarks
+  Future<Map<String, dynamic>?> holdStep(String stepType, String jobNumber, String remarks) async {
+    try {
+      final result = await _jobApi.holdStep(stepType, jobNumber, remarks);
+      // Clear cache to ensure fresh data on next fetch
+      _clearCacheForJob(jobNumber);
+      return result;
+    } catch (e) {
+      print('Error holding $stepType step: $e');
+      return null;
+    }
+  }
+
+  /// Resume any step with remarks
+  Future<Map<String, dynamic>?> resumeStep(String stepType, String jobNumber, String remarks) async {
+    try {
+      final result = await _jobApi.resumeStep(stepType, jobNumber, remarks);
+      // Clear cache to ensure fresh data on next fetch
+      _clearCacheForJob(jobNumber);
+      return result;
+    } catch (e) {
+      print('Error resuming $stepType step: $e');
+      return null;
+    }
+  }
+
+  /// Update status for any step type (generic status update)
+  Future<Map<String, dynamic>?> updateStepStatusGeneric(String stepType, String jobNumber, String status, {String? remarks}) async {
+    try {
+      final result = await _jobApi.updateStepStatusGeneric(stepType, jobNumber, status, remarks: remarks);
+      // Clear cache to ensure fresh data on next fetch
+      _clearCacheForJob(jobNumber);
+      return result;
+    } catch (e) {
+      print('Error updating $stepType step status to $status: $e');
+      return null;
+    }
+  }
+
+  // ===== MACHINE-SPECIFIC WORK METHODS =====
+
+  /// Get available machines for a job step
+  Future<Map<String, dynamic>?> getAvailableMachines(String nrcJobNo, int stepNo) async {
+    try {
+      final result = await _jobApi.getAvailableMachines(nrcJobNo, stepNo);
+      return result;
+    } catch (e) {
+      print('Error getting available machines for step $stepNo: $e');
+      return null;
+    }
+  }
+
+  /// Start work on a specific machine
+  Future<Map<String, dynamic>?> startWorkOnMachine(String nrcJobNo, int stepNo, String machineId, {Map<String, dynamic>? formData}) async {
+    try {
+      final result = await _jobApi.startWorkOnMachine(nrcJobNo, stepNo, machineId, formData: formData);
+      // Clear cache to ensure fresh data on next fetch
+      _clearCacheForJob(nrcJobNo);
+      return result;
+    } catch (e) {
+      print('Error starting work on machine $machineId: $e');
+      return null;
+    }
+  }
+
+  /// Start urgent job work (auto-assigns user's machine)
+  Future<Map<String, dynamic>?> startUrgentJobWork(String nrcJobNo, int stepNo, {Map<String, dynamic>? formData}) async {
+    try {
+      final result = await _jobApi.startUrgentJobWork(nrcJobNo, stepNo, formData: formData);
+      // Clear cache to ensure fresh data on next fetch
+      _clearCacheForJob(nrcJobNo);
+      return result;
+    } catch (e) {
+      print('Error starting urgent job work for step $stepNo: $e');
+      return null;
+    }
+  }
+
+  /// Complete work on a specific machine
+  Future<Map<String, dynamic>?> completeWorkOnMachine(String nrcJobNo, int stepNo, String machineId, {Map<String, dynamic>? formData}) async {
+    try {
+      final result = await _jobApi.completeWorkOnMachine(nrcJobNo, stepNo, machineId, formData: formData);
+      // Clear cache to ensure fresh data on next fetch
+      _clearCacheForJob(nrcJobNo);
+      return result;
+    } catch (e) {
+      print('Error completing work on machine $machineId: $e');
+      return null;
+    }
+  }
+
+  /// Hold work on a specific machine
+  Future<Map<String, dynamic>?> holdWorkOnMachine(String nrcJobNo, int stepNo, String machineId, {Map<String, dynamic>? formData, String? holdReason}) async {
+    try {
+      final result = await _jobApi.holdWorkOnMachine(nrcJobNo, stepNo, machineId, formData: formData, holdReason: holdReason);
+      // Clear cache to ensure fresh data on next fetch
+      _clearCacheForJob(nrcJobNo);
+      return result;
+    } catch (e) {
+      print('Error holding work on machine $machineId: $e');
+      return null;
+    }
+  }
+
+  /// Resume work on a specific machine
+  Future<Map<String, dynamic>?> resumeWorkOnMachine(String nrcJobNo, int stepNo, String machineId, {Map<String, dynamic>? formData}) async {
+    try {
+      final result = await _jobApi.resumeWorkOnMachine(nrcJobNo, stepNo, machineId, formData: formData);
+      // Clear cache to ensure fresh data on next fetch
+      _clearCacheForJob(nrcJobNo);
+      return result;
+    } catch (e) {
+      print('Error resuming work on machine $machineId: $e');
+      return null;
+    }
+  }
+
+  /// Stop work on a specific machine
+  Future<Map<String, dynamic>?> stopWorkOnMachine(String nrcJobNo, int stepNo, String machineId, {Map<String, dynamic>? formData}) async {
+    try {
+      final result = await _jobApi.stopWorkOnMachine(nrcJobNo, stepNo, machineId, formData: formData);
+      // Clear cache to ensure fresh data on next fetch
+      _clearCacheForJob(nrcJobNo);
+      return result;
+    } catch (e) {
+      print('Error stopping work on machine $machineId: $e');
+      return null;
+    }
+  }
+
+  /// Get machine work status for a job step
+  Future<Map<String, dynamic>?> getMachineWorkStatus(String nrcJobNo, int stepNo) async {
+    try {
+      final result = await _jobApi.getMachineWorkStatus(nrcJobNo, stepNo);
+      return result;
+    } catch (e) {
+      print('Error getting machine work status for step $stepNo: $e');
+      return null;
+    }
+  }
+
+  /// Get all machines as raw data
+  Future<List<Map<String, dynamic>>> getMachinesRaw() async {
+    try {
+      return await _jobApi.getMachinesRaw();
+    } catch (e) {
+      print('Error getting machines raw: $e');
+      return [];
+    }
+  }
+
+  /// Get user machines
+  Future<List<Map<String, dynamic>>> getUserMachines() async {
+    try {
+      return await _jobApi.getUserMachines();
+    } catch (e) {
+      print('Error getting user machines: $e');
+      return [];
+    }
+  }
+
+  /// Get machine status
+  Future<String?> getMachineStatus(String machineId) async {
+    try {
+      return await _jobApi.getMachineStatus(machineId);
+    } catch (e) {
+      print('Error getting machine status for $machineId: $e');
+      return null;
+    }
+  }
+
+  /// Start work without machine for non-machine steps
+  Future<Map<String, dynamic>> startWorkWithoutMachine(String endpoint) async {
+    try {
+      return await _jobApi.startWorkWithoutMachine(endpoint);
+    } catch (e) {
+      print('Error starting work without machine: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Hold work for non-machine steps
+  Future<Map<String, dynamic>> holdWork(String endpoint, Map<String, dynamic> data) async {
+    try {
+      return await _jobApi.holdWork(endpoint, data);
+    } catch (e) {
+      print('Error holding work: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Resume work for non-machine steps
+  Future<Map<String, dynamic>> resumeWork(String endpoint) async {
+    try {
+      return await _jobApi.resumeWork(endpoint);
+    } catch (e) {
+      print('Error resuming work: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
 }
 
 class _CacheEntry<T> {

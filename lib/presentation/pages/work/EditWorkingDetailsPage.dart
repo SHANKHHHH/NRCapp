@@ -11,6 +11,7 @@ import '../../../data/models/WorkStepData.dart';
 import '../../../data/models/job_step_models.dart';
 import '../process/JobApiService.dart';
 import 'package:go_router/go_router.dart';
+import '../../../utils/field_editability.dart';
 
 class EditWorkingDetailsPage extends StatefulWidget {
   const EditWorkingDetailsPage({Key? key}) : super(key: key);
@@ -743,75 +744,89 @@ class _EditWorkingDetailsPageState extends State<EditWorkingDetailsPage> {
     final Map<String, String> formData = {};
     
     switch (stepName) {
+      case 'PaperStore':
+        // Map database fields to form fields for Paper Store
+        formData['Sheet Size'] = updatedDetails['sheetSize']?.toString() ?? '';
+        formData['Required Qty'] = updatedDetails['quantity']?.toString() ?? '';
+        formData['Available Qty'] = updatedDetails['available']?.toString() ?? '';
+        formData['Issue Date'] = updatedDetails['issuedDate']?.toString() ?? '';
+        formData['GSM'] = updatedDetails['gsm']?.toString() ?? '';
+        formData['Mill'] = updatedDetails['mill']?.toString() ?? '';
+        formData['Quality'] = updatedDetails['quality']?.toString() ?? '';
+        formData['Extra Margin'] = updatedDetails['extraMargin']?.toString() ?? '';
+        formData['Remarks'] = updatedDetails['remarks']?.toString() ?? '';
+        // QC fields are only updated by Flying Squad, not by regular operators
+        break;
+        
       case 'PrintingDetails':
         // Map database fields to form fields for Printing
-        formData['Qty Sheet'] = updatedDetails['quantity']?.toString() ?? '';
-        formData['Operator Name'] = updatedDetails['oprName']?.toString() ?? '';
+        formData['Quantity OK'] = updatedDetails['quantity']?.toString() ?? '';
+        formData['Colors Used'] = updatedDetails['noOfColours']?.toString() ?? '';
         formData['Wastage'] = updatedDetails['wastage']?.toString() ?? '';
-        formData['Machine'] = updatedDetails['machine']?.toString() ?? '';
+        formData['Inks Used'] = updatedDetails['inksUsed']?.toString() ?? '';
+        formData['Coating Type'] = updatedDetails['coatingType']?.toString() ?? '';
+        formData['Separate Sheets'] = updatedDetails['separateSheets']?.toString() ?? '';
+        formData['Extra Sheets'] = updatedDetails['extraSheets']?.toString() ?? '';
+        formData['Remarks'] = updatedDetails['remarks']?.toString() ?? '';
+        // Machine and QC fields are auto-populated, not user input
         break;
         
       case 'Corrugation':
         // Map database fields to form fields for Corrugation
-        formData['Qty Sheet'] = updatedDetails['quantity']?.toString() ?? '';
-        formData['Shift'] = updatedDetails['shift']?.toString() ?? '';
-        formData['Operator Name'] = updatedDetails['oprName']?.toString() ?? '';
-        formData['Machine No'] = updatedDetails['machineNo']?.toString() ?? '';
+        formData['Sheets Count'] = updatedDetails['quantity']?.toString() ?? '';
         formData['Size'] = updatedDetails['size']?.toString() ?? '';
-        formData['GSM 1'] = updatedDetails['gsm1']?.toString() ?? '';
-        formData['GSM 2'] = updatedDetails['gsm2']?.toString() ?? '';
+        formData['GSM1'] = updatedDetails['gsm1']?.toString() ?? '';
+        formData['GSM2'] = updatedDetails['gsm2']?.toString() ?? '';
         formData['Flute Type'] = updatedDetails['flute']?.toString() ?? '';
         formData['Remarks'] = updatedDetails['remarks']?.toString() ?? '';
-        formData['QC Check Sign By'] = updatedDetails['qcCheckSignBy']?.toString() ?? '';
+        // Machine and QC fields are auto-populated, not user input
         break;
         
       case 'FluteLaminateBoardConversion':
         // Map database fields to form fields for Flute Lamination
-        formData['Qty Sheet'] = updatedDetails['quantity']?.toString() ?? '';
-        formData['Shift'] = updatedDetails['shift']?.toString() ?? '';
-        formData['Operator Name'] = updatedDetails['operatorName']?.toString() ?? '';
+        formData['OK Quantity'] = updatedDetails['quantity']?.toString() ?? '';
         formData['Film Type'] = updatedDetails['film']?.toString() ?? '';
-        formData['QC Sign By'] = updatedDetails['qcCheckSignBy']?.toString() ?? '';
         formData['Adhesive'] = updatedDetails['adhesive']?.toString() ?? '';
         formData['Wastage'] = updatedDetails['wastage']?.toString() ?? '';
+        formData['Remarks'] = updatedDetails['remarks']?.toString() ?? '';
+        // QC fields are only updated by Flying Squad, not by regular operators
         break;
         
       case 'Punching':
         // Map database fields to form fields for Punching
-        formData['Qty Sheet'] = updatedDetails['quantity']?.toString() ?? '';
-        formData['Operator Name'] = updatedDetails['operatorName']?.toString() ?? '';
-        formData['Machine'] = updatedDetails['machine']?.toString() ?? '';
+        formData['OK Quantity'] = updatedDetails['quantity']?.toString() ?? '';
         formData['Die Used'] = updatedDetails['die']?.toString() ?? '';
         formData['Wastage'] = updatedDetails['wastage']?.toString() ?? '';
         formData['Remarks'] = updatedDetails['remarks']?.toString() ?? '';
+        // Machine and QC fields are auto-populated, not user input
         break;
         
       case 'SideFlapPasting':
         // Map database fields to form fields for Side Flap Pasting
-        formData['Operator Name'] = updatedDetails['operatorName']?.toString() ?? '';
-        formData['Machine No'] = updatedDetails['machineNo']?.toString() ?? '';
         formData['Adhesive'] = updatedDetails['adhesive']?.toString() ?? '';
         formData['Quantity'] = updatedDetails['quantity']?.toString() ?? '';
         formData['Wastage'] = updatedDetails['wastage']?.toString() ?? '';
         formData['Remarks'] = updatedDetails['remarks']?.toString() ?? '';
+        // Machine and QC fields are auto-populated, not user input
         break;
         
       case 'QualityDept':
         // Map database fields to form fields for Quality Control
-        formData['Qty Sheet'] = updatedDetails['quantity']?.toString() ?? '';
-        formData['Checked By'] = updatedDetails['checkedBy']?.toString() ?? '';
+        formData['Pass Quantity'] = updatedDetails['quantity']?.toString() ?? '';
         formData['Reject Quantity'] = updatedDetails['rejectedQty']?.toString() ?? '';
         formData['Reason for Rejection'] = updatedDetails['reasonForRejection']?.toString() ?? '';
         formData['Remarks'] = updatedDetails['remarks']?.toString() ?? '';
+        // QC fields are only updated by Flying Squad, not by regular operators
         break;
         
       case 'DispatchProcess':
         // Map database fields to form fields for Dispatch
-        formData['Operator Name'] = updatedDetails['operatorName']?.toString() ?? '';
-        formData['Quantity'] = updatedDetails['quantity']?.toString() ?? '';
+        formData['No of Boxes'] = updatedDetails['quantity']?.toString() ?? '';
         formData['Dispatch No'] = updatedDetails['dispatchNo']?.toString() ?? '';
+        formData['Dispatch Date'] = updatedDetails['dispatchDate']?.toString() ?? '';
         formData['Balance Qty'] = updatedDetails['balanceQty']?.toString() ?? '';
         formData['Remarks'] = updatedDetails['remarks']?.toString() ?? '';
+        // QC fields are only updated by Flying Squad, not by regular operators
         break;
     }
     
@@ -822,15 +837,44 @@ class _EditWorkingDetailsPageState extends State<EditWorkingDetailsPage> {
   }
 
   // Show edit step details dialog
-  void _showEditStepDetailsDialog(String jobNumber, String stepName, Map<String, dynamic> currentDetails) {
+  void _showEditStepDetailsDialog(String jobNumber, String stepName, Map<String, dynamic> currentDetails) async {
+    // Get step type from step name
+    final stepType = _getStepTypeFromStepName(stepName);
+    if (stepType == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unknown step type: $stepName'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Fetch step details with editability information
+    final jobApiService = JobApiService(_jobApi);
+    final stepDetailsList = await jobApiService.getStepDetailsWithEditability(jobNumber, stepType);
+    
+    if (stepDetailsList.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No step details found for $stepName'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Use the first step details (assuming one per job)
+    final stepDetails = stepDetailsList.first;
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext dialogContext) {
-        return _EditStepDetailsDialog(
+        return _EditStepDetailsDialogWithEditability(
           jobNumber: jobNumber,
           stepName: stepName,
-          currentDetails: currentDetails,
+          stepDetails: stepDetails,
           onUpdate: (updatedDetails) async {
             Navigator.of(dialogContext).pop();
             await _updateStepDetails(jobNumber, stepName, updatedDetails);
@@ -841,6 +885,30 @@ class _EditWorkingDetailsPageState extends State<EditWorkingDetailsPage> {
         );
       },
     );
+  }
+
+  // Helper method to get step type from step name
+  StepType? _getStepTypeFromStepName(String stepName) {
+    switch (stepName.toLowerCase()) {
+      case 'paperstore':
+        return StepType.paperStore;
+      case 'printingdetails':
+        return StepType.printing;
+      case 'corrugation':
+        return StepType.corrugation;
+      case 'flutelaminateboardconversion':
+        return StepType.fluteLamination;
+      case 'punching':
+        return StepType.punching;
+      case 'sideflappasting':
+        return StepType.flapPasting;
+      case 'qualitydept':
+        return StepType.qc;
+      case 'dispatchprocess':
+        return StepType.dispatch;
+      default:
+        return null;
+    }
   }
 
   // Update step details
@@ -877,8 +945,13 @@ class _EditWorkingDetailsPageState extends State<EditWorkingDetailsPage> {
       
       switch (stepName) {
         case 'PaperStore':
-          // For PaperStore, use the direct API call with the updated details
-          await _jobApi.putPaperStore(jobNumber, updatedDetails);
+          // For PaperStore, map the database field names to form field names
+          final Map<String, String> formData = _mapDatabaseFieldsToFormFields(stepName, updatedDetails);
+          print('Mapped form data for $stepName: $formData');
+          
+          // Use JobApiService methods which have the proper format
+          final jobApiService = JobApiService(_jobApi);
+          await jobApiService.putStepDetails(StepType.paperStore, jobNumber, formData, stepNo);
           break;
         default:
           // For other steps, we need to map the database field names to form field names
@@ -2016,6 +2089,11 @@ class _EditStepDetailsDialogState extends State<_EditStepDetailsDialog> {
                 final isDateField = _isDateField(entry.key);
                 final isDateTimeField = _isDateTimeField(entry.key);
                 
+                // Skip date fields as they are auto-generated
+                if (isDateField) {
+                  return const SizedBox.shrink();
+                }
+                
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Column(
@@ -2029,6 +2107,396 @@ class _EditStepDetailsDialogState extends State<_EditStepDetailsDialog> {
                           helperText: isDateField 
                             ? (isDateTimeField ? 'Format: YYYY-MM-DDTHH:MM' : 'Format: YYYY-MM-DD')
                             : null,
+                        ),
+                        keyboardType: isDateField ? TextInputType.datetime : TextInputType.text,
+                      ),
+                      if (isDateField) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Current: ${isDateTimeField ? _formatDateTimeForDisplay(entry.value.toString()) : _formatDateForDisplay(entry.value.toString())}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            }).toList(),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isLoading ? null : widget.onCancel,
+          child: Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _handleUpdate,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.maincolor,
+            foregroundColor: Colors.white,
+          ),
+          child: _isLoading 
+            ? SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : Text('Update'),
+        ),
+      ],
+    );
+  }
+
+  @override
+  void dispose() {
+    _controllers.values.forEach((controller) => controller.dispose());
+    super.dispose();
+  }
+}
+
+// Enhanced dialog widget for editing step details with editability support
+class _EditStepDetailsDialogWithEditability extends StatefulWidget {
+  final String jobNumber;
+  final String stepName;
+  final StepDataWithEditability stepDetails;
+  final Function(Map<String, dynamic>) onUpdate;
+  final VoidCallback onCancel;
+
+  _EditStepDetailsDialogWithEditability({
+    required this.jobNumber,
+    required this.stepName,
+    required this.stepDetails,
+    required this.onUpdate,
+    required this.onCancel,
+  });
+
+  @override
+  State<_EditStepDetailsDialogWithEditability> createState() => _EditStepDetailsDialogWithEditabilityState();
+}
+
+class _EditStepDetailsDialogWithEditabilityState extends State<_EditStepDetailsDialogWithEditability> {
+  final Map<String, TextEditingController> _controllers = {};
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeControllers();
+  }
+
+  void _initializeControllers() {
+    widget.stepDetails.data.forEach((key, value) {
+      if (value != null) {
+        String formattedValue = value.toString();
+        
+        // Format date fields for editing
+        if (_isDateField(key)) {
+          if (_isDateTimeField(key)) {
+            formattedValue = _formatDateTimeForEdit(value.toString());
+          } else {
+            formattedValue = _formatDateForEdit(value.toString());
+          }
+        }
+        
+        _controllers[key] = TextEditingController(text: formattedValue);
+      }
+    });
+  }
+
+  bool _isDateField(String fieldName) {
+    final dateFields = [
+      'date', 'issuedDate', 'dispatchDate', 'createdAt', 'updatedAt',
+      'startDate', 'endDate'
+    ];
+    return dateFields.any((field) => fieldName.toLowerCase().contains(field));
+  }
+
+  bool _isDateTimeField(String fieldName) {
+    final dateTimeFields = [
+      'issuedDate', 'dispatchDate', 'createdAt', 'updatedAt',
+      'startDate', 'endDate'
+    ];
+    return dateTimeFields.any((field) => fieldName.toLowerCase().contains(field));
+  }
+
+  String _formatDateForEdit(String? dateString) {
+    if (dateString == null || dateString.isEmpty) return '';
+    try {
+      final date = DateTime.parse(dateString);
+      return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return dateString;
+    }
+  }
+
+  String _formatDateTimeForEdit(String? dateString) {
+    if (dateString == null || dateString.isEmpty) return '';
+    try {
+      final date = DateTime.parse(dateString);
+      final hour = date.hour.toString().padLeft(2, '0');
+      final minute = date.minute.toString().padLeft(2, '0');
+      return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}T$hour:$minute';
+    } catch (e) {
+      return dateString;
+    }
+  }
+
+  String _formatDateForDisplay(String? dateString) {
+    if (dateString == null || dateString.isEmpty) return 'Not specified';
+    try {
+      final date = DateTime.parse(dateString);
+      const months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+      ];
+      return '${date.day} ${months[date.month - 1]} ${date.year}';
+    } catch (e) {
+      return dateString;
+    }
+  }
+
+  String _formatDateTimeForDisplay(String? dateString) {
+    if (dateString == null || dateString.isEmpty) return 'Not specified';
+    try {
+      final date = DateTime.parse(dateString);
+      const months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+      ];
+      final hour = date.hour.toString().padLeft(2, '0');
+      final minute = date.minute.toString().padLeft(2, '0');
+      return '${date.day} ${months[date.month - 1]} ${date.year} at $hour:$minute';
+    } catch (e) {
+      return dateString;
+    }
+  }
+
+  String _formatFieldName(String fieldName) {
+    return fieldName
+        .replaceAll(RegExp(r'([A-Z])'), ' \$1')
+        .split(' ')
+        .map((word) => word.isNotEmpty ? word[0].toUpperCase() + word.substring(1) : '')
+        .join(' ')
+        .trim();
+  }
+
+  bool _isNumericField(String fieldName) {
+    final numericFields = [
+      'id', 'jobStepId', 'quantity', 'available', 'wastage', 'rejectedQty', 
+      'balanceQty', 'gsm1', 'gsm2', 'mill', 'extraMargin', 'noUps'
+    ];
+    return numericFields.any((field) => fieldName.toLowerCase().contains(field));
+  }
+
+  bool _isIntegerField(String fieldName) {
+    final integerFields = [
+      'id', 'jobStepId', 'quantity', 'available', 'wastage', 'rejectedQty', 
+      'balanceQty', 'mill', 'extraMargin', 'noUps'
+    ];
+    return integerFields.any((field) => fieldName.toLowerCase().contains(field));
+  }
+
+  bool _isIdField(String fieldName) {
+    return fieldName.toLowerCase() == 'id' || fieldName.toLowerCase() == 'jobstepid';
+  }
+
+  bool _isStringField(String fieldName) {
+    final stringFields = [
+      'mill', 'extraMargin', 'quality', 'sheetSize', 'gsm', 'film', 'adhesive',
+      'machine', 'machineNo', 'die', 'shift', 'oprName', 'operatorName',
+      'checkedBy', 'reasonForRejection', 'remarks', 'dispatchNo'
+    ];
+    return stringFields.any((field) => fieldName.toLowerCase().contains(field));
+  }
+
+  void _handleUpdate() async {
+    if (_isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Collect updated values - only include editable fields
+      final updatedDetails = <String, dynamic>{};
+      _controllers.forEach((key, controller) {
+        // Only include editable fields
+        if (widget.stepDetails.isFieldEditable(key)) {
+          String value = controller.text;
+          
+          // Convert date formats back to ISO format for API
+          if (_isDateField(key) && value.isNotEmpty) {
+            try {
+              if (_isDateTimeField(key)) {
+                // Parse datetime and convert to ISO format
+                final date = DateTime.parse(value);
+                value = date.toIso8601String();
+              } else {
+                // Parse date and convert to ISO format
+                final date = DateTime.parse(value);
+                value = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}T00:00:00.000Z';
+              }
+            } catch (e) {
+              // If parsing fails, keep original value
+              print('Date parsing error for $key: $e');
+            }
+          }
+          
+          // Check if field should remain as string first
+          if (_isStringField(key)) {
+            updatedDetails[key] = value;
+          } else if (_isNumericField(key)) {
+            if (value.isEmpty) {
+              updatedDetails[key] = _isIntegerField(key) ? 0 : 0.0;
+            } else {
+              if (_isIntegerField(key)) {
+                updatedDetails[key] = int.tryParse(value) ?? 0;
+              } else {
+                updatedDetails[key] = double.tryParse(value) ?? 0.0;
+              }
+            }
+          } else {
+            updatedDetails[key] = value;
+          }
+        }
+      });
+      
+      print('=== UPDATED DETAILS (Editable Only) ===');
+      updatedDetails.forEach((key, value) {
+        print('$key: $value (${value.runtimeType})');
+      });
+      print('=== END UPDATED DETAILS ===');
+      
+      // Validate that critical fields are present and valid
+      if (updatedDetails.containsKey('id') && (updatedDetails['id'] == null || updatedDetails['id'] == 0)) {
+        print('Warning: Invalid ID value detected, removing from update');
+        updatedDetails.remove('id');
+      }
+      
+      if (updatedDetails.containsKey('jobStepId') && (updatedDetails['jobStepId'] == null || updatedDetails['jobStepId'] == 0)) {
+        print('Warning: Invalid jobStepId value detected, removing from update');
+        updatedDetails.remove('jobStepId');
+      }
+      
+      widget.onUpdate(updatedDetails);
+    } catch (e) {
+      print('Error updating step details: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Edit ${widget.stepName} Details'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Show read-only fields first
+            if (widget.stepDetails.getReadOnlyFields().isNotEmpty) ...[
+              Text(
+                'Read-Only Fields',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[700],
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...widget.stepDetails.getReadOnlyFields().entries.map((entry) {
+                final isDateField = _isDateField(entry.key);
+                final isDateTimeField = _isDateTimeField(entry.key);
+                
+                // Skip date fields as they are auto-generated
+                if (isDateField) {
+                  return const SizedBox.shrink();
+                }
+                
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextFormField(
+                        initialValue: entry.value?.toString() ?? '',
+                        decoration: InputDecoration(
+                          labelText: _formatFieldName(entry.key),
+                          border: const OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Colors.grey[100],
+                          prefixIcon: const Icon(Icons.lock, size: 16, color: Colors.grey),
+                          helperText: 'Read-only field',
+                        ),
+                        enabled: false,
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                      if (isDateField) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Current: ${isDateTimeField ? _formatDateTimeForDisplay(entry.value.toString()) : _formatDateForDisplay(entry.value.toString())}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              }).toList(),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+            ],
+            
+            // Show editable fields
+            Text(
+              'Editable Fields',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: Colors.green[700],
+              ),
+            ),
+            const SizedBox(height: 8),
+            ...widget.stepDetails.getEditableFields().entries.map((entry) {
+              if (entry.value != null) {
+                final isDateField = _isDateField(entry.key);
+                final isDateTimeField = _isDateTimeField(entry.key);
+                
+                // Skip date fields as they are auto-generated
+                if (isDateField) {
+                  return const SizedBox.shrink();
+                }
+                
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextFormField(
+                        controller: _controllers[entry.key],
+                        decoration: InputDecoration(
+                          labelText: _formatFieldName(entry.key),
+                          border: const OutlineInputBorder(),
+                          helperText: isDateField 
+                            ? (isDateTimeField ? 'Format: YYYY-MM-DDTHH:MM' : 'Format: YYYY-MM-DD')
+                            : null,
+                          prefixIcon: const Icon(Icons.edit, size: 16, color: Colors.green),
                         ),
                         keyboardType: isDateField ? TextInputType.datetime : TextInputType.text,
                       ),

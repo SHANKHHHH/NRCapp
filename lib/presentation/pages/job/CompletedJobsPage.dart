@@ -71,6 +71,17 @@ class _CompletedJobsPageState extends State<CompletedJobsPage> {
         _filteredJobs = List.from(completedJobs);
         _isLoading = false;
       });
+      
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Jobs reloaded successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
     } catch (e) {
       setState(() {
         _error = 'Failed to load completed jobs: ${e.toString()}';

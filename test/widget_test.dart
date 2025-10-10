@@ -10,10 +10,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:nrc/main.dart';
 
+// Ensure MyApp is defined in main.dart as:
+// class MyApp extends StatelessWidget { ... }
+
 void main() {
   testWidgets('Counter increments smoke test', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+    await tester.pumpWidget(const ProcessManagerApp());
 
     // Verify that our counter starts at 0.
     expect(find.text('0'), findsOneWidget);

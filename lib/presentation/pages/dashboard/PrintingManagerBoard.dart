@@ -24,14 +24,20 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
   bool _isLoading = true;
   String _selectedFilter = 'All';
   DateTimeRange? _customDateRange;
-  
+
   // Cache for API responses to avoid redundant calls
   Map<String, dynamic>? _cachedPlannings;
   Map<String, Map<String, dynamic>> _cachedPrintingDetails = {};
   DateTime? _lastCacheTime;
   static const Duration _cacheValidity = Duration(minutes: 5);
 
-  final List<String> _filterOptions = ['All', 'Daily', 'Weekly', 'Monthly', 'Custom'];
+  final List<String> _filterOptions = [
+    'All',
+    'Daily',
+    'Weekly',
+    'Monthly',
+    'Custom',
+  ];
 
   @override
   void initState() {
@@ -81,7 +87,7 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
 
   Future<List<Map<String, dynamic>>> _fetchActiveJobsWithDetails() async {
     // Check if cache is still valid
-    if (_lastCacheTime != null && 
+    if (_lastCacheTime != null &&
         DateTime.now().difference(_lastCacheTime!) < _cacheValidity &&
         _cachedPlannings != null) {
       print('Using cached data');
@@ -89,17 +95,14 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
     }
 
     print('Fetching fresh data');
-    final jobs = await _jobApi.getJobs();
-    final plannings = await _jobApi.getAllJobPlannings();
-    
+    final plannings = await _jobApi.getAllJobPlanningsFresh();
+    // Use job plannings instead of unfiltered jobs
+
     // Cache the plannings data
-    _cachedPlannings = {
-      'data': plannings,
-      'timestamp': DateTime.now(),
-    };
+    _cachedPlannings = {'data': plannings, 'timestamp': DateTime.now()};
     _lastCacheTime = DateTime.now();
-    
-    return _processJobsWithPlannings(jobs, plannings);
+
+    return _processJobsWithPlannings(plannings, plannings);
   }
 
   List<Map<String, dynamic>> _processJobsWithCachedData() {
@@ -108,44 +111,49 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
     return _processJobsWithPlannings(jobs, plannings);
   }
 
-  List<Map<String, dynamic>> _processJobsWithPlannings(List jobs, List<Map<String, dynamic>> plannings) {
+  List<Map<String, dynamic>> _processJobsWithPlannings(
+    List jobs,
+    List<Map<String, dynamic>> plannings,
+  ) {
     List<Map<String, dynamic>> result = [];
 
     for (final job in jobs) {
       if (job.status == 'ACTIVE') {
         final nrcJobNo = job.nrcJobNo;
-        final planning = plannings.firstWhereOrNull((p) => p['nrcJobNo'] == nrcJobNo);
+        final planning = plannings.firstWhereOrNull(
+          (p) => p['nrcJobNo'] == nrcJobNo,
+        );
 
         Map<String, dynamic>? printingStep;
         String workflowStatus = 'Not Started';
-        
+
         if (planning != null && planning['steps'] != null) {
           final steps = planning['steps'] as List<dynamic>;
           printingStep = steps.firstWhereOrNull(
-                (s) => s['stepName'] == 'PrintingDetails',
+            (s) => s['stepName'] == 'PrintingDetails',
           );
-          
+
           // Determine workflow status based on printing step
-          if (printingStep != null) {
-            final status = printingStep['status']?.toString().toLowerCase() ?? '';
-            switch (status) {
-              case 'start':
-                workflowStatus = 'In Progress';
-                break;
-              case 'stop':
-                workflowStatus = 'Completed';
-                break;
-              case 'planned':
-              default:
-                workflowStatus = 'Not Started';
-                break;
-            }
+          final status = printingStep != null && printingStep['status'] != null
+              ? printingStep['status'].toString().toLowerCase()
+              : '';
+          switch (status) {
+            case 'start':
+              workflowStatus = 'In Progress';
+              break;
+            case 'stop':
+              workflowStatus = 'Completed';
+              break;
+            case 'planned':
+            default:
+              workflowStatus = 'Not Started';
+              break;
           }
         }
 
         // Only fetch printing details if not cached or if cache is old
         Map<String, dynamic>? printingDetails;
-        if (!_cachedPrintingDetails.containsKey(nrcJobNo) || 
+        if (!_cachedPrintingDetails.containsKey(nrcJobNo) ||
             DateTime.now().difference(_lastCacheTime!) > _cacheValidity) {
           try {
             _jobApi.getPrintingDetails(nrcJobNo).then((printingRes) {
@@ -177,7 +185,8 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
   }
 
   String _determineArtworkStatus(dynamic job) {
-    final allArtworkNull = job.artworkReceivedDate == null &&
+    final allArtworkNull =
+        job.artworkReceivedDate == null &&
         job.artworkApprovedDate == null &&
         job.shadeCardApprovalDate == null &&
         job.imageURL == null;
@@ -203,7 +212,8 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
         final jobCreatedAt = DateTime.parse(job.createdAt);
 
         // Search filter
-        bool matchesSearch = searchQuery.isEmpty ||
+        bool matchesSearch =
+            searchQuery.isEmpty ||
             (job.nrcJobNo?.toLowerCase().contains(searchQuery) ?? false) ||
             (job.customerName?.toLowerCase().contains(searchQuery) ?? false) ||
             (job.styleItemSKU?.toLowerCase().contains(searchQuery) ?? false);
@@ -220,8 +230,12 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
             return _isSameMonth(jobCreatedAt, now);
           case 'Custom':
             if (_customDateRange != null) {
-              return jobCreatedAt.isAfter(_customDateRange!.start.subtract(Duration(days: 1))) &&
-                  jobCreatedAt.isBefore(_customDateRange!.end.add(Duration(days: 1)));
+              return jobCreatedAt.isAfter(
+                    _customDateRange!.start.subtract(Duration(days: 1)),
+                  ) &&
+                  jobCreatedAt.isBefore(
+                    _customDateRange!.end.add(Duration(days: 1)),
+                  );
             }
             return true;
           default:
@@ -277,13 +291,8 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
   }
 
   void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    // Error logging only - no UI display
+    print('Error: $message');
   }
 
   Color _getStatusColor(String status) {
@@ -393,15 +402,18 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
                 prefixIcon: Icon(Icons.search, color: Colors.grey[600]),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
-                  icon: Icon(Icons.clear, color: Colors.grey[600]),
-                  onPressed: () {
-                    _searchController.clear();
-                    _applyFilters();
-                  },
-                )
+                        icon: Icon(Icons.clear, color: Colors.grey[600]),
+                        onPressed: () {
+                          _searchController.clear();
+                          _applyFilters();
+                        },
+                      )
                     : null,
                 border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
               ),
             ),
           ),
@@ -480,19 +492,28 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
           ),
           _buildStatItem(
             'Completed',
-            _filteredJobs.where((j) => j['workflowStatus'] == 'Completed').length.toString(),
+            _filteredJobs
+                .where((j) => j['workflowStatus'] == 'Completed')
+                .length
+                .toString(),
             Icons.check_circle_outline,
             Colors.green,
           ),
           _buildStatItem(
             'In Progress',
-            _filteredJobs.where((j) => j['workflowStatus'] == 'In Progress').length.toString(),
+            _filteredJobs
+                .where((j) => j['workflowStatus'] == 'In Progress')
+                .length
+                .toString(),
             Icons.hourglass_empty,
             Colors.orange,
           ),
           _buildStatItem(
             'Not Started',
-            _filteredJobs.where((j) => j['workflowStatus'] == 'Not Started').length.toString(),
+            _filteredJobs
+                .where((j) => j['workflowStatus'] == 'Not Started')
+                .length
+                .toString(),
             Icons.pending_outlined,
             Colors.grey,
           ),
@@ -502,26 +523,26 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
   }
 
   Widget _buildStatusChart() {
-    final int completed = _filteredJobs.where((j) => (j['workflowStatus'] as String).toLowerCase() == 'completed').length;
-    final int inProgress = _filteredJobs.where((j) => (j['workflowStatus'] as String).toLowerCase() == 'in progress').length;
-    final int notStarted = _filteredJobs.where((j) => (j['workflowStatus'] as String).toLowerCase() == 'not started').length;
+    final int completed = _filteredJobs
+        .where(
+          (j) => (j['workflowStatus'] as String).toLowerCase() == 'completed',
+        )
+        .length;
+    final int inProgress = _filteredJobs
+        .where(
+          (j) => (j['workflowStatus'] as String).toLowerCase() == 'in progress',
+        )
+        .length;
+    final int notStarted = _filteredJobs
+        .where(
+          (j) => (j['workflowStatus'] as String).toLowerCase() == 'not started',
+        )
+        .length;
 
     final entries = [
-      {
-        'label': 'Completed',
-        'count': completed,
-        'color': Colors.green,
-      },
-      {
-        'label': 'In Progress',
-        'count': inProgress,
-        'color': Colors.orange,
-      },
-      {
-        'label': 'Not Started',
-        'count': notStarted,
-        'color': Colors.grey,
-      },
+      {'label': 'Completed', 'count': completed, 'color': Colors.green},
+      {'label': 'In Progress', 'count': inProgress, 'color': Colors.orange},
+      {'label': 'Not Started', 'count': notStarted, 'color': Colors.grey},
     ].where((e) => (e['count'] as int) > 0).toList();
 
     if (entries.isEmpty) {
@@ -634,7 +655,12 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
     );
   }
 
-  Widget _buildStatItem(String title, String count, IconData icon, Color color) {
+  Widget _buildStatItem(
+    String title,
+    String count,
+    IconData icon,
+    Color color,
+  ) {
     return Column(
       children: [
         Container(
@@ -675,7 +701,10 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
             children: [
               CircularProgressIndicator(color: AppColors.maincolor),
               SizedBox(height: 16),
-              Text('Loading jobs...', style: TextStyle(color: Colors.grey[600])),
+              Text(
+                'Loading jobs...',
+                style: TextStyle(color: Colors.grey[600]),
+              ),
             ],
           ),
         ),
@@ -710,28 +739,25 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
     }
 
     return SliverList(
-      delegate: SliverChildBuilderDelegate(
-            (context, index) {
-          return FadeTransition(
-            opacity: _fadeAnimation,
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: Offset(0, 0.3),
-                end: Offset.zero,
-              ).animate(CurvedAnimation(
-                parent: _animationController,
-                curve: Interval(
-                  (index / _filteredJobs.length) * 0.5,
-                  1,
-                  curve: Curves.easeOutQuart,
+      delegate: SliverChildBuilderDelegate((context, index) {
+        return FadeTransition(
+          opacity: _fadeAnimation,
+          child: SlideTransition(
+            position: Tween<Offset>(begin: Offset(0, 0.3), end: Offset.zero)
+                .animate(
+                  CurvedAnimation(
+                    parent: _animationController,
+                    curve: Interval(
+                      (index / _filteredJobs.length) * 0.5,
+                      1,
+                      curve: Curves.easeOutQuart,
+                    ),
+                  ),
                 ),
-              )),
-              child: _buildJobCard(_filteredJobs[index], index),
-            ),
-          );
-        },
-        childCount: _filteredJobs.length,
-      ),
+            child: _buildJobCard(_filteredJobs[index], index),
+          ),
+        );
+      }, childCount: _filteredJobs.length),
     );
   }
 
@@ -769,22 +795,22 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
             ),
             child: job.imageURL != null
                 ? ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                job.imageURL,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Icon(
-                  Icons.image,
-                  color: _getStatusColor(workflowStatus),
-                  size: 30,
-                ),
-              ),
-            )
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.network(
+                      job.imageURL,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Icon(
+                        Icons.image,
+                        color: _getStatusColor(workflowStatus),
+                        size: 30,
+                      ),
+                    ),
+                  )
                 : Icon(
-              Icons.work,
-              color: _getStatusColor(workflowStatus),
-              size: 30,
-            ),
+                    Icons.work,
+                    color: _getStatusColor(workflowStatus),
+                    size: 30,
+                  ),
           ),
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -800,10 +826,7 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
               SizedBox(height: 4),
               Text(
                 job.customerName ?? 'N/A',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
-                ),
+                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -852,14 +875,24 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
             ],
           ),
           children: [
-            _buildJobDetails(job, printingStep, printingDetails, workflowStatus),
+            _buildJobDetails(
+              job,
+              printingStep,
+              printingDetails,
+              workflowStatus,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildJobDetails(dynamic job, Map<String, dynamic>? printingStep, Map<String, dynamic>? printingDetails, String workflowStatus) {
+  Widget _buildJobDetails(
+    dynamic job,
+    Map<String, dynamic>? printingStep,
+    Map<String, dynamic>? printingDetails,
+    String workflowStatus,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -882,7 +915,9 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
           decoration: BoxDecoration(
             color: _getStatusColor(workflowStatus).withOpacity(0.05),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _getStatusColor(workflowStatus).withOpacity(0.2)),
+            border: Border.all(
+              color: _getStatusColor(workflowStatus).withOpacity(0.2),
+            ),
           ),
           child: Row(
             children: [
@@ -906,10 +941,7 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
                     ),
                     Text(
                       _getWorkflowDescription(workflowStatus),
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                     ),
                   ],
                 ),
@@ -924,9 +956,18 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
         _buildSectionTitle('Artwork Timeline'),
         Row(
           children: [
-            Expanded(child: _buildArtworkDateTile('Received', job.artworkReceivedDate)),
-            Expanded(child: _buildArtworkDateTile('Approved', job.artworkApprovedDate)),
-            Expanded(child: _buildArtworkDateTile('Shade Card', job.shadeCardApprovalDate)),
+            Expanded(
+              child: _buildArtworkDateTile('Received', job.artworkReceivedDate),
+            ),
+            Expanded(
+              child: _buildArtworkDateTile('Approved', job.artworkApprovedDate),
+            ),
+            Expanded(
+              child: _buildArtworkDateTile(
+                'Shade Card',
+                job.shadeCardApprovalDate,
+              ),
+            ),
           ],
         ),
 
@@ -1008,10 +1049,7 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
           Expanded(
             child: Text(
               value,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[800],
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey[800]),
             ),
           ),
         ],
@@ -1024,10 +1062,14 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
       margin: EdgeInsets.symmetric(horizontal: 4),
       padding: EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: date != null ? Colors.green.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+        color: date != null
+            ? Colors.green.withOpacity(0.1)
+            : Colors.grey.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: date != null ? Colors.green.withOpacity(0.3) : Colors.grey.withOpacity(0.3),
+          color: date != null
+              ? Colors.green.withOpacity(0.3)
+              : Colors.grey.withOpacity(0.3),
         ),
       ),
       child: Column(
@@ -1043,7 +1085,9 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
           ),
           SizedBox(height: 4),
           Text(
-            date != null ? DateFormat('MMM dd, yy').format(DateTime.parse(date)) : 'Pending',
+            date != null
+                ? DateFormat('MMM dd, yy').format(DateTime.parse(date))
+                : 'Pending',
             style: TextStyle(
               fontWeight: FontWeight.w600,
               fontSize: 13,
@@ -1071,7 +1115,9 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: _getStatusColor(printingStep['status'] ?? '').withOpacity(0.1),
+                  color: _getStatusColor(
+                    printingStep['status'] ?? '',
+                  ).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Text(
@@ -1138,7 +1184,9 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
         ),
         SizedBox(height: 4),
         Text(
-          date != null ? DateFormat('MMM dd, yy HH:mm').format(DateTime.parse(date)) : 'N/A',
+          date != null
+              ? DateFormat('MMM dd, yy HH:mm').format(DateTime.parse(date))
+              : 'N/A',
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
@@ -1161,20 +1209,42 @@ class _PrintingManagerBoardState extends State<PrintingManagerBoard>
         children: [
           Row(
             children: [
-              Expanded(child: _buildDetailItem('Machine', printingDetails['machine'], Icons.precision_manufacturing)),
-              Expanded(child: _buildDetailItem('Operator', printingDetails['oprName'], Icons.person)),
+              Expanded(
+                child: _buildDetailItem(
+                  'Machine',
+                  printingDetails['machine'],
+                  Icons.precision_manufacturing,
+                ),
+              ),
+              Expanded(
+                child: _buildDetailItem(
+                  'Operator',
+                  printingDetails['oprName'],
+                  Icons.person,
+                ),
+              ),
             ],
           ),
           SizedBox(height: 12),
           Row(
             children: [
-              Expanded(child: _buildDetailItem('OK Qty', printingDetails['postPrintingFinishingOkQty']?.toString(), Icons.check_circle)),
+              Expanded(
+                child: _buildDetailItem(
+                  'OK Qty',
+                  printingDetails['postPrintingFinishingOkQty']?.toString(),
+                  Icons.check_circle,
+                ),
+              ),
               Expanded(child: SizedBox()), // Empty space for alignment
             ],
           ),
           if (printingDetails['inksUsed'] != null) ...[
             SizedBox(height: 12),
-            _buildDetailItem('Inks Used', printingDetails['inksUsed'], Icons.colorize),
+            _buildDetailItem(
+              'Inks Used',
+              printingDetails['inksUsed'],
+              Icons.colorize,
+            ),
           ],
         ],
       ),

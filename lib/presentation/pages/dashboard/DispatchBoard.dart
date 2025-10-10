@@ -30,8 +30,19 @@ class _DispatchBoardState extends State<DispatchBoard>
   DateTimeRange? customDateRange;
 
   final TextEditingController _searchController = TextEditingController();
-  final List<String> statusFilterOptions = ['All', 'Planned', 'Accepted', 'Completed'];
-  final List<String> dateFilterOptions = ['All', 'Daily', 'Weekly', 'Monthly', 'Custom'];
+  final List<String> statusFilterOptions = [
+    'All',
+    'Planned',
+    'Accepted',
+    'Completed',
+  ];
+  final List<String> dateFilterOptions = [
+    'All',
+    'Daily',
+    'Weekly',
+    'Monthly',
+    'Custom',
+  ];
 
   @override
   void initState() {
@@ -60,7 +71,7 @@ class _DispatchBoardState extends State<DispatchBoard>
 
     try {
       final jobPlannings = await jobApi.getAllJobPlannings();
-      if (jobPlannings == null || jobPlannings.isEmpty) {
+      if (jobPlannings.isEmpty) {
         throw Exception('No job plannings found');
       }
 
@@ -69,29 +80,34 @@ class _DispatchBoardState extends State<DispatchBoard>
       for (final job in jobPlannings) {
         final steps = job['steps'] as List<dynamic>? ?? [];
         final dispatchStep = steps.firstWhere(
-              (step) => step['stepName'] == 'DispatchProcess',
+          (step) => step['stepName'] == 'DispatchProcess',
           orElse: () => null,
         );
 
         if (dispatchStep != null) {
           final nrcJobNo = job['nrcJobNo'];
           final dispatchDetailsRes = await jobApi.getDispatchDetails(nrcJobNo);
-          final dispatchDetails = (dispatchDetailsRes != null &&
-              dispatchDetailsRes['data'] is List &&
-              dispatchDetailsRes['data'].isNotEmpty)
+          final dispatchDetails =
+              (dispatchDetailsRes != null &&
+                  dispatchDetailsRes['data'] is List &&
+                  dispatchDetailsRes['data'].isNotEmpty)
               ? dispatchDetailsRes['data'][0]
               : null;
 
-          jobs.add(_DispatchJobInfo(
-            nrcJobNo: nrcJobNo,
-            jobDemand: job['jobDemand'],
-            dispatchStatus: dispatchDetails?['status'] ?? dispatchStep['status'],
-            dispatchDate: dispatchDetails?['dispatchDate'] ?? dispatchStep['endDate'],
-            dispatchNo: dispatchDetails?['dispatchNo'],
-            operatorName: dispatchDetails?['operatorName'],
-            noOfBoxes: dispatchDetails?['noOfBoxes'],
-            remarks: dispatchDetails?['remarks'],
-          ));
+          jobs.add(
+            _DispatchJobInfo(
+              nrcJobNo: nrcJobNo,
+              jobDemand: job['jobDemand'],
+              dispatchStatus:
+                  dispatchDetails?['status'] ?? dispatchStep['status'],
+              dispatchDate:
+                  dispatchDetails?['dispatchDate'] ?? dispatchStep['endDate'],
+              dispatchNo: dispatchDetails?['dispatchNo'],
+              operatorName: dispatchDetails?['operatorName'],
+              noOfBoxes: dispatchDetails?['noOfBoxes'],
+              remarks: dispatchDetails?['remarks'],
+            ),
+          );
         }
       }
 
@@ -104,8 +120,12 @@ class _DispatchBoardState extends State<DispatchBoard>
           return statusPriorityA.compareTo(statusPriorityB);
         }
 
-        DateTime? dateA = a.dispatchDate != null ? DateTime.tryParse(a.dispatchDate!) : null;
-        DateTime? dateB = b.dispatchDate != null ? DateTime.tryParse(b.dispatchDate!) : null;
+        DateTime? dateA = a.dispatchDate != null
+            ? DateTime.tryParse(a.dispatchDate!)
+            : null;
+        DateTime? dateB = b.dispatchDate != null
+            ? DateTime.tryParse(b.dispatchDate!)
+            : null;
 
         if (dateA != null && dateB != null) {
           return dateB.compareTo(dateA);
@@ -158,7 +178,10 @@ class _DispatchBoardState extends State<DispatchBoard>
     // Apply search filter
     if (searchQuery.isNotEmpty) {
       filtered = filtered.where((job) {
-        return job.nrcJobNo?.toLowerCase().contains(searchQuery.toLowerCase()) ?? false;
+        return job.nrcJobNo?.toLowerCase().contains(
+              searchQuery.toLowerCase(),
+            ) ??
+            false;
       }).toList();
     }
 
@@ -166,12 +189,16 @@ class _DispatchBoardState extends State<DispatchBoard>
     switch (selectedStatusFilter) {
       case 'Planned':
         filtered = filtered
-            .where((job) => (job.dispatchStatus ?? '').toLowerCase() == 'planned')
+            .where(
+              (job) => (job.dispatchStatus ?? '').toLowerCase() == 'planned',
+            )
             .toList();
         break;
       case 'Accepted':
         filtered = filtered
-            .where((job) => (job.dispatchStatus ?? '').toLowerCase() == 'accept')
+            .where(
+              (job) => (job.dispatchStatus ?? '').toLowerCase() == 'accept',
+            )
             .toList();
         break;
       case 'Completed':
@@ -225,8 +252,12 @@ class _DispatchBoardState extends State<DispatchBoard>
             if (job.dispatchDate == null) return false;
             final jobDate = DateTime.tryParse(job.dispatchDate!);
             if (jobDate == null) return false;
-            return jobDate.isAfter(customDateRange!.start.subtract(const Duration(days: 1))) &&
-                jobDate.isBefore(customDateRange!.end.add(const Duration(days: 1)));
+            return jobDate.isAfter(
+                  customDateRange!.start.subtract(const Duration(days: 1)),
+                ) &&
+                jobDate.isBefore(
+                  customDateRange!.end.add(const Duration(days: 1)),
+                );
           }).toList();
         }
         break;
@@ -320,15 +351,15 @@ class _DispatchBoardState extends State<DispatchBoard>
                       prefixIcon: const Icon(Icons.search, color: Colors.grey),
                       suffixIcon: searchQuery.isNotEmpty
                           ? IconButton(
-                        icon: const Icon(Icons.clear, color: Colors.grey),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() {
-                            searchQuery = '';
-                          });
-                          _applyFilters();
-                        },
-                      )
+                              icon: const Icon(Icons.clear, color: Colors.grey),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() {
+                                  searchQuery = '';
+                                });
+                                _applyFilters();
+                              },
+                            )
                           : null,
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(
@@ -345,7 +376,7 @@ class _DispatchBoardState extends State<DispatchBoard>
                 height: 50,
                 margin: const EdgeInsets.symmetric(horizontal: 16),
                 child: TabBar(
-          controller: _tabController,
+                  controller: _tabController,
                   isScrollable: true,
                   indicatorColor: Colors.blueAccent,
                   indicatorWeight: 3,
@@ -362,11 +393,7 @@ class _DispatchBoardState extends State<DispatchBoard>
                     return Tab(
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Row(
-                          children: [
-                            Text(filter),
-                          ],
-                        ),
+                        child: Row(children: [Text(filter)]),
                       ),
                     );
                   }).toList(),
@@ -380,192 +407,207 @@ class _DispatchBoardState extends State<DispatchBoard>
       ),
       body: isLoading
           ? const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(color: Colors.blueAccent),
-            SizedBox(height: 16),
-            Text(
-              'Loading dispatch jobs...',
-              style: TextStyle(color: Colors.grey, fontSize: 16),
-            ),
-          ],
-        ),
-      )
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: Colors.blueAccent),
+                  SizedBox(height: 16),
+                  Text(
+                    'Loading dispatch jobs...',
+                    style: TextStyle(color: Colors.grey, fontSize: 16),
+                  ),
+                ],
+              ),
+            )
           : error != null
           ? Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
-            const SizedBox(height: 16),
-            Text(
-              'Error Loading Data',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.red[700],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Text(
-                error!,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.red[600]),
-              ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: _fetchDispatchJobs,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-              style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.blueAccent,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
-        ),
-      )
-          : RefreshIndicator(
-        onRefresh: _fetchDispatchJobs,
-        color: Colors.blueAccent,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (filteredJobs.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 80),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.inbox_outlined, size: 64, color: Colors.grey[400]),
-                      const SizedBox(height: 16),
-                      Text(
-                        searchQuery.isNotEmpty
-                            ? 'No jobs found for "$searchQuery"'
-                            : 'No dispatch jobs found',
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.grey[600],
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      if (searchQuery.isNotEmpty || selectedStatusFilter != 'All' || selectedDateFilter != 'All') ...[
-                        const SizedBox(height: 8),
-                        TextButton(
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {
-                              searchQuery = '';
-                              selectedStatusFilter = 'All';
-                              selectedDateFilter = 'All';
-                              _tabController.animateTo(0);
-                              _dateTabController.animateTo(0);
-                            });
-                            _applyFilters();
-                          },
-                          child: const Text('Clear Filters'),
-                        ),
-                      ],
-                    ],
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Error Loading Data',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red[700],
+                    ),
                   ),
-                ),
-
-              // Stats Header
-              Container(
-                margin: const EdgeInsets.all(16),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 2),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Text(
+                      error!,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.red[600]),
                     ),
-                  ],
-                ),
-                child: _buildStatsRow(),
-              ),
-
-              // Status Chart
-              Container(
-                margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 2),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: _fetchDispatchJobs,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blueAccent,
+                      foregroundColor: Colors.white,
                     ),
-                  ],
-                ),
-                child: _buildStatusChart(),
+                  ),
+                ],
               ),
-
-              // Date Filter Tabs (moved here)
-              Container(
-                height: 50,
-                margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: TabBar(
-                  controller: _dateTabController,
-                  isScrollable: true,
-                  indicatorColor: Colors.deepPurple,
-                  indicatorWeight: 3,
-                  labelColor: Colors.deepPurple,
-                  unselectedLabelColor: Colors.grey[600],
-                  labelStyle: const TextStyle(fontWeight: FontWeight.w600),
-                  onTap: (index) {
-                    setState(() {
-                      selectedDateFilter = dateFilterOptions[index];
-                      if (selectedDateFilter == 'Custom' && customDateRange == null) {
-                        _selectCustomDateRange();
-                      }
-                    });
-                    _applyFilters();
-                  },
-                  tabs: dateFilterOptions.map((filter) {
-                    return Tab(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Row(
+            )
+          : RefreshIndicator(
+              onRefresh: _fetchDispatchJobs,
+              color: Colors.blueAccent,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (filteredJobs.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 80),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text(filter),
-                            if (filter == 'Custom' && customDateRange != null)
-                              const Padding(
-                                padding: EdgeInsets.only(left: 6.0),
-                                child: Icon(Icons.edit_calendar, size: 16),
+                            Icon(
+                              Icons.inbox_outlined,
+                              size: 64,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              searchQuery.isNotEmpty
+                                  ? 'No jobs found for "$searchQuery"'
+                                  : 'No dispatch jobs found',
+                              style: TextStyle(
+                                fontSize: 18,
+                                color: Colors.grey[600],
+                                fontWeight: FontWeight.w500,
                               ),
+                            ),
+                            if (searchQuery.isNotEmpty ||
+                                selectedStatusFilter != 'All' ||
+                                selectedDateFilter != 'All') ...[
+                              const SizedBox(height: 8),
+                              TextButton(
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() {
+                                    searchQuery = '';
+                                    selectedStatusFilter = 'All';
+                                    selectedDateFilter = 'All';
+                                    _tabController.animateTo(0);
+                                    _dateTabController.animateTo(0);
+                                  });
+                                  _applyFilters();
+                                },
+                                child: const Text('Clear Filters'),
+                              ),
+                            ],
                           ],
                         ),
                       ),
-                    );
-                  }).toList(),
-                ),
-              ),
 
-              // Job Cards
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Column(
-                  children: [
-                    for (final job in filteredJobs) _buildJobCard(job),
+                    // Stats Header
+                    Container(
+                      margin: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: _buildStatsRow(),
+                    ),
+
+                    // Status Chart
+                    Container(
+                      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: _buildStatusChart(),
+                    ),
+
+                    // Date Filter Tabs (moved here)
+                    Container(
+                      height: 50,
+                      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: TabBar(
+                        controller: _dateTabController,
+                        isScrollable: true,
+                        indicatorColor: Colors.deepPurple,
+                        indicatorWeight: 3,
+                        labelColor: Colors.deepPurple,
+                        unselectedLabelColor: Colors.grey[600],
+                        labelStyle: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                        ),
+                        onTap: (index) {
+                          setState(() {
+                            selectedDateFilter = dateFilterOptions[index];
+                            if (selectedDateFilter == 'Custom' &&
+                                customDateRange == null) {
+                              _selectCustomDateRange();
+                            }
+                          });
+                          _applyFilters();
+                        },
+                        tabs: dateFilterOptions.map((filter) {
+                          return Tab(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
+                              child: Row(
+                                children: [
+                                  Text(filter),
+                                  if (filter == 'Custom' &&
+                                      customDateRange != null)
+                                    const Padding(
+                                      padding: EdgeInsets.only(left: 6.0),
+                                      child: Icon(
+                                        Icons.edit_calendar,
+                                        size: 16,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+
+                    // Job Cards
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: Column(
+                        children: [
+                          for (final job in filteredJobs) _buildJobCard(job),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
-            ],
-          ),
-        ),
-      ),
+            ),
     );
   }
 
@@ -573,10 +615,22 @@ class _DispatchBoardState extends State<DispatchBoard>
     final stats = _calculateStats();
     return Row(
       children: [
-        Expanded(child: _buildStatItem('Total', filteredJobs.length, Colors.blue)),
-        Expanded(child: _buildStatItem('In Progress', stats['start'] ?? 0, Colors.orange)),
-        Expanded(child: _buildStatItem('Planned', stats['planned'] ?? 0, Colors.blue)),
-        Expanded(child: _buildStatItem('Completed', completedJobsCount, Colors.green)),
+        Expanded(
+          child: _buildStatItem('Total', filteredJobs.length, Colors.blue),
+        ),
+        Expanded(
+          child: _buildStatItem(
+            'In Progress',
+            stats['start'] ?? 0,
+            Colors.orange,
+          ),
+        ),
+        Expanded(
+          child: _buildStatItem('Planned', stats['planned'] ?? 0, Colors.blue),
+        ),
+        Expanded(
+          child: _buildStatItem('Completed', completedJobsCount, Colors.green),
+        ),
       ],
     );
   }
@@ -761,16 +815,16 @@ class _DispatchBoardState extends State<DispatchBoard>
                       const SizedBox(height: 2),
                       Text(
                         'Demand: ${job.jobDemand ?? '-'}',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 13,
-                        ),
+                        style: TextStyle(color: Colors.grey[600], fontSize: 13),
                       ),
                     ],
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: _statusColor(job.dispatchStatus),
                     borderRadius: BorderRadius.circular(20),
@@ -801,7 +855,11 @@ class _DispatchBoardState extends State<DispatchBoard>
     return Column(
       children: [
         if (job.dispatchDate != null)
-          _buildDetailRow(Icons.schedule, 'Dispatch Date', _formatDateTime(job.dispatchDate!)),
+          _buildDetailRow(
+            Icons.schedule,
+            'Dispatch Date',
+            _formatDateTime(job.dispatchDate!),
+          ),
         if (job.dispatchNo != null && job.dispatchNo!.isNotEmpty)
           _buildDetailRow(Icons.receipt_long, 'Dispatch No', job.dispatchNo!),
         if (job.operatorName != null && job.operatorName!.isNotEmpty)
@@ -832,10 +890,7 @@ class _DispatchBoardState extends State<DispatchBoard>
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ),
         ],

@@ -13,7 +13,8 @@ class UserActivityPage extends StatefulWidget {
   State<UserActivityPage> createState() => _UserActivityPageState();
 }
 
-class _UserActivityPageState extends State<UserActivityPage> with TickerProviderStateMixin {
+class _UserActivityPageState extends State<UserActivityPage>
+    with TickerProviderStateMixin {
   List<Map<String, dynamic>> activityLogs = [];
   List<Map<String, dynamic>> filteredLogs = [];
   bool isLoading = false;
@@ -69,15 +70,14 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
       final response = await _jobApi!.getActivityLogs();
 
       List<Map<String, dynamic>> allLogs = [];
-      if (response is List) {
-        allLogs = response;
-      }
+      allLogs = response;
 
       // Filter out "User Login" actions
-      final filteredLogs = allLogs.where((log) =>
-      log['action'] != null &&
-          log['action'] != 'User Login'
-      ).toList();
+      final filteredLogs = allLogs
+          .where(
+            (log) => log['action'] != null && log['action'] != 'User Login',
+          )
+          .toList();
 
       // Extract unique users and actions for filters
       final users = <String>{};
@@ -96,12 +96,8 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
 
       setState(() {
         activityLogs = filteredLogs;
-        availableUsers = ['All Users', ...users.toList()
-          ..sort()
-        ];
-        availableActions = ['All Actions', ...actions.toList()
-          ..sort()
-        ];
+        availableUsers = ['All Users', ...users.toList()..sort()];
+        availableActions = ['All Actions', ...actions.toList()..sort()];
         _applyFilters();
         isLoading = false;
       });
@@ -140,9 +136,9 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
         final details = (log['details'] ?? '').toString().toLowerCase();
         final action = (log['action'] ?? '').toString().toLowerCase();
         final user = log['user'];
-        final userId = user != null ? (user['name'] ?? user['id'] ?? '')
-            .toString()
-            .toLowerCase() : '';
+        final userId = user != null
+            ? (user['name'] ?? user['id'] ?? '').toString().toLowerCase()
+            : '';
         final jobNo = (log['nrcJobNo'] ?? '').toString().toLowerCase();
 
         if (!details.contains(query) &&
@@ -192,7 +188,10 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
       final user = log['user'];
       String userName = 'Unknown User';
       if (user != null && user is Map<String, dynamic>) {
-        userName = user['name']?.toString() ?? user['id']?.toString() ?? 'Unknown User';
+        userName =
+            user['name']?.toString() ??
+            user['id']?.toString() ??
+            'Unknown User';
       }
       stats[userName] = (stats[userName] ?? 0) + 1;
     }
@@ -224,11 +223,9 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
       }
     }
 
-    return dailyStats.entries.map((e) =>
-    {
-      'date': e.key,
-      'count': e.value,
-    }).toList();
+    return dailyStats.entries
+        .map((e) => {'date': e.key, 'count': e.value})
+        .toList();
   }
 
   String _getTimeAgo(String createdAt) {
@@ -271,7 +268,7 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
 
   String _formatActivityDetails(String details) {
     if (details.isEmpty) return 'No details available';
-    
+
     try {
       if (details.contains('{') && details.contains('}')) {
         final parts = details.split(' | Resource:');
@@ -347,7 +344,7 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
 
   String _getUserRole(dynamic user) {
     if (user == null) return 'Unknown';
-    
+
     if (user is Map<String, dynamic>) {
       return user['role']?.toString() ?? 'Unknown';
     }
@@ -435,10 +432,7 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
                   const SizedBox(height: 8),
                   Text(
                     'Monitor user activities and system interactions',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey[600],
-                    ),
+                    style: TextStyle(fontSize: 16, color: Colors.grey[600]),
                   ),
                 ],
               ),
@@ -502,33 +496,35 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
                       height: 220,
                       child: actionStats.isNotEmpty
                           ? PieChart(
-                        PieChartData(
-                          sections: actionStats.entries.take(6).map((entry) {
-                            return PieChartSectionData(
-                              color: _getActionColor(entry.key),
-                              value: entry.value.toDouble(),
-                              title: '${entry.value}',
-                              radius: 60,
-                              titleStyle: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
+                              PieChartData(
+                                sections: actionStats.entries.take(6).map((
+                                  entry,
+                                ) {
+                                  return PieChartSectionData(
+                                    color: _getActionColor(entry.key),
+                                    value: entry.value.toDouble(),
+                                    title: '${entry.value}',
+                                    radius: 60,
+                                    titleStyle: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  );
+                                }).toList(),
+                                centerSpaceRadius: 50,
+                                sectionsSpace: 3,
                               ),
-                            );
-                          }).toList(),
-                          centerSpaceRadius: 50,
-                          sectionsSpace: 3,
-                        ),
-                      )
+                            )
                           : const Center(
-                        child: Text(
-                          'No data available',
-                          style: TextStyle(
-                            color: Color(0xFF64748B),
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
+                              child: Text(
+                                'No data available',
+                                style: TextStyle(
+                                  color: Color(0xFF64748B),
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
                     ),
                     const SizedBox(height: 20),
                     // Legend
@@ -563,7 +559,6 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
                 ),
               ),
             ),
-
 
             const SizedBox(height: 24),
 
@@ -660,16 +655,17 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
                           borderData: FlBorderData(
                             show: true,
                             border: Border(
-                              bottom: BorderSide(color: Colors.grey[200] ?? Colors.grey),
-                              left: BorderSide(color: Colors.grey[200] ?? Colors.grey),
+                              bottom: BorderSide(
+                                color: Colors.grey[200] ?? Colors.grey,
+                              ),
+                              left: BorderSide(
+                                color: Colors.grey[200] ?? Colors.grey,
+                              ),
                             ),
                           ),
                           lineBarsData: [
                             LineChartBarData(
-                              spots: dailyActivity
-                                  .asMap()
-                                  .entries
-                                  .map((entry) {
+                              spots: dailyActivity.asMap().entries.map((entry) {
                                 return FlSpot(
                                   entry.key.toDouble(),
                                   entry.value['count'].toDouble(),
@@ -715,8 +711,12 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
     );
   }
 
-  Widget _buildSummaryCard(String title, String value, IconData icon,
-      Color color) {
+  Widget _buildSummaryCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -742,11 +742,7 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
                     color: color.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(
-                    icon,
-                    size: 28,
-                    color: color,
-                  ),
+                  child: Icon(icon, size: 28, color: color),
                 ),
                 const Spacer(),
                 Icon(
@@ -812,7 +808,9 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
                       hintText: 'Search activities, jobs, or users...',
                       hintStyle: TextStyle(color: Color(0xFF94A3B8)),
                       prefixIcon: Icon(
-                          Icons.search_rounded, color: Color(0xFF94A3B8)),
+                        Icons.search_rounded,
+                        color: Color(0xFF94A3B8),
+                      ),
                       border: InputBorder.none,
                       contentPadding: EdgeInsets.all(16),
                     ),
@@ -870,8 +868,7 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
                         onPressed: _selectDateRange,
                         icon: Icons.calendar_month_rounded,
                         label: _startDate != null && _endDate != null
-                            ? '${_startDate!.day}/${_startDate!
-                            .month} - ${_endDate!.day}/${_endDate!.month}'
+                            ? '${_startDate!.day}/${_startDate!.month} - ${_endDate!.day}/${_endDate!.month}'
                             : 'Select Date Range',
                         isPrimary: true,
                       ),
@@ -894,9 +891,7 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             decoration: BoxDecoration(
               color: const Color(0xFFF8FAFC),
-              border: Border(
-                bottom: BorderSide(color: Colors.grey[200]!),
-              ),
+              border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
             ),
             child: Row(
               children: [
@@ -918,7 +913,8 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
                     child: CircularProgressIndicator(
                       strokeWidth: 2.5,
                       valueColor: AlwaysStoppedAnimation<Color>(
-                          Color(0xFF3B82F6)),
+                        Color(0xFF3B82F6),
+                      ),
                     ),
                   ),
               ],
@@ -929,340 +925,359 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
           Expanded(
             child: isLoading
                 ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                        Color(0xFF3B82F6)),
-                  ),
-                  SizedBox(height: 16),
-                  Text(
-                    'Loading activities...',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Color(0xFF64748B),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Color(0xFF3B82F6),
+                          ),
+                        ),
+                        SizedBox(height: 16),
+                        Text(
+                          'Loading activities...',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-            )
+                  )
                 : error != null
                 ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.red[50],
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Icon(
-                        Icons.error_outline_rounded,
-                        size: 48,
-                        color: Colors.red[400],
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.red[50],
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Icon(
+                              Icons.error_outline_rounded,
+                              size: 48,
+                              color: Colors.red[400],
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          Text(
+                            error!,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Color(0xFF64748B),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 24),
+                          ElevatedButton.icon(
+                            onPressed: _fetchActivityLogs,
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text('Try Again'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.maincolor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 16,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 0,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 20),
-                    Text(
-                      error!,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        color: Color(0xFF64748B),
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      onPressed: _fetchActivityLogs,
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Try Again'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.maincolor,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 16,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 0,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
+                  )
                 : filteredLogs.isEmpty
                 ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Icon(
-                        Icons.inbox_outlined,
-                        size: 48,
-                        color: Colors.grey[400],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      'No activities found',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Try adjusting your search or filters',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[500],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
-                : ListView.builder(
-              padding: const EdgeInsets.all(20),
-              itemCount: filteredLogs.length,
-              itemBuilder: (context, index) {
-                final log = filteredLogs[index];
-                final user = log['user'];
-                final jobNo = log['nrcJobNo'];
-
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
-                        blurRadius: 20,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Header Row
-                        Row(
-                          children: [
-                            Container(
-                              width: 12,
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color: _getActionColor(log['action']?.toString() ?? ''),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[100],
+                              borderRadius: BorderRadius.circular(16),
                             ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                            child: Icon(
+                              Icons.inbox_outlined,
+                              size: 48,
+                              color: Colors.grey[400],
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          const Text(
+                            'No activities found',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Try adjusting your search or filters',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(20),
+                    itemCount: filteredLogs.length,
+                    itemBuilder: (context, index) {
+                      final log = filteredLogs[index];
+                      final user = log['user'];
+                      final jobNo = log['nrcJobNo'];
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.04),
+                              blurRadius: 20,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Header Row
+                              Row(
                                 children: [
-                                  Text(
-                                    log['action']?.toString() ?? 'Unknown Action',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 18,
-                                      color: Color(0xFF0F172A),
+                                  Container(
+                                    width: 12,
+                                    height: 12,
+                                    decoration: BoxDecoration(
+                                      color: _getActionColor(
+                                        log['action']?.toString() ?? '',
+                                      ),
+                                      borderRadius: BorderRadius.circular(6),
                                     ),
                                   ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.all(6),
-                                        decoration: BoxDecoration(
-                                          color: Colors.grey[100],
-                                          borderRadius: BorderRadius.circular(
-                                              8),
-                                        ),
-                                        child: Icon(
-                                          Icons.person_outline_rounded,
-                                          size: 16,
-                                          color: Colors.grey[600],
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        _getUserDisplayName(user),
-                                        style: const TextStyle(
-                                          color: Color(0xFF475569),
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.grey[100],
-                                          borderRadius: BorderRadius.circular(
-                                              12),
-                                        ),
-                                        child: Text(
-                                          _getUserRole(user),
-                                          style: TextStyle(
-                                            color: Colors.grey[600],
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w500,
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          log['action']?.toString() ??
+                                              'Unknown Action',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 18,
+                                            color: Color(0xFF0F172A),
                                           ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(6),
+                                              decoration: BoxDecoration(
+                                                color: Colors.grey[100],
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: Icon(
+                                                Icons.person_outline_rounded,
+                                                size: 16,
+                                                color: Colors.grey[600],
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              _getUserDisplayName(user),
+                                              style: const TextStyle(
+                                                color: Color(0xFF475569),
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 10,
+                                                    vertical: 4,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.grey[100],
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                              ),
+                                              child: Text(
+                                                _getUserRole(user),
+                                                style: TextStyle(
+                                                  color: Colors.grey[600],
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[50],
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: Colors.grey[200] ?? Colors.grey,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      _getTimeAgo(
+                                        log['createdAt']?.toString() ?? '',
+                                      ),
+                                      style: TextStyle(
+                                        color: Colors.grey[600],
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              // Job Number Badge
+                              if (jobNo != null) ...[
+                                const SizedBox(height: 16),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        Colors.white,
+                                        Colors.grey[50] ?? Colors.grey,
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Colors.grey[300] ?? Colors.grey,
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.work_outline_rounded,
+                                        size: 16,
+                                        color: Colors.grey[700] ?? Colors.grey,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Job: $jobNo',
+                                        style: TextStyle(
+                                          color:
+                                              Colors.grey[700] ?? Colors.grey,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
                                         ),
                                       ),
                                     ],
                                   ),
-                                ],
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.grey[50],
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.grey[200] ?? Colors.grey),
-                              ),
-                              child: Text(
-                                _getTimeAgo(log['createdAt']?.toString() ?? ''),
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
                                 ),
-                              ),
-                            ),
-                          ],
+                              ],
+
+                              // Activity Details
+                              if (log['details'] != null) ...[
+                                const SizedBox(height: 16),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF8FAFC),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: const Color(0xFFE2E8F0),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(4),
+                                            decoration: BoxDecoration(
+                                              color:
+                                                  Colors.blue[100] ??
+                                                  Colors.blue,
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                            ),
+                                            child: Icon(
+                                              Icons.info_outline_rounded,
+                                              size: 16,
+                                              color:
+                                                  Colors.blue[700] ??
+                                                  Colors.blue,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'Details',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.grey[700],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        _formatActivityDetails(
+                                          log['details']?.toString() ?? '',
+                                        ),
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          height: 1.5,
+                                          color: Color(0xFF475569),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
-
-                        // Job Number Badge
-                        if (jobNo != null) ...[
-                          const SizedBox(height: 16),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  Colors.white,
-                                  Colors.grey[50] ?? Colors.grey,
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: Colors.grey[300] ?? Colors.grey,
-                                width: 1,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.work_outline_rounded,
-                                  size: 16,
-                                  color: Colors.grey[700] ?? Colors.grey,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'Job: $jobNo',
-                                  style: TextStyle(
-                                    color: Colors.grey[700] ?? Colors.grey,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-
-                        // Activity Details
-                        if (log['details'] != null) ...[
-                          const SizedBox(height: 16),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: const Color(0xFFE2E8F0),
-                                width: 1,
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.blue[100] ?? Colors.blue,
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: Icon(
-                                        Icons.info_outline_rounded,
-                                        size: 16,
-                                        color: Colors.blue[700] ?? Colors.blue,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'Details',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.grey[700],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  _formatActivityDetails(log['details']?.toString() ?? ''),
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    height: 1.5,
-                                    color: Color(0xFF475569),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
           ),
         ],
       ),
@@ -1288,20 +1303,14 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
           value: value,
           hint: Text(
             hint,
-            style: const TextStyle(
-              color: Color(0xFF94A3B8),
-              fontSize: 14,
-            ),
+            style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
           ),
           items: items.map((item) {
             return DropdownMenuItem(
               value: item,
               child: Text(
                 item,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF475569),
-                ),
+                style: const TextStyle(fontSize: 14, color: Color(0xFF475569)),
               ),
             );
           }).toList(),
@@ -1326,18 +1335,13 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
       icon: Icon(icon, size: 18),
       label: Text(
         label,
-        style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-        ),
+        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
       ),
       style: ElevatedButton.styleFrom(
         backgroundColor: isPrimary ? AppColors.maincolor : Colors.grey[100],
         foregroundColor: isPrimary ? Colors.white : Colors.grey[700],
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         elevation: 0,
       ),
     );
@@ -1350,10 +1354,7 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
       appBar: AppBar(
         title: const Text(
           'User Activity',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 20,
-          ),
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 20),
         ),
         backgroundColor: AppColors.maincolor,
         foregroundColor: Colors.white,
@@ -1373,23 +1374,14 @@ class _UserActivityPageState extends State<UserActivityPage> with TickerProvider
           unselectedLabelColor: Colors.white70,
           labelStyle: const TextStyle(fontWeight: FontWeight.w600),
           tabs: const [
-            Tab(
-              icon: Icon(Icons.dashboard_rounded),
-              text: 'Dashboard',
-            ),
-            Tab(
-              icon: Icon(Icons.list_rounded),
-              text: 'Activities',
-            ),
+            Tab(icon: Icon(Icons.dashboard_rounded), text: 'Dashboard'),
+            Tab(icon: Icon(Icons.list_rounded), text: 'Activities'),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          _buildDashboardTab(),
-          _buildActivitiesTab(),
-        ],
+        children: [_buildDashboardTab(), _buildActivitiesTab()],
       ),
     );
   }

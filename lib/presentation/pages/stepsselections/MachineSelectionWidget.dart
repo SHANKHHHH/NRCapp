@@ -271,48 +271,89 @@ class _MachineSelectionWidgetState extends State<MachineSelectionWidget> {
                         )
                       else
                         Column(
-                          children: machines.map((machine) {
-                            return RadioListTile<Machine>(
-                              value: machine,
-                              groupValue: assignment.selectedMachine,
-                              onChanged: (value) {
-                                setState(() {
-                                  assignment.selectedMachine = value;
-                                });
-                                widget.onSelectionChanged();
-                              },
-                              title: Text(
-                                '${machine.unit} - ${machine.machineCode}',
-                                style: const TextStyle(fontWeight: FontWeight.w500),
+                          children: [
+                            // Show selected machines count
+                            if (assignment.getAllSelectedMachines().isNotEmpty)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: color.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: color.withOpacity(0.3)),
+                                ),
+                                child: Text(
+                                  '${assignment.getAllSelectedMachines().length} machine(s) selected',
+                                  style: TextStyle(
+                                    color: color,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                  ),
+                                ),
                               ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('${machine.description} (${machine.type})'),
-                                  Text('Capacity: ${machine.capacity}/8hrs'),
-                                  Text('Status: ${machine.status}'),
-                                  Text('Active: ${machine.isActive ? "Yes" : "No"}'),
-                                  Text('Created: ${machine.createdAt}'),
-                                  Text('Updated: ${machine.updatedAt}'),
-                                  if (machine.remarks != null && machine.remarks!.isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 4.0),
-                                      child: Text(
-                                        'Remarks: ${machine.remarks ?? "No remarks"}',
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          fontStyle: FontStyle.italic,
-                                          color: Colors.black54,
+                            const SizedBox(height: 8),
+                            // Machine selection with checkboxes
+                            ...machines.map((machine) {
+                              final isSelected = assignment.getAllSelectedMachines().contains(machine);
+                              return CheckboxListTile(
+                                value: isSelected,
+                                onChanged: (value) {
+                                  setState(() {
+                                    if (value == true) {
+                                      // Add to selectedMachines list
+                                      if (!assignment.selectedMachines.contains(machine)) {
+                                        assignment.selectedMachines.add(machine);
+                                      }
+                                      // Also set as selectedMachine for backward compatibility
+                                      assignment.selectedMachine = machine;
+                                    } else {
+                                      // Remove from selectedMachines list
+                                      assignment.selectedMachines.remove(machine);
+                                      // If this was the selectedMachine, clear it
+                                      if (assignment.selectedMachine == machine) {
+                                        assignment.selectedMachine = assignment.selectedMachines.isNotEmpty 
+                                            ? assignment.selectedMachines.first 
+                                            : null;
+                                      }
+                                    }
+                                  });
+                                  widget.onSelectionChanged();
+                                },
+                                title: Text(
+                                  '${machine.unit} - ${machine.machineCode}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w500,
+                                    color: isSelected ? color : null,
+                                  ),
+                                ),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('${machine.description} (${machine.type})'),
+                                    Text('Capacity: ${machine.capacity}/8hrs'),
+                                    Text('Status: ${machine.status}'),
+                                    Text('Active: ${machine.isActive ? "Yes" : "No"}'),
+                                    Text('Created: ${machine.createdAt}'),
+                                    Text('Updated: ${machine.updatedAt}'),
+                                    if (machine.remarks != null && machine.remarks!.isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 4.0),
+                                        child: Text(
+                                          'Remarks: ${machine.remarks ?? "No remarks"}',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontStyle: FontStyle.italic,
+                                            color: Colors.black54,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                ],
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 0),
-                              dense: true,
-                              activeColor: color,
-                            );
-                          }).toList(),
+                                  ],
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 0),
+                                dense: true,
+                                activeColor: color,
+                              );
+                            }).toList(),
+                          ],
                         ),
                     ],
                   ),

@@ -2,6 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/services/auth_service.dart';
 import 'package:dio/dio.dart';
 import 'dart:convert';
+import '../../constants/strings.dart';
 
 class AuthRepository {
   static const _tokenKey = 'accessToken';
@@ -11,9 +12,9 @@ class AuthRepository {
 
   AuthRepository(this._authService);
 
-  Future<bool> login({required String id, required String password}) async {
+  Future<bool> login({required String email, required String password}) async {
     try {
-      final response = await _authService.login(id: id, password: password);
+      final response = await _authService.login(email: email, password: password);
       if (response.data['success'] == true && response.data['acessToken'] != null) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_tokenKey, response.data['acessToken']);
@@ -57,7 +58,7 @@ class AuthRepository {
     try {
       final dio = Dio();
       final response = await dio.get(
-        'http://nrc-backend-alb-174636098.ap-south-1.elb.amazonaws.com/api/auth/users/$id',
+        '${AppStrings.baseUrl}/auth/users/$id',
         options: Options(
           headers: {
             'Authorization': 'Bearer $accessToken',

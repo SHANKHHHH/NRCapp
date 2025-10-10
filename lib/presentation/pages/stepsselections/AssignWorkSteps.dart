@@ -94,9 +94,9 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
         if (selectedDemand?.toLowerCase() == 'urgent') {
           return true; // Allow urgent jobs to proceed without machines
         }
-        // For regular jobs, require machine selection
+        // For regular jobs, require machine selection (at least one machine)
         return selectedWorkStepAssignments.every((assignment) =>
-        assignment.selectedMachine != null ||
+        assignment.getAllSelectedMachines().isNotEmpty ||
             !_requiresMachine(assignment.workStep.step));
       default:
         return true;
@@ -185,13 +185,14 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
 
         print(assignment.selectedMachine);
 
-        if (assignment.selectedMachine != null) {
-          // Machine assigned
+        // Handle both single and multiple machine selection
+        final allMachines = assignment.getAllSelectedMachines();
+        for (final machine in allMachines) {
           machineDetails.add({
-            'machineId': assignment.selectedMachine!.id.toString(),
-            'unit': assignment.selectedMachine!.unit.toString(),
-            'machineCode': assignment.selectedMachine!.machineCode.toString(),
-            'machineType': assignment.selectedMachine!.machineType.toString(),
+            'machineId': machine.id.toString(),
+            'unit': machine.unit.toString(),
+            'machineCode': machine.machineCode.toString(),
+            'machineType': machine.machineType.toString(),
           });
         }
 
@@ -796,14 +797,15 @@ class _AssignWorkStepsState extends State<AssignWorkSteps>
           final assignment = entry.value;
           
           List<dynamic> machineDetails;
-          if (assignment.selectedMachine != null) {
-            // Machine is assigned - send as array with machine object
-            machineDetails = [{
-              "machineId": assignment.selectedMachine!.id.toString(),
-              "unit": assignment.selectedMachine!.unit.toString(),
-              "machineCode": assignment.selectedMachine!.machineCode.toString(),
-              "machineType": assignment.selectedMachine!.machineType.toString(),
-            }];
+          final allMachines = assignment.getAllSelectedMachines();
+          if (allMachines.isNotEmpty) {
+            // Multiple machines assigned - send as array with all machine objects
+            machineDetails = allMachines.map((machine) => {
+              "machineId": machine.id.toString(),
+              "unit": machine.unit.toString(),
+              "machineCode": machine.machineCode.toString(),
+              "machineType": machine.machineType.toString(),
+            }).toList();
           } else {
             machineDetails = [{
               "status": selectedDemand?.toLowerCase() == 'urgent',

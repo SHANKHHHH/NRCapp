@@ -6,6 +6,7 @@ import '../../data/models/Job.dart';
 import '../../data/models/WorkStepAssignment.dart';
 import '../../data/models/purchase_order.dart';
 import '../pages/dashboard/DispatchBoard.dart';
+import '../pages/dashboard/FlyingSquadDashboard.dart';
 import '../pages/dashboard/PlanningDashboard.dart';
 import '../pages/dashboard/PrintingManagerBoard.dart';
 import '../pages/dashboard/ProductionBoard.dart';
@@ -80,6 +81,15 @@ final GoRouter router = GoRouter(
         final role = userRoleManager.userRole?.toLowerCase();
         if (role == null) return LoginScreen();
         if (role == 'admin' || role == 'qc_manager') return QualityBoard();
+        return const MainScaffold();
+      },
+    ),
+    GoRoute(
+      path: '/flying-squad-dashboard',
+      builder: (context, state) {
+        final role = userRoleManager.userRole?.toLowerCase();
+        if (role == null) return LoginScreen();
+        if (role == 'admin' || role == 'flyingsquad' || role == 'qc_manager') return const FlyingSquadDashboard();
         return const MainScaffold();
       },
     ),

@@ -124,6 +124,17 @@ class _ProductionBoardState extends State<ProductionBoard>
           isLoading = false;
         });
 
+        // Show success message when data is loaded successfully
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Jobs reloaded successfully!'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+
         _applyFilters();
         _mainAnimationController.forward();
       } else {
