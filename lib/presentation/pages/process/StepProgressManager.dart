@@ -110,7 +110,14 @@ class StepProgressManager {
             '${steps[completedStepIndex].title} completed! Activated: $stepNames'
         );
       } else {
-        onShowMessage('All job steps completed! Job is ready for final review.');
+        // Only show "job completed" if ALL steps including Flap Pasting are completed
+        bool allStepsCompleted = steps.every((step) => step.status == StepStatus.completed);
+        if (allStepsCompleted) {
+          onShowMessage('All job steps completed! Job is ready for final review.');
+        } else {
+          // Just show that this specific step completed
+          onShowMessage('${steps[completedStepIndex].title} completed!');
+        }
       }
     }
   }

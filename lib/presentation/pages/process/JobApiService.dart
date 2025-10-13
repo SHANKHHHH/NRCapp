@@ -523,18 +523,21 @@ class JobApiService {
     print(jobNumber);
     print(stepNo);
     print('JobApiService - Printing formData received:');
-    print('Qty Sheet: ${formData['Qty Sheet']}');
+    print('Quantity OK: ${formData['Quantity OK']}'); // ✅ Fixed: Use correct field name
     print('Full formData: $formData');
     
     final body = {
       "jobNrcJobNo": jobNumber,
       "jobStepId": jobStepId,
       "status": "accept",
-      "quantity": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
+      "quantity": int.tryParse(formData['Quantity OK'] ?? '0') ?? 0, // ✅ Fixed: Use 'Quantity OK' instead of 'Qty Sheet'
       "date": _formatDateWithMilliseconds(),
       "oprName": formData['Operator Name'] ?? '',
       "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
       "machine": formData['Machine'] ?? '',
+      "noOfColours": int.tryParse(formData['Colors Used'] ?? '0') ?? 0, // ✅ Added: Colors Used field
+      "inksUsed": formData['Inks Used'] ?? '', // ✅ Added: Inks Used field
+      "coatingType": formData['Coating Type'] ?? '', // ✅ Added: Coating Type field
     };
     print("Printing Details");
     print(body);
@@ -556,7 +559,7 @@ class JobApiService {
     final jobStepId = stepDetails['id'];
     print("Corrugation job step number is $jobStepId");
     print('JobApiService - Corrugation formData received:');
-    print('Qty Sheet: ${formData['Qty Sheet']}');
+    print('Sheets Count: ${formData['Sheets Count']}'); // ✅ Fixed: Use correct field name
     print('Full formData: $formData');
 
     final body = {
@@ -567,10 +570,10 @@ class JobApiService {
     "shift": formData['Shift'] ?? '',
     "oprName": formData['Operator Name'] ?? '',
     "machineNo": formData['Machine No'] ?? '',
-    "quantity": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
+    "quantity": int.tryParse(formData['Sheets Count'] ?? '0') ?? 0, // ✅ Fixed: Use 'Sheets Count' instead of 'Qty Sheet'
     "size": formData['Size'] ?? '',
-    "gsm1": formData['GSM 1'] ?? '',
-    "gsm2": formData['GSM 2'] ?? '',
+    "gsm1": formData['GSM1 (Top Face)'] ?? formData['GSM 1'] ?? '', // ✅ Fixed: Include full field name
+    "gsm2": formData['GSM2 (Bottom Face)'] ?? formData['GSM 2'] ?? '', // ✅ Fixed: Include full field name
     "flute": formData['Flute Type'] ?? '',
     "remarks": formData['Remarks'] ?? '',
     "qcCheckSignBy": formData['QC Check Sign By'] ?? '',
@@ -592,13 +595,13 @@ class JobApiService {
 
     print("Steps Details will come here");
     if (stepDetails == null) {
-      throw Exception('Failed to get job planning step details for Corrugation Store');
+      throw Exception('Failed to get job planning step details for Flute Lamination');
     }
 
     final jobStepId = stepDetails['id'];
-    print("Corrugation job step number is $jobStepId");
+    print("Flute Lamination job step number is $jobStepId");
     print('JobApiService - FluteLamination formData received:');
-    print('Qty Sheet: ${formData['Qty Sheet']}');
+    print('OK Quantity: ${formData['OK Quantity']}'); // ✅ Fixed: Use correct field name
     print('Full formData: $formData');
     
     final body = {
@@ -606,11 +609,11 @@ class JobApiService {
       "jobStepId": jobStepId,
       "status": "accept",
       "date": _formatDateWithMilliseconds(),
-      "shift": formData['Shift'] ?? '',                  // New
+      "shift": formData['Shift'] ?? '',
       "operatorName": formData['Operator Name'] ?? '',
-      "film": formData['Film Type'] ?? '',               // Changed key from 'filmType' to 'film'
-      "quantity": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0, // Use Qty Sheet from form
-      "qcCheckSignBy": formData['QC Sign By'] ?? '',     // New
+      "film": formData['Film Type'] ?? '',
+      "quantity": int.tryParse(formData['OK Quantity'] ?? '0') ?? 0, // ✅ Fixed: Use 'OK Quantity' instead of 'Qty Sheet'
+      "qcCheckSignBy": formData['QC Sign By'] ?? '',
       "adhesive": formData['Adhesive'] ?? '',
       "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
     };
@@ -625,13 +628,13 @@ class JobApiService {
 
     print("Steps Details will come here");
     if (stepDetails == null) {
-      throw Exception('Failed to get job planning step details for Corrugation Store');
+      throw Exception('Failed to get job planning step details for Punching');
     }
 
     final jobStepId = stepDetails['id'];
     print("Punching job step number is $jobStepId");
     print('JobApiService - Punching formData received:');
-    print('Qty Sheet: ${formData['Qty Sheet']}');
+    print('OK Quantity: ${formData['OK Quantity']}'); // ✅ Fixed: Use correct field name
     print('Full formData: $formData');
     
     final body = {
@@ -641,8 +644,8 @@ class JobApiService {
       "date": _formatDateWithMilliseconds(),
       "operatorName": formData['Operator Name'] ?? '',
       "machine": formData['Machine'] ?? '',
-      "quantity": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
-      "die": formData['Die Used'] ?? '',
+      "quantity": int.tryParse(formData['OK Quantity'] ?? '0') ?? 0, // ✅ Fixed: Use 'OK Quantity' instead of 'Qty Sheet'
+      "die": formData['Die Used (diePunchCode)'] ?? formData['Die Used'] ?? '', // ✅ Fixed: Include full field name
       "wastage": int.tryParse(formData['Wastage'] ?? '0') ?? 0,
       "remarks": formData['Remarks'] ?? '',
     };
@@ -656,13 +659,13 @@ class JobApiService {
 
     print("Steps Details will come here");
     if (stepDetails == null) {
-      throw Exception('Failed to get job planning step details for Corrugation Store');
+      throw Exception('Failed to get job planning step details for Quality Control');
     }
 
     final jobStepId = stepDetails['id'];
     print("Quality Control job step number is $jobStepId");
     print('JobApiService - QC formData received:');
-    print('Qty Sheet: ${formData['Qty Sheet']}');
+    print('Pass Quantity: ${formData['Pass Quantity']}'); // ✅ Fixed: Use correct field name
     print('Full formData: $formData');
     
     final body = {
@@ -671,8 +674,8 @@ class JobApiService {
       "status": "accept",
       "date": _formatDateWithMilliseconds(),
       "checkedBy": formData['Checked By'] ?? formData['Emp Id'] ?? 'System',
-      "passQuantity": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
-      "quantity": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0, // Keep for backward compatibility
+      "passQuantity": int.tryParse(formData['Pass Quantity'] ?? '0') ?? 0, // ✅ Fixed: Use 'Pass Quantity'
+      "quantity": int.tryParse(formData['Pass Quantity'] ?? '0') ?? 0, // ✅ Fixed: Use 'Pass Quantity'
       "rejectedQty": int.tryParse(formData['Reject Quantity'] ?? '0') ?? 0,
       "reasonForRejection": formData['Reason for Rejection'].toString() ?? '',
       "remarks": formData['Remarks'] ?? '',
@@ -722,7 +725,7 @@ class JobApiService {
     final jobStepId = stepDetails['id'];
     print("Dispatch job step number is $jobStepId");
     print('JobApiService - Dispatch formData received:');
-    print('Qty Sheet: ${formData['Qty Sheet']}');
+    print('No of Boxes: ${formData['No of Boxes']}'); // ✅ Fixed: Use correct field name
     print('Full formData: $formData');
     
     final body = {
@@ -731,8 +734,8 @@ class JobApiService {
       "status": "accept",
       "date": _formatDateWithMilliseconds(),
       "operatorName": formData['Operator Name'] ?? formData['Emp Id'] ?? 'System',
-      "quantity": int.tryParse(formData['Qty Sheet'] ?? '0') ?? 0,
-      "noOfBoxes": int.tryParse(formData['No of Boxes'] ?? '100') ?? 100, // Required field for validation
+      "quantity": int.tryParse(formData['No of Boxes'] ?? '0') ?? 0, // ✅ Fixed: Use 'No of Boxes' for quantity
+      "noOfBoxes": int.tryParse(formData['No of Boxes'] ?? '0') ?? 0, // ✅ Fixed: Use correct field name
       "dispatchNo": formData['Dispatch No'] ?? 'DISP-${DateTime.now().millisecondsSinceEpoch}',
       "dispatchDate": _formatDateWithMilliseconds(),
       "balanceQty": int.tryParse(formData['Balance Qty'] ?? '0') ?? 0,
@@ -1048,6 +1051,115 @@ class JobApiService {
     } catch (e) {
       print('Error getting user machines: $e');
       return [];
+    }
+  }
+
+  /// Get available quantity from Paper Store for cascading validation
+  Future<int?> getPaperStoreAvailableQuantity(String jobNumber) async {
+    try {
+      final paperStoreData = await _jobApi.getPaperStoreStepByJob(jobNumber);
+      print('🔍 DEBUG: paperStoreData = $paperStoreData');
+      
+      if (paperStoreData != null && paperStoreData['data'] != null) {
+        // The API returns: { "data": { "available": 11000, ... }, "editableFields": { ... } }
+        final innerData = paperStoreData['data'];
+        print('🔍 DEBUG: innerData = $innerData');
+        
+        final available = innerData['available'];
+        print('🔍 DEBUG: available = $available');
+        
+        if (available != null) {
+          final availableQty = int.tryParse(available.toString());
+          print('✅ Paper Store Available Quantity: $availableQty');
+          return availableQty;
+        }
+      }
+      print('⚠️ No Paper Store available quantity found for job: $jobNumber');
+      return null;
+    } catch (e) {
+      print('❌ Error fetching Paper Store available quantity: $e');
+      return null;
+    }
+  }
+
+  /// Get available quantity from previous step for cascading validation
+  /// Supports multiple machines by summing OK quantities across all machine records
+  Future<int?> getPreviousStepAvailableQuantity(String jobNumber, StepType currentStep) async {
+    try {
+      StepType? previousStepType;
+      
+      // Determine which step to get available quantity from
+      switch (currentStep) {
+        case StepType.printing:
+        case StepType.corrugation:
+          // Both Printing and Corrugation get available quantity from Paper Store
+          return await getPaperStoreAvailableQuantity(jobNumber);
+          
+        case StepType.fluteLamination:
+          // Flute Lamination gets OK quantity from Printing
+          previousStepType = StepType.printing;
+          break;
+          
+        case StepType.punching:
+          // Punching gets OK quantity from Flute Lamination
+          previousStepType = StepType.fluteLamination;
+          break;
+          
+        case StepType.flapPasting:
+          // Flap Pasting gets OK quantity from Punching
+          previousStepType = StepType.punching;
+          break;
+          
+        default:
+          // For other steps, try to get from Paper Store as fallback
+          return await getPaperStoreAvailableQuantity(jobNumber);
+      }
+      
+      if (previousStepType != null) {
+        // Get step details for the previous step (may include multiple machine records)
+        final stepDetails = await getStepDetailsWithEditability(jobNumber, previousStepType);
+        
+        if (stepDetails.isNotEmpty) {
+          int totalOkQuantity = 0;
+          int recordsProcessed = 0;
+          
+          print('🔍 Processing ${stepDetails.length} records for ${previousStepType.name}');
+          
+          // Sum OK quantities across all machines for this step
+          for (var stepDetail in stepDetails) {
+            final stepData = stepDetail.data;
+            
+            // Try different field names for OK quantity
+            final okQuantity = stepData['quantityOK'] ?? 
+                              stepData['quantity'] ?? 
+                              stepData['Qty Sheet'] ?? 
+                              stepData['OK Qty'] ??
+                              stepData['okQuantity'];
+            
+            if (okQuantity != null) {
+              final qty = int.tryParse(okQuantity.toString());
+              if (qty != null && qty > 0) {
+                totalOkQuantity += qty;
+                recordsProcessed++;
+                print('  ✅ Machine record ${recordsProcessed}: OK Qty = $qty (Total so far: $totalOkQuantity)');
+              }
+            }
+          }
+          
+          if (recordsProcessed > 0) {
+            print('✅ Previous step (${previousStepType.name}) Total OK Quantity from $recordsProcessed machines: $totalOkQuantity');
+            return totalOkQuantity;
+          } else {
+            print('⚠️ No valid OK quantities found in ${stepDetails.length} records for ${previousStepType.name}');
+          }
+        }
+      }
+      
+      print('⚠️ No previous step quantity found for step: ${currentStep.name}');
+      return null;
+    } catch (e) {
+      print('❌ Error fetching previous step available quantity: $e');
+      return null;
     }
   }
 

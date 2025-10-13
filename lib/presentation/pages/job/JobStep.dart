@@ -127,6 +127,14 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       
       print('🔍 DEBUG getUserMachines raw data: $userMachines');
       
+      // Debug each user machine record
+      for (int i = 0; i < userMachines.length; i++) {
+        final um = userMachines[i];
+        print('🔍 User Machine $i: $um');
+        print('  - isActive: ${um['isActive']} (type: ${um['isActive'].runtimeType})');
+        print('  - machineId: ${um['machineId']} (type: ${um['machineId'].runtimeType})');
+      }
+      
       _userMachineIds = userMachines
           .where((um) => um['isActive'] == true)
           .map((um) => um['machineId']?.toString())
@@ -3247,9 +3255,15 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       if (mounted) Navigator.pop(context);
       print('Start work error: $e');
       
-      // Check if it's an access denied error (403)
+      // Check for specific error types
       if (e.toString().contains('403') || e.toString().contains('Access Denied')) {
         DialogManager.showAccessDeniedMessage(context);
+      } else if (e.toString().contains('400') || 
+                 e.toString().contains('Previous step') ||
+                 e.toString().contains('must be completed') ||
+                 e.toString().contains('Cannot start')) {
+        // Show workflow error for 400 (previous step not completed)
+        _showWorkflowErrorSnackBar(e, 'start');
       } else {
         print('Start work validation warning or server error (operation may have succeeded): $e');
       }
@@ -3309,6 +3323,12 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           e.toString().contains('do not have access')) {
         // Show beautiful access denied dialog
         _showAccessDeniedDialog(step, machineId);
+      } else if (e.toString().contains('400') || 
+                 e.toString().contains('Previous step') ||
+                 e.toString().contains('must be completed') ||
+                 e.toString().contains('Cannot start')) {
+        // Show workflow error for 400 (previous step not completed)
+        _showWorkflowErrorSnackBar(e, 'start');
       } else if (e.toString().contains('not available') || 
                  e.toString().contains('already') ||
                  e.toString().contains('in_progress')) {
@@ -3320,6 +3340,70 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     }
   }
   
+  /// Show workflow error snackbar for 400 errors (previous step not completed)
+  void _showWorkflowErrorSnackBar(dynamic error, String action) {
+    String errorMessage = 'Failed to $action work';
+    
+    // Parse error to get user-friendly message
+    final errorStr = error.toString();
+    
+    if (errorStr.contains('400') || errorStr.contains('DioException')) {
+      // 400 Bad Request - likely workflow validation error
+      if (errorStr.contains('Previous step') || errorStr.contains('must be completed')) {
+        errorMessage = 'Previous step not completed. Please complete the previous step first.';
+      } else if (errorStr.contains('Cannot start') || errorStr.contains('Cannot stop') || 
+                 errorStr.contains('Cannot hold') || errorStr.contains('Cannot resume')) {
+        // Try to extract the specific error message
+        final match = RegExp(r'Cannot (start|stop|hold|resume).*?(?=\.|,|\n|$)', caseSensitive: false)
+            .firstMatch(errorStr);
+        if (match != null) {
+          errorMessage = match.group(0)!;
+          // Make it more user-friendly
+          if (errorMessage.contains('must be completed')) {
+            errorMessage = 'Previous step not completed. Please complete the previous step first.';
+          }
+        } else {
+          errorMessage = 'Previous step not completed';
+        }
+      } else if (errorStr.contains('workflow') || errorStr.contains('Workflow')) {
+        errorMessage = 'Cannot $action this step. Please complete previous steps first.';
+      } else {
+        errorMessage = 'Cannot $action this step. Please check if previous steps are completed.';
+      }
+    }
+    
+    // Show error snackbar
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.white, size: 24),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Workflow Error',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  SizedBox(height: 4),
+                  Text(errorMessage, style: TextStyle(fontSize: 13)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.orange[700],
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 5),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: EdgeInsets.all(16),
+      ),
+    );
+  }
+
   void _showAccessDeniedDialog(StepData step, String machineId) {
     showDialog(
       context: context,

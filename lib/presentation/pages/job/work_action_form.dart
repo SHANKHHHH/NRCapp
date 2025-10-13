@@ -62,6 +62,10 @@ class _WorkActionFormState extends State<WorkActionForm> {
   DateTime? _endTime;
   bool _isLoading = false;
   late JobApi _job;
+  
+  // Cascading quantity validation
+  int? _availableQuantity;
+  bool _isLoadingAvailableQty = false;
 
   /// Helper: return current time in IST (UTC+05:30) with milliseconds and proper offset
   String _formatDateWithMilliseconds() {
@@ -91,6 +95,39 @@ class _WorkActionFormState extends State<WorkActionForm> {
     return '$y-$m-${d}T$hh:$mm:$ss.${ms}Z';
   }
 
+  /// Load available quantity from previous step for cascading validation
+  Future<void> _loadAvailableQuantity() async {
+    if (widget.apiService == null || widget.jobNumber == null || widget.stepType == null) {
+      return;
+    }
+
+    setState(() {
+      _isLoadingAvailableQty = true;
+    });
+
+    try {
+      final availableQty = await widget.apiService!.getPreviousStepAvailableQuantity(
+        widget.jobNumber!, 
+        widget.stepType!
+      );
+      
+      if (mounted) {
+        setState(() {
+          _availableQuantity = availableQty;
+          _isLoadingAvailableQty = false;
+        });
+        print('🔍 Loaded available quantity: $_availableQuantity for step: ${widget.stepType!.name}');
+      }
+    } catch (e) {
+      print('Error loading available quantity: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingAvailableQty = false;
+        });
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -98,6 +135,8 @@ class _WorkActionFormState extends State<WorkActionForm> {
     _autoPopulateFields();
     // Load current status from database if API service is available
     _loadCurrentStatus();
+    // Load available quantity for cascading validation
+    _loadAvailableQuantity();
   }
 
   void _initializeControllers() {
@@ -1035,13 +1074,17 @@ class _WorkActionFormState extends State<WorkActionForm> {
         print('WorkActionForm - Form Data being sent:');
         print('Full formData: $formData');
 
-        if (widget.jobNumber != null && widget.stepNo != null && widget.apiService != null) {
+        // Only call machine API for machine-based steps (not Paper Store, QC, Dispatch)
+        if (widget.jobNumber != null && 
+            widget.stepNo != null && 
+            widget.apiService != null && 
+            widget.machineId != null) { // ✅ Added check: only for steps with machines
           try {
             // Complete work on machine
             print('Completing work on machine ${widget.machineId} for step ${widget.stepNo}');
             final result = await widget.apiService!.completeWorkOnMachine(
               widget.nrcJobNo!,
-                  widget.stepNo!,
+              widget.stepNo!,
               widget.machineId!,
               formData: formData,
             );
@@ -1142,7 +1185,8 @@ class _WorkActionFormState extends State<WorkActionForm> {
   // Build dynamic form field
   Widget _buildFormField(String fieldName, TextEditingController controller) {
     final isQuantityField = fieldName.toLowerCase().contains('quantity') || 
-                           fieldName.toLowerCase().contains('qty');
+                           fieldName.toLowerCase().contains('qty') ||
+                           fieldName.toLowerCase().contains('sheets count'); // Include "Sheets Count" for corrugation
     final isNumberField = isQuantityField || 
                          fieldName.toLowerCase().contains('wastage') ||
                          fieldName.toLowerCase().contains('boxes') ||
@@ -1198,9 +1242,11 @@ class _WorkActionFormState extends State<WorkActionForm> {
                   ? (hasData ? 'Locked - value set' : 'Will be locked after entry')
                   : (hasData 
                       ? 'Auto-filled from job data (editable)'
-                      : (isQuantityField && widget.expectedQuantity != null 
-                          ? 'Expected: ${widget.expectedQuantity} (Valid: ${_getValidQuantityRange()})'
-                          : 'Enter ${fieldName.toLowerCase()}'))),
+                      : (isQuantityField && _availableQuantity != null 
+                          ? '0 to $_availableQuantity (Available from previous step)'
+                          : (isQuantityField && widget.expectedQuantity != null 
+                              ? 'Expected: ${widget.expectedQuantity} (Valid: ${_getValidQuantityRange()})'
+                              : 'Enter ${fieldName.toLowerCase()}')))),
           hintStyle: TextStyle(
             color: shouldBeLocked ? Colors.grey[500] : Colors.grey[400], 
             fontSize: 12
@@ -1241,7 +1287,21 @@ class _WorkActionFormState extends State<WorkActionForm> {
               }
             }
             
-            if (isQuantityField && expectedQty != null && expectedQty > 0) {
+            // Cascading quantity validation - use available quantity from previous step
+            if (isQuantityField && _availableQuantity != null && _availableQuantity! > 0) {
+              // Use available quantity from previous step as the maximum
+              final maxAllowed = _availableQuantity!;
+              final minAllowed = 0;
+              
+              // Debug log to help diagnose issues
+              print('🔍 Cascading Quantity Validation: field=$fieldName, available=$_availableQuantity, range=$minAllowed-$maxAllowed, entered=$enteredValue');
+              
+              if (enteredValue < minAllowed || enteredValue > maxAllowed) {
+                return 'Quantity must be between $minAllowed and $maxAllowed (Available: $_availableQuantity)';
+              }
+            }
+            // Fallback to original validation if no available quantity
+            else if (isQuantityField && expectedQty != null && expectedQty > 0) {
               // Pure ±20% tolerance without any caps
               final tolerance = (expectedQty * 0.20).round();
               
@@ -1281,39 +1341,44 @@ class _WorkActionFormState extends State<WorkActionForm> {
               }
             }
             
-            // Validation for wastage fields (0 to +20% of quantity)
+            // Validation for wastage fields (0 to available quantity)
             if (fieldName.toLowerCase().contains('wastage')) {
               if (enteredValue < 0) {
                 return 'Wastage cannot be negative';
               }
               
-              // Get the main quantity for this step
-              // Try multiple possible field names for quantity
-              final mainQtyController = _controllers['quantity'] ?? 
-                                       _controllers['Quantity'] ?? 
-                                       _controllers['quantityOK'] ?? 
-                                       _controllers['Quantity OK'] ??
-                                       _controllers['passQuantity'] ?? 
-                                       _controllers['Pass Quantity'] ??
-                                       _controllers['OK Quantity'] ??
-                                       _controllers['Qty Sheet'] ??
-                                       _controllers['Sheets Count'];
-              
-              if (mainQtyController != null && mainQtyController.text.isNotEmpty) {
-                final mainQty = int.tryParse(mainQtyController.text);
-                if (mainQty != null && mainQty > 0) {
-                  final maxWastage = (mainQty * 0.20).round();
-                  if (enteredValue > maxWastage) {
-                    return 'Wastage cannot exceed 20% of quantity (max $maxWastage for qty $mainQty)';
-                  }
-                  print('🔍 Wastage Validation: mainQty=$mainQty, maxWastage=$maxWastage, entered=$enteredValue - OK');
-                } else {
-                  // Quantity is 0 or invalid
-                  return 'Please enter a valid quantity first';
+              // Use available quantity from previous step for wastage validation
+              if (_availableQuantity != null && _availableQuantity! > 0) {
+                if (enteredValue > _availableQuantity!) {
+                  return 'Wastage cannot exceed available quantity ($_availableQuantity)';
                 }
+                print('🔍 Wastage Validation: available=$_availableQuantity, entered=$enteredValue - OK');
               } else {
-                // No quantity entered yet
-                return 'Please enter quantity before entering wastage';
+                // Fallback to main quantity validation
+                final mainQtyController = _controllers['quantity'] ?? 
+                                         _controllers['Quantity'] ?? 
+                                         _controllers['quantityOK'] ?? 
+                                         _controllers['Quantity OK'] ??
+                                         _controllers['passQuantity'] ?? 
+                                         _controllers['Pass Quantity'] ??
+                                         _controllers['OK Quantity'] ??
+                                         _controllers['Qty Sheet'] ??
+                                         _controllers['Sheets Count'];
+                
+                if (mainQtyController != null && mainQtyController.text.isNotEmpty) {
+                  final mainQty = int.tryParse(mainQtyController.text);
+                  if (mainQty != null && mainQty > 0) {
+                    final maxWastage = (mainQty * 0.20).round();
+                    if (enteredValue > maxWastage) {
+                      return 'Wastage cannot exceed 20% of quantity (max $maxWastage for qty $mainQty)';
+                    }
+                    print('🔍 Wastage Validation: mainQty=$mainQty, maxWastage=$maxWastage, entered=$enteredValue - OK');
+                  } else {
+                    return 'Please enter a valid quantity first';
+                  }
+                } else {
+                  return 'Please enter quantity before entering wastage';
+                }
               }
             }
             
