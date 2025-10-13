@@ -71,19 +71,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     _apiService = JobApiService(JobApi(DioService.instance));
     _loadUserRoleAndInitializeSteps();
     
-    // Set up periodic refresh to keep UI updated
-    Future.delayed(Duration(seconds: 2), _setupPeriodicRefresh);
-  }
-  
-  void _setupPeriodicRefresh() {
-    // Refresh every 5 seconds to keep status updated
-    Future.delayed(Duration(seconds: 5), () async {
-      if (mounted) {
-        print('🔄 Auto-refreshing job status...');
-        await _initializeAndLoadData();
-        _setupPeriodicRefresh(); // Schedule next refresh
-      }
-    });
+    // Removed auto-refresh to prevent constant UI updates
+    // Users can use pull-to-refresh or manual refresh button instead
   }
 
   Future<void> _loadUserRoleAndInitializeSteps() async {
@@ -1039,6 +1028,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
               case 'stop':
               case 'completed':
               case 'complete':
+              case 'accept':  // ✅ Paper Store uses "accept" for completed status
                 realStatus = StepStatus.completed;
                 break;
               default:

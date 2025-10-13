@@ -77,12 +77,20 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin, 
     await _fetchAllJobPlannings();
   }
 
+  DateTime? _lastResumeRefresh;
+  
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      // Clear caches and refresh data when app becomes active again
-      _clearAllCaches().then((_) => _fetchAllJobPlannings());
+      // Only refresh if it's been more than 30 seconds since last refresh
+      final now = DateTime.now();
+      if (_lastResumeRefresh == null || 
+          now.difference(_lastResumeRefresh!) > const Duration(seconds: 30)) {
+        _lastResumeRefresh = now;
+        // Refresh data when app becomes active again (throttled)
+        _fetchAllJobPlannings(); // Don't clear cache on resume, just refresh data
+      }
     }
   }
 

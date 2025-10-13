@@ -528,7 +528,7 @@ class JobApi {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     final response = await dio.get(
-      '${AppStrings.baseUrl}/flute-lamination/by-job/$jobNrcJobNo',
+      '${AppStrings.baseUrl}/flute-laminate-board-conversion/by-job/$jobNrcJobNo',
       options: Options(
         headers: {
           'Content-Type': 'application/json',
