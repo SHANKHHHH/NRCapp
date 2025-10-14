@@ -65,6 +65,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
   
   // Cascading quantity validation
   int? _availableQuantity;
+  int? _remainingQuantity; // Remaining after other machines' submission
   bool _isLoadingAvailableQty = false;
 
   /// Helper: return current time in IST (UTC+05:30) with milliseconds and proper offset
@@ -96,6 +97,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
   }
 
   /// Load available quantity from previous step for cascading validation
+  /// Also calculate remaining quantity after subtracting what other machines submitted
   Future<void> _loadAvailableQuantity() async {
     if (widget.apiService == null || widget.jobNumber == null || widget.stepType == null) {
       return;
@@ -106,17 +108,85 @@ class _WorkActionFormState extends State<WorkActionForm> {
     });
 
     try {
+      // Get available quantity from previous step
       final availableQty = await widget.apiService!.getPreviousStepAvailableQuantity(
         widget.jobNumber!, 
         widget.stepType!
       );
       
+      int remainingQty = availableQty ?? 0;
+      
+      // If we have stepNo and nrcJobNo, fetch other machines' submitted quantities
+      if (widget.stepNo != null && widget.nrcJobNo != null && widget.machineId != null) {
+        try {
+          final machinesStatus = await widget.apiService!.getMachineWorkStatus(
+            widget.nrcJobNo!,
+            widget.stepNo!
+          );
+          
+          // Calculate total submitted by OTHER machines (exclude current machine)
+          int totalSubmittedByOthers = 0;
+          
+          if (machinesStatus != null && machinesStatus['machineWork'] != null) {
+            for (var machine in machinesStatus['machineWork']) {
+              // Skip current machine
+              if (machine['machineId'] == widget.machineId) {
+                continue;
+              }
+              
+              // Only count machines that have submitted data (stop or completed status)
+              if (machine['status'] == 'stop' && machine['formData'] != null) {
+                final formData = machine['formData'];
+                
+                // Extract OK quantity and wastage
+                int okQty = 0;
+                int wastage = 0;
+                
+                // Handle various field name variations
+                if (formData['Quantity OK'] != null) {
+                  okQty = int.tryParse(formData['Quantity OK'].toString()) ?? 0;
+                } else if (formData['OK Quantity'] != null) {
+                  okQty = int.tryParse(formData['OK Quantity'].toString()) ?? 0;
+                } else if (formData['quantity'] != null) {
+                  okQty = int.tryParse(formData['quantity'].toString()) ?? 0;
+                } else if (formData['Sheets Count'] != null) {
+                  okQty = int.tryParse(formData['Sheets Count'].toString()) ?? 0;
+                }
+                
+                if (formData['Wastage'] != null) {
+                  wastage = int.tryParse(formData['Wastage'].toString()) ?? 0;
+                } else if (formData['wastage'] != null) {
+                  wastage = int.tryParse(formData['wastage'].toString()) ?? 0;
+                }
+                
+                totalSubmittedByOthers += (okQty + wastage);
+                print('🔍 Machine ${machine['machineCode']} submitted: OK=$okQty, Wastage=$wastage, Total=${okQty + wastage}');
+              }
+            }
+          }
+          
+          // Calculate remaining quantity
+          remainingQty = (availableQty ?? 0) - totalSubmittedByOthers;
+          if (remainingQty < 0) remainingQty = 0; // Prevent negative
+          
+          print('🔍 Multi-machine Quantity Calculation:');
+          print('   Available from previous step: $availableQty');
+          print('   Already submitted by other machines: $totalSubmittedByOthers');
+          print('   Remaining for this machine: $remainingQty');
+        } catch (e) {
+          print('Warning: Could not fetch other machines\' data: $e');
+          // If we can't get other machines' data, use full available quantity
+          remainingQty = availableQty ?? 0;
+        }
+      }
+      
       if (mounted) {
         setState(() {
           _availableQuantity = availableQty;
+          _remainingQuantity = remainingQty;
           _isLoadingAvailableQty = false;
         });
-        print('🔍 Loaded available quantity: $_availableQuantity for step: ${widget.stepType!.name}');
+        print('🔍 Loaded available quantity: $_availableQuantity, remaining: $_remainingQuantity for step: ${widget.stepType!.name}');
       }
     } catch (e) {
       print('Error loading available quantity: $e');
@@ -1311,8 +1381,8 @@ class _WorkActionFormState extends State<WorkActionForm> {
                   ? (hasData ? 'Locked - value set' : 'Will be locked after entry')
                   : (hasData 
                       ? 'Auto-filled from job data (editable)'
-                      : (isQuantityField && _availableQuantity != null 
-                          ? '0 to $_availableQuantity (Available from previous step)'
+                      : (isQuantityField && _remainingQuantity != null 
+                          ? '0 to $_remainingQuantity (Remaining after other machines)'
                           : (isQuantityField && widget.expectedQuantity != null 
                               ? 'Expected: ${widget.expectedQuantity} (Valid: ${_getValidQuantityRange()})'
                               : 'Enter ${fieldName.toLowerCase()}')))),
@@ -1356,17 +1426,17 @@ class _WorkActionFormState extends State<WorkActionForm> {
               }
             }
             
-            // Cascading quantity validation - use available quantity from previous step
-            if (isQuantityField && _availableQuantity != null && _availableQuantity! > 0) {
-              // Use available quantity from previous step as the maximum
-              final maxAllowed = _availableQuantity!;
+            // Cascading quantity validation - use remaining quantity (after other machines)
+            if (isQuantityField && _remainingQuantity != null && _remainingQuantity! > 0) {
+              // Use remaining quantity as the maximum (accounts for other machines' submission)
+              final maxAllowed = _remainingQuantity!;
               final minAllowed = 0;
               
               // Debug log to help diagnose issues
-              print('🔍 Cascading Quantity Validation: field=$fieldName, available=$_availableQuantity, range=$minAllowed-$maxAllowed, entered=$enteredValue');
+              print('🔍 Multi-Machine Quantity Validation: field=$fieldName, available=$_availableQuantity, remaining=$_remainingQuantity, range=$minAllowed-$maxAllowed, entered=$enteredValue');
               
               if (enteredValue < minAllowed || enteredValue > maxAllowed) {
-                return 'Quantity must be between $minAllowed and $maxAllowed (Available: $_availableQuantity)';
+                return 'Quantity must be between $minAllowed and $maxAllowed (Remaining for this machine: $_remainingQuantity)';
               }
             }
             // Fallback to original validation if no available quantity
@@ -1416,12 +1486,12 @@ class _WorkActionFormState extends State<WorkActionForm> {
                 return 'Wastage cannot be negative';
               }
               
-              // Use available quantity from previous step for wastage validation
-              if (_availableQuantity != null && _availableQuantity! > 0) {
-                if (enteredValue > _availableQuantity!) {
-                  return 'Wastage cannot exceed available quantity ($_availableQuantity)';
+              // Use remaining quantity for wastage validation (accounts for other machines)
+              if (_remainingQuantity != null && _remainingQuantity! > 0) {
+                if (enteredValue > _remainingQuantity!) {
+                  return 'Wastage cannot exceed remaining quantity ($_remainingQuantity)';
                 }
-                print('🔍 Wastage Validation: available=$_availableQuantity, entered=$enteredValue - OK');
+                print('🔍 Wastage Validation: remaining=$_remainingQuantity, entered=$enteredValue - OK');
               } else {
                 // Fallback to main quantity validation
                 final mainQtyController = _controllers['quantity'] ?? 

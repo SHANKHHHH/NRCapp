@@ -6,6 +6,7 @@ import 'package:nrc/constants/strings.dart';
 import '../../../constants/colors.dart';
 import '../../../data/models/job_model.dart';
 import '../../../data/datasources/job_api.dart';
+import 'ArtworkDisplayWidget.dart';
 
 class JobDetailScreen extends StatelessWidget {
   final JobModel job;
@@ -274,6 +275,16 @@ class JobDetailScreen extends StatelessWidget {
           children: [
             _buildHeaderCard(),
             const SizedBox(height: 20),
+            
+            // Artwork Display Widget
+            if (job.imageURL != null && job.imageURL!.isNotEmpty)
+              ArtworkDisplayWidget(
+                imageURL: job.imageURL,
+                jobNumber: job.nrcJobNo,
+              ),
+            if (job.imageURL != null && job.imageURL!.isNotEmpty)
+              const SizedBox(height: 20),
+            
             _buildJobDetailsCard(),
             const SizedBox(height: 20),
             _buildProductionDetailsCard(),

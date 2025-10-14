@@ -1735,7 +1735,7 @@ class JobApi {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('accessToken');
       final response = await dio.get(
-        '/job-step-machines/$nrcJobNo/steps/$stepNo/machines/status',
+        '/job-step-machine/$nrcJobNo/steps/$stepNo/machines/status',
         options: Options(
           headers: {
             'Content-Type': 'application/json',

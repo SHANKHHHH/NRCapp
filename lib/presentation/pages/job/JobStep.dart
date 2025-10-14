@@ -22,6 +22,7 @@ import '../process/StepProgressManager.dart';
 import '../process/RevolutionaryStepStatusManager.dart';
 import '../process/RevolutionaryStepTapHandler.dart';
 import '../process/RevolutionaryStepItemWidget.dart';
+import 'ArtworkDisplayWidget.dart';
 
 class JobTimelinePage extends StatefulWidget {
   final String? jobNumber;
@@ -5003,6 +5004,14 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                 )
               else
                 JobTimelineUI.buildProgressIndicator(steps),
+              
+              // Artwork Display Widget
+              if (_jobData != null)
+                ArtworkDisplayWidget(
+                  imageURL: _jobData!['imageURL'] as String?,
+                  jobNumber: widget.jobNumber ?? 'Unknown Job',
+                ),
+              
               if (steps.length > 1)
                 ListView.builder(
                   shrinkWrap: true,

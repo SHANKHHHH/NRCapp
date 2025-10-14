@@ -10,6 +10,7 @@ import 'package:dio/dio.dart';
 import '../../../data/datasources/job_api.dart';
 import 'dart:convert';
 import 'dart:typed_data';
+import '../job/ArtworkDisplayWidget.dart';
 
 class WorkDetailsScreen extends StatefulWidget {
   final String nrcJobNo;
@@ -263,6 +264,16 @@ class _WorkDetailsScreenState extends State<WorkDetailsScreen> with TickerProvid
                     children: [
                       if (jobDetails != null) _buildStatusCard(),
                       const SizedBox(height: 16),
+                      
+                      // Artwork Display Widget
+                      if (jobDetails != null && jobDetails!['imageURL'] != null && jobDetails!['imageURL'].toString().isNotEmpty)
+                        ArtworkDisplayWidget(
+                          imageURL: jobDetails!['imageURL'] as String?,
+                          jobNumber: widget.nrcJobNo,
+                        ),
+                      if (jobDetails != null && jobDetails!['imageURL'] != null && jobDetails!['imageURL'].toString().isNotEmpty)
+                        const SizedBox(height: 16),
+                      
                       _buildUnifiedCard(context),
                       const SizedBox(height: 24),
                       _buildActionButtons(),
