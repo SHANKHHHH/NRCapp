@@ -1578,7 +1578,8 @@ class JobApi {
       return null;
     } catch (e) {
       print('[startWorkOnMachine] Error: $e');
-      return null;
+      // Re-throw the exception so the UI can handle it properly
+      rethrow;
     }
   }
 
@@ -1606,7 +1607,8 @@ class JobApi {
       return null;
     } catch (e) {
       print('[startUrgentJobWork] Error: $e');
-      return null;
+      // Re-throw the exception so the UI can handle it properly
+      rethrow;
     }
   }
 
@@ -1634,7 +1636,8 @@ class JobApi {
       return null;
     } catch (e) {
       print('[completeWorkOnMachine] Error: $e');
-      return null;
+      // Re-throw the exception so the UI can handle it properly
+      rethrow;
     }
   }
 
@@ -1663,7 +1666,8 @@ class JobApi {
       return null;
     } catch (e) {
       print('[holdWorkOnMachine] Error: $e');
-      return null;
+      // Re-throw the exception so the UI can handle it properly
+      rethrow;
     }
   }
 
@@ -1691,7 +1695,8 @@ class JobApi {
       return null;
     } catch (e) {
       print('[resumeWorkOnMachine] Error: $e');
-      return null;
+      // Re-throw the exception so the UI can handle it properly
+      rethrow;
     }
   }
 
@@ -1719,7 +1724,8 @@ class JobApi {
       return null;
     } catch (e) {
       print('[stopWorkOnMachine] Error: $e');
-      return null;
+      // Re-throw the exception so the UI can handle it properly
+      rethrow;
     }
   }
 

@@ -841,7 +841,14 @@ class _WorkActionFormState extends State<WorkActionForm> {
     // Parse error to get user-friendly message
     final errorStr = error.toString();
     
-    if (errorStr.contains('DioException') || errorStr.contains('400')) {
+    // Check for specific HTTP status codes first (order matters!)
+    if (errorStr.contains('403') || errorStr.contains('Access denied') || errorStr.contains('do not have access')) {
+      errorMessage = 'Access denied. You do not have permission to start work on this machine.';
+    } else if (errorStr.contains('401')) {
+      errorMessage = 'Please login again';
+    } else if (errorStr.contains('404')) {
+      errorMessage = 'Job step not found';
+    } else if (errorStr.contains('DioException') || errorStr.contains('400')) {
       // 400 Bad Request - likely workflow validation error
       if (errorStr.contains('Previous step') || errorStr.contains('must be completed')) {
         errorMessage = 'Previous step not completed. Please complete the previous step first.';
@@ -862,14 +869,8 @@ class _WorkActionFormState extends State<WorkActionForm> {
       } else if (errorStr.contains('workflow') || errorStr.contains('Workflow')) {
         errorMessage = 'Cannot $action this step. Please complete previous steps first.';
       } else {
-        errorMessage = 'Cannot $action this step. Please check if previous steps are completed.';
+        errorMessage = 'Cannot $action this step. Please complete the previous step before starting this one.';
       }
-    } else if (errorStr.contains('403') || errorStr.contains('Access denied') || errorStr.contains('do not have access')) {
-      errorMessage = 'You do not have access to this machine';
-    } else if (errorStr.contains('404')) {
-      errorMessage = 'Job step not found';
-    } else if (errorStr.contains('401')) {
-      errorMessage = 'Please login again';
     }
     
     // Show error snackbar

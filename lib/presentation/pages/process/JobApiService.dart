@@ -954,7 +954,8 @@ class JobApiService {
       return result;
     } catch (e) {
       print('Error starting work on machine $machineId: $e');
-      return null;
+      // Re-throw the exception so the UI can handle it properly
+      rethrow;
     }
   }
 
@@ -967,7 +968,8 @@ class JobApiService {
       return result;
     } catch (e) {
       print('Error starting urgent job work for step $stepNo: $e');
-      return null;
+      // Re-throw the exception so the UI can handle it properly
+      rethrow;
     }
   }
 
@@ -980,7 +982,8 @@ class JobApiService {
       return result;
     } catch (e) {
       print('Error completing work on machine $machineId: $e');
-      return null;
+      // Re-throw the exception so the UI can handle it properly
+      rethrow;
     }
   }
 
@@ -993,7 +996,8 @@ class JobApiService {
       return result;
     } catch (e) {
       print('Error holding work on machine $machineId: $e');
-      return null;
+      // Re-throw the exception so the UI can handle it properly
+      rethrow;
     }
   }
 
@@ -1006,7 +1010,8 @@ class JobApiService {
       return result;
     } catch (e) {
       print('Error resuming work on machine $machineId: $e');
-      return null;
+      // Re-throw the exception so the UI can handle it properly
+      rethrow;
     }
   }
 
@@ -1019,7 +1024,8 @@ class JobApiService {
       return result;
     } catch (e) {
       print('Error stopping work on machine $machineId: $e');
-      return null;
+      // Re-throw the exception so the UI can handle it properly
+      rethrow;
     }
   }
 

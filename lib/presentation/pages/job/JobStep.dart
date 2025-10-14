@@ -3347,7 +3347,14 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     // Parse error to get user-friendly message
     final errorStr = error.toString();
     
-    if (errorStr.contains('400') || errorStr.contains('DioException')) {
+    // Check for specific HTTP status codes first (order matters!)
+    if (errorStr.contains('403') || errorStr.contains('Access denied') || errorStr.contains('do not have access')) {
+      errorMessage = 'Access denied. You do not have permission to start work on this machine.';
+    } else if (errorStr.contains('401')) {
+      errorMessage = 'Please login again';
+    } else if (errorStr.contains('404')) {
+      errorMessage = 'Job step not found';
+    } else if (errorStr.contains('400') || errorStr.contains('DioException')) {
       // 400 Bad Request - likely workflow validation error
       if (errorStr.contains('Previous step') || errorStr.contains('must be completed')) {
         errorMessage = 'Previous step not completed. Please complete the previous step first.';
