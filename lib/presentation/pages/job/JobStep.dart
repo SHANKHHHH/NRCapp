@@ -4091,47 +4091,65 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
       final stepNo = StepDataManager.getStepNumber(step.type);
 
-      await _apiService.putStepDetails(step.type, widget.jobNumber!, formData, stepNo);
-
-        // Try to update step status to stop, but don't fail if it's already completed
+      // ✅ CRITICAL: For machine-based steps, DO NOT call putStepDetails!
+      // The completeWorkOnMachine API already:
+      //   1. Saves JobStepMachine.formData
+      //   2. Checks completion criteria
+      //   3. Updates Individual step table with COMBINED totals from ALL machines
+      // Calling putStepDetails would overwrite combined totals with individual machine data!
+      
+      // Only update individual step table for non-machine steps
+      if (step.type == StepType.paperStore || 
+          step.type == StepType.qc || 
+          step.type == StepType.dispatch) {
+        // For non-machine steps, call putStepDetails to update individual step table
+        await _apiService.putStepDetails(step.type, widget.jobNumber!, formData, stepNo);
+        
+        // Also update JobStep status to 'stop'
         try {
           await _apiService.updateJobPlanningStepComplete(widget.jobNumber!, stepNo, "stop", additionalFields: formData);
-        print('Successfully updated step status to stop');
-      } catch (e) {
-        print('Failed to update step status to stop: $e');
-        // If it's a validation error, just log and continue
-        if (e.toString().contains('400') || e.toString().contains('Invalid transition')) {
-          print('Step status update failed due to validation, but continuing with completion...');
-        } else {
-          // Re-throw other errors
-          throw e;
+          print('Successfully updated JobStep status to stop for non-machine step');
+        } catch (e) {
+          print('Failed to update step status to stop: $e');
+          // If it's a validation error, just log and continue
+          if (e.toString().contains('400') || e.toString().contains('Invalid transition')) {
+            print('Step status update failed due to validation, but continuing with completion...');
+          } else {
+            // Re-throw other errors
+            throw e;
+          }
         }
+      } else {
+        print('ℹ️ Machine-based step - Individual step table and JobStep status update handled by backend (completeWorkOnMachine API)');
+        print('ℹ️ Skipping putStepDetails to avoid overwriting combined quantities with individual machine data');
       }
 
       if (mounted && Navigator.canPop(context)) {
         Navigator.pop(context);
       }
 
+      // ✅ DO NOT force UI status to 'completed' for machine-based steps
+      // The backend determines if step is complete based on criteria
+      // We should refresh and get the actual status from backend instead
       final stepIndex = steps.indexOf(step);
       setState(() {
         step.formData = formData;
-        step.status = StepStatus.completed;
-        // Clear started step index when step is completed
-        if (_startedStepIndex == stepIndex) {
+        // DO NOT set step.status = StepStatus.completed here
+        // Let the refresh get the actual status from backend
+      });
+      
+      // Clear started step index tracking
+      if (_startedStepIndex == stepIndex) {
+        setState(() {
           _startedStepIndex = null;
           _startedStepType = null;
           _freezeAtStarted = false;
-          print('Cleared started step index after completing ${step.title}');
-        }
-      });
-
-      // reflect completed status in cached planning details
-      if (_stepDetailsCache.containsKey(stepNo)) {
-        final cachedDetails = _stepDetailsCache[stepNo];
-        if (cachedDetails != null && cachedDetails is Map) {
-          cachedDetails['status'] = 'stop';
-        }
+          print('Cleared started step index after form submission for ${step.title}');
+        });
       }
+
+      // DO NOT update cached status - let the refresh get actual status from backend
+      // Backend will set status based on completion criteria
 
       await _optimizedStepProgressionCheck(step, stepIndex);
 
@@ -4139,7 +4157,9 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         Navigator.pop(context); // Close WorkActionForm dialog
       }
 
-      DialogManager.showSuccessMessage(context, '${step.title} completed successfully!');
+      // ✅ Don't show "completed" message - let the Complete Work button dialog handle it
+      // The Complete Work dialog shows if step was completed or not based on backend response
+      DialogManager.showSuccessMessage(context, '${step.title} work data submitted successfully!');
 
       // Clear all caches immediately to force fresh data
       _apiService.clearAllJobCaches(widget.jobNumber!);

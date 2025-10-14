@@ -939,7 +939,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.white,
         title: const Text('Confirm Stop'),
-        content: const Text('Are you sure you want to stop the work?'),
+        content: const Text('This will stop the machine. You can complete the work details after stopping.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -960,20 +960,16 @@ class _WorkActionFormState extends State<WorkActionForm> {
       setState(() => _isLoading = true);
       
       try {
-        final formData = _collectFormData();
+        // ✅ UPDATED: Stop button does NOT send formData anymore
         final result = await widget.apiService!.stopWorkOnMachine(
           widget.nrcJobNo!,
           widget.stepNo!,
           widget.machineId!,
-          formData: formData,
+          // NO formData parameter - backend only changes status
         );
         
         if (result != null) {
-          print('Work stopped on machine: ${widget.machineId}');
-          // Check if all machines are completed
-          if (result['allMachinesCompleted'] == true) {
-            print('All machines completed for this step');
-          }
+          print('✅ Machine stopped successfully');
           
           setState(() {
             _status = 'stop';
@@ -981,9 +977,20 @@ class _WorkActionFormState extends State<WorkActionForm> {
             _isLoading = false;
           });
           
+          // Show message to user to complete work details
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Machine stopped. Please review and complete the work details.'),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+          
           widget.onStop?.call();
-          print('✅ Work stopped successfully - data will auto-refresh');
-        } else {
+          print('✅ Work stopped - form remains editable for completion');
+        } else{
           print('Failed to stop work on machine');
           setState(() {
             _isLoading = false;
@@ -1090,6 +1097,67 @@ class _WorkActionFormState extends State<WorkActionForm> {
               formData: formData,
             );
             print('Machine completion result: $result');
+            
+            // ✅ NEW: Check if step was auto-completed
+            if (result != null && result['data'] != null) {
+              final stepCompleted = result['data']['stepCompleted'] == true;
+              final completionReason = result['data']['completionReason'] ?? '';
+              
+              if (stepCompleted) {
+                print('🎉 Step auto-completed! Reason: $completionReason');
+                
+                // Show success dialog
+                if (mounted) {
+                  await showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (BuildContext dialogContext) {
+                      return AlertDialog(
+                        title: Row(
+                          children: [
+                            Icon(Icons.celebration, color: Colors.green, size: 28),
+                            SizedBox(width: 12),
+                            Expanded(child: Text('Step Completed!')),
+                          ],
+                        ),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('✅ Work data submitted successfully'),
+                            SizedBox(height: 8),
+                            Text('🎯 $completionReason', 
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                            SizedBox(height: 8),
+                            Text('The entire step has been completed and is ready for the next stage.',
+                              style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+                          ],
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            child: Text('OK', style: TextStyle(fontSize: 16)),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                }
+              } else {
+                print('ℹ️ Work submitted. Step not yet complete: $completionReason');
+                
+                // Show info message
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Work submitted. $completionReason'),
+                      backgroundColor: Colors.blue,
+                      duration: Duration(seconds: 3),
+                    ),
+                  );
+                }
+              }
+            }
           } catch (e) {
             print('Error completing work: $e');
             // Show error but continue with form data update

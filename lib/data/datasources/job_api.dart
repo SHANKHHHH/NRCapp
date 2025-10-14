@@ -1701,15 +1701,15 @@ class JobApi {
   }
 
   /// Stop work on a specific machine
-  Future<Map<String, dynamic>?> stopWorkOnMachine(String nrcJobNo, int stepNo, String machineId, {Map<String, dynamic>? formData}) async {
+  /// Stop work on a specific machine - ONLY changes status, does NOT save formData
+  Future<Map<String, dynamic>?> stopWorkOnMachine(String nrcJobNo, int stepNo, String machineId) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('accessToken');
+      // ✅ UPDATED: Stop does NOT send formData anymore
       final response = await dio.post(
         '/job-step-machines/$nrcJobNo/steps/$stepNo/machines/$machineId/stop',
-        data: {
-          'formData': formData,
-        },
+        // NO data body - backend only changes status
         options: Options(
           headers: {
             'Content-Type': 'application/json',

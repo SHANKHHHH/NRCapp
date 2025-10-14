@@ -425,11 +425,28 @@ class JobApiService {
       final stepDetails = await getJobPlanningStepDetails(jobNumber, stepNo);
       final stepName = stepDetails?['stepName']?.toString() ?? '';
       
+      // Check if this is a machine-based step
+      final isMachineStep = stepName.toLowerCase().contains('printing') ||
+                           stepName.toLowerCase().contains('corrugation') ||
+                           stepName.toLowerCase().contains('flute') ||
+                           stepName.toLowerCase().contains('punching') ||
+                           stepName.toLowerCase().contains('die cutting') ||
+                           stepName.toLowerCase().contains('flap') ||
+                           stepName.toLowerCase().contains('pasting');
+      
       // Map frontend form data to backend expected field names
+      // ✅ DO NOT send 'status' for machine-based steps - backend controls it!
       Map<String, dynamic> requestBody = {
-        'status': 'stop',
         'user': 'NRC015', // Default user
       };
+      
+      // Only include status for non-machine steps
+      if (!isMachineStep) {
+        requestBody['status'] = 'stop';
+        print('[_putJobPlanningStepFormData] Non-machine step - including status: stop');
+      } else {
+        print('[_putJobPlanningStepFormData] Machine-based step - NOT including status (backend controls it)');
+      }
       
         // Map form data based on step type
         if (stepName.toLowerCase().contains('paperstore')) {
@@ -1016,9 +1033,11 @@ class JobApiService {
   }
 
   /// Stop work on a specific machine
-  Future<Map<String, dynamic>?> stopWorkOnMachine(String nrcJobNo, int stepNo, String machineId, {Map<String, dynamic>? formData}) async {
+  /// Stop work on a specific machine - ONLY changes status, does NOT save formData
+  Future<Map<String, dynamic>?> stopWorkOnMachine(String nrcJobNo, int stepNo, String machineId) async {
     try {
-      final result = await _jobApi.stopWorkOnMachine(nrcJobNo, stepNo, machineId, formData: formData);
+      // ✅ UPDATED: Stop does NOT send formData anymore
+      final result = await _jobApi.stopWorkOnMachine(nrcJobNo, stepNo, machineId);
       // Clear cache to ensure fresh data on next fetch
       _clearCacheForJob(nrcJobNo);
       return result;
