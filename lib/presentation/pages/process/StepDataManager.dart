@@ -50,14 +50,6 @@ class StepDataManager {
       case 'paperstore':
         return [
           StepType.paperStore,
-          StepType.printing,
-          StepType.corrugation,
-          StepType.fluteLamination,
-          StepType.punching,
-          StepType.dieCutting,
-          StepType.flapPasting,
-          StepType.qc,
-          StepType.dispatch,
         ];
       case 'flyingsquad':
         return [
@@ -179,9 +171,33 @@ class StepDataManager {
       case 'dispatchprocess':
         print('DEBUG: Converting to StepType.dispatch');
         return StepType.dispatch;
+          default:
+            print('DEBUG: Unknown step type, defaulting to StepType.paperStore');
+            return StepType.paperStore;
+    }
+  }
+
+  static StepStatus _convertBackendStatusToStepStatus(String backendStatus) {
+    switch (backendStatus.toLowerCase()) {
+      case 'planned':
+        return StepStatus.pending;
+      case 'start':
+        return StepStatus.started;
+      case 'in_progress':
+        return StepStatus.inProgress;
+      case 'paused':
+        return StepStatus.paused;
+      case 'hold':
+        return StepStatus.hold;
+      case 'major_hold':
+        return StepStatus.major_hold;
+      case 'stop':
+      case 'stopped':
+        return StepStatus.paused; // Backend uses 'stop' status
+      case 'completed':
+        return StepStatus.paused; // Backend uses 'stop' status
       default:
-        print('DEBUG: Unknown step type, defaulting to StepType.jobAssigned');
-        return StepType.jobAssigned;
+        return StepStatus.pending;
     }
   }
 
@@ -212,25 +228,54 @@ class StepDataManager {
   }
 
   static List<String> getFieldNamesForStep(StepType type) {
+    // 🎯 SIMPLIFIED FORMS: Only show essential fields
+    // All other fields (machine codes, operator names, dates, etc.) are auto-populated from job details and user info
     switch (type) {
       case StepType.paperStore:
-        return ['Sheet Size', 'Required Qty', 'Available Qty', 'GSM', 'Mill', 'Extra Margin', 'Quality', 'Remarks'];
+        // PaperStore: No fields (all data comes from completion form after stop)
+        // Auto-populated: Required Qty (from PO quantity), Sheet Size, GSM, Mill, Quality, Extra Margin (from job details)
+        return [];
+      
       case StepType.printing:
-        return ['Quantity OK', 'Colors Used', 'Wastage', 'Inks Used', 'Coating Type', 'Separate Sheets', 'Extra Sheets', 'Remarks'];
+        // Printing: No fields (all data comes from completion form after stop)
+        // Auto-populated: Colors, Inks, Coating, Sheets, Machine codes, Operator (from job details + system)
+        return [];
+      
       case StepType.corrugation:
-        return ['Sheets Count', 'Size', 'GSM1 (Top Face)', 'GSM2 (Bottom Face)', 'Flute Type', 'Remarks'];
+        // Corrugation: No fields (all data comes from completion form after stop)
+        // Auto-populated: Size, GSM1, GSM2, Flute Type, Machine codes, Operator (from job details + system)
+        return [];
+      
       case StepType.fluteLamination:
-        return ['OK Quantity', 'Film Type', 'Adhesive', 'Wastage'];
+        // FluteLamination: No fields (all data comes from completion form after stop)
+        // Auto-populated: Film Type, Adhesive (from job details)
+        return [];
+      
       case StepType.punching:
-        return ['OK Quantity', 'Die Used (diePunchCode)', 'Wastage', 'Remarks'];
+        // Punching: No fields (all data comes from completion form after stop)
+        // Auto-populated: Die Used (from job's diePunchCode), Machine codes, Operator
+        return [];
+      
       case StepType.dieCutting:
-        return ['OK Quantity', 'Die Used (diePunchCode)', 'Wastage', 'Remarks'];
+        // Die Cutting: No fields (all data comes from completion form after stop)
+        // Auto-populated: Die Used (from job's diePunchCode), Machine codes, Operator
+        return [];
+      
       case StepType.flapPasting:
-        return ['Quantity', 'Adhesive', 'Wastage', 'Remarks'];
+        // Flap Pasting: No fields (all data comes from completion form after stop)
+        // Auto-populated: Adhesive (from job details), Machine codes, Operator
+        return [];
+      
       case StepType.qc:
-        return ['Pass Quantity', 'Reject Quantity', 'Reason for Rejection', 'Remarks'];
+        // Quality Control: No fields (all data comes from completion form after stop)
+        // Auto-populated: Machine codes, Operator
+        return [];
+      
       case StepType.dispatch:
-        return ['No of Boxes', 'Dispatch No', 'Balance Qty', 'Remarks'];
+        // Dispatch: No fields (all data comes from completion form after stop)
+        // Auto-populated: Dispatch No (from system), Balance Qty (calculated)
+        return [];
+      
       default:
         return [];
     }
@@ -254,117 +299,109 @@ class StepDataManager {
         return 4;
       case StepType.punching:
         return 5;
-      case StepType.dieCutting:
-        return 6;
       case StepType.flapPasting:
-        return 7;
+        return 6; // SideFlapPasting in backend uses stepNo: 6
+      case StepType.dieCutting:
+        return 6; // DieCutting not used (keep original)
       case StepType.qc:
-        return 8;
+        return 7; // QualityDept uses stepNo: 7
       case StepType.dispatch:
-        return 9;
+        return 8; // DispatchProcess uses stepNo: 8
       default:
         return 1;
     }
   }
 
   static List<StepData> initializeSteps(List<dynamic>? assignedSteps, {String? userRole, List<String>? userRoles}) {
-    print('DEBUG: Initializing steps with assignedSteps: $assignedSteps');
-    print('DEBUG: User role: $userRole');
-    print('DEBUG: User roles: $userRoles');
+    print('🔄 CLEAN INIT: Starting fresh step initialization');
+    print('🔄 CLEAN INIT: User role: $userRole, User roles: $userRoles');
     
-    List<StepData> steps = [
-      StepData(
-        type: StepType.jobAssigned,
-        title: 'Job Assigned',
-        description: 'Job has been assigned and ready to start',
-        status: StepStatus.completed,
-      ),
-    ];
-
-    // Reset dynamic mapping each time
+    List<StepData> steps = [];
     _dynamicStepNumberMap = {};
 
-    if (assignedSteps != null && assignedSteps.isNotEmpty) {
-      final sortedSteps = List<Map<String, dynamic>>.from(assignedSteps);
-      print('DEBUG: Original assigned steps: $sortedSteps');
-      
-      // Sort primarily by provided stepNo if available; otherwise by canonical order
-      sortedSteps.sort((a, b) {
-        final aNo = a['stepNo'];
-        final bNo = b['stepNo'];
-        if (aNo != null && bNo != null) {
-          final aNum = aNo is int ? aNo : int.tryParse(aNo.toString()) ?? 0;
-          final bNum = bNo is int ? bNo : int.tryParse(bNo.toString()) ?? 0;
-          return aNum.compareTo(bNum);
-        }
-        int aIndex = orderedStepNames.indexOf(a['stepName'] ?? '');
-        int bIndex = orderedStepNames.indexOf(b['stepName'] ?? '');
-        return aIndex.compareTo(bIndex);
-      });
-      
-      print('DEBUG: Sorted steps: $sortedSteps');
-
-      // Build steps list and dynamic step number mapping from the sorted order
-      for (int i = 0; i < sortedSteps.length; i++) {
-        final stepMap = sortedSteps[i];
-        final stepName = stepMap['stepName'] ?? '';
-        final displayName = getDisplayName(stepName);
-        final stepType = getStepTypeFromString(stepName);
-        
-        print('DEBUG: Processing step - stepName: "$stepName", displayName: "$displayName", stepType: $stepType');
-
-        // Filter steps based on user roles
-        bool isStepAllowed = false;
-        if (userRoles != null && userRoles.isNotEmpty) {
-          // Use multiple roles if available
-          isStepAllowed = isStepAllowedForRoles(stepType, userRoles);
-          if (!isStepAllowed) {
-            print('DEBUG: Skipping step "$displayName" - not allowed for roles: $userRoles');
-            continue; // Skip this step if not allowed for the user's roles
-          }
-        } else if (userRole != null) {
-          // Fallback to single role
-          isStepAllowed = isStepAllowedForRole(stepType, userRole);
-          if (!isStepAllowed) {
-            print('DEBUG: Skipping step "$displayName" - not allowed for role: $userRole');
-            continue; // Skip this step if not allowed for the user's role
-          }
-        } else {
-          // No role restrictions
-          isStepAllowed = true;
-        }
-
-        // Record the dynamic step number (prefer backend-provided stepNo)
-        int dynamicStepNo;
-        if (stepMap['stepNo'] != null) {
-          dynamicStepNo = stepMap['stepNo'] is int
-              ? stepMap['stepNo']
-              : int.tryParse(stepMap['stepNo'].toString()) ?? (i + 1);
-        } else {
-          dynamicStepNo = i + 1;
-        }
-        _dynamicStepNumberMap[stepType] = dynamicStepNo;
-
-        print('DEBUG: Adding step: $displayName ($stepType) with dynamic stepNo: $dynamicStepNo');
-        steps.add(
-          StepData(
-            type: stepType,
-            title: displayName,
-            description: getStepDescription(displayName),
-          ),
-        );
-      }
+    if (assignedSteps == null || assignedSteps.isEmpty) {
+      print('🔄 CLEAN INIT: No assigned steps, returning empty list');
+      return steps;
     }
 
-    if (steps.length > 1) {
-      steps[1].status = StepStatus.pending;
+    // Get the current user role
+    String? currentRole = userRole;
+    if (userRoles != null && userRoles.isNotEmpty) {
+      currentRole = userRoles.first;
     }
     
-    print('DEBUG: Final steps list:');
-    for (int i = 0; i < steps.length; i++) {
-      print('DEBUG: Step $i: ${steps[i].title} (${steps[i].type})');
-    }
+    print('🔄 CLEAN INIT: Current role: $currentRole');
 
+    // Process each assigned step
+    for (final stepData in assignedSteps) {
+      final stepName = stepData['stepName'] ?? '';
+      final stepType = getStepTypeFromString(stepName);
+      final displayName = getDisplayName(stepName);
+      
+      print('🔄 CLEAN INIT: Processing step: $stepName -> $stepType');
+      
+      // Check if this step should be shown for the current role
+      bool shouldShowStep = _shouldShowStepForRole(stepType, currentRole);
+      print('🔄 CLEAN INIT: Should show $displayName for role $currentRole: $shouldShowStep');
+      
+      if (!shouldShowStep) {
+        continue;
+      }
+      
+      // Convert backend status
+      String backendStatus = stepData['status'] ?? 'planned';
+      StepStatus stepStatus = _convertBackendStatusToStepStatus(backendStatus);
+      
+      // Add the step
+      steps.add(StepData(
+        type: stepType,
+        title: displayName,
+        description: getStepDescription(displayName),
+        status: stepStatus,
+      ));
+      
+      print('🔄 CLEAN INIT: Added step: $displayName with status: $stepStatus');
+    }
+    
+    print('🔄 CLEAN INIT: Final steps count: ${steps.length}');
+    for (int i = 0; i < steps.length; i++) {
+      print('🔄 CLEAN INIT: Step $i: ${steps[i].title} (${steps[i].type}) - ${steps[i].status}');
+    }
+    
     return steps;
   }
+  
+  // Clean role filtering logic
+  static bool _shouldShowStepForRole(StepType stepType, String? role) {
+    if (role == null) {
+      return true; // Show all steps if no role
+    }
+    
+    switch (role.toLowerCase()) {
+      case 'flutelaminator':
+        return stepType == StepType.fluteLamination;
+      case 'paperstore':
+        return stepType == StepType.paperStore;
+      case 'punching_operator':
+        return stepType == StepType.punching;
+      case 'printer':
+        return stepType == StepType.printing;
+      case 'corrugator':
+        return stepType == StepType.corrugation;
+      case 'pasting_operator':
+        return stepType == StepType.flapPasting;
+      case 'qc_manager':
+        return stepType == StepType.qc;
+      case 'dispatch_executive':
+        return stepType == StepType.dispatch;
+      case 'admin':
+      case 'planner':
+      case 'production_head':
+      case 'flyingsquad':
+        return true; // These roles see all steps
+      default:
+        return false; // Unknown roles see no steps
+    }
+  }
+
 }

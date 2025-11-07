@@ -1340,6 +1340,31 @@ class JobApi {
 
   // ==================== ALL STEP HOLD/RESUME ====================
   
+  /// Major hold work on machine
+  Future<Map<String, dynamic>> majorHoldWorkOnMachine(String jobNrcJobNo, int stepNo, String machineId, {Map<String, dynamic>? formData, String? majorHoldReason}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    print('[majorHoldWorkOnMachine] Token: $token');
+    print('[majorHoldWorkOnMachine] jobNrcJobNo: $jobNrcJobNo, stepNo: $stepNo, machineId: $machineId, majorHoldReason: $majorHoldReason');
+    
+    final response = await dio.post(
+      '/job-step-machines/$jobNrcJobNo/steps/$stepNo/machines/$machineId/major-hold',
+      data: {
+        'formData': formData,
+        'majorHoldRemark': majorHoldReason,
+      },
+      options: Options(
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ),
+    );
+    
+    print('[majorHoldWorkOnMachine] Response: ${response.data}');
+    return response.data;
+  }
+
   /// Hold any step with remarks
   Future<Map<String, dynamic>> holdStep(String stepType, String jobNrcJobNo, String remarks) async {
     final prefs = await SharedPreferences.getInstance();
@@ -1903,6 +1928,68 @@ class JobApi {
       print('[resumeWork] Error: $e');
       return {'success': false, 'message': e.toString()};
     }
+  }
+
+  // PD Announcements APIs
+  Future<List<Map<String, dynamic>>> getPDAnnouncements() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    final response = await dio.get(
+      '/pd-announcements',
+      options: Options(
+        headers: {
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+    if (response.data['success'] == true) {
+      return List<Map<String, dynamic>>.from(response.data['data']);
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> createPDAnnouncement(Map<String, dynamic> body) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    final response = await dio.post(
+      '/pd-announcements',
+      data: body,
+      options: Options(
+        headers: {
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+    return response.data;
+  }
+
+  Future<Map<String, dynamic>> updatePDAnnouncement(int id, Map<String, dynamic> body) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    final response = await dio.put(
+      '/pd-announcements/$id',
+      data: body,
+      options: Options(
+        headers: {
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+    return response.data;
+  }
+
+  Future<Map<String, dynamic>> deletePDAnnouncement(int id) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    final response = await dio.delete(
+      '/pd-announcements/$id',
+      options: Options(
+        headers: {
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+    return response.data;
   }
 
 }

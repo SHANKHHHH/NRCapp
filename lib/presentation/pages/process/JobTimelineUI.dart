@@ -5,7 +5,7 @@ import '../../../data/models/job_step_models.dart';
 
 class JobTimelineUI {
   static Widget buildProgressIndicator(List<StepData> steps) {
-    int completedSteps = steps.where((step) => step.status == StepStatus.completed).length;
+    int completedSteps = steps.where((step) => step.status == StepStatus.paused).length;
 
     return Container(
       padding: const EdgeInsets.all(20),

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nrc/data/datasources/job_api.dart';
+import 'dart:convert';
 import '../../../constants/colors.dart';
 import '../process/JobApiService.dart';
 import '../process/StepDataManager.dart';
 import '../../../data/models/job_step_models.dart';
+import '../../../core/services/dio_service.dart';
 
 class WorkActionForm extends StatefulWidget {
   final String title;
@@ -17,7 +19,9 @@ class WorkActionForm extends StatefulWidget {
   final void Function()? onPause;
   final void Function()? onStop;
   final void Function(String)? onHold;
+  final void Function(String)? onMajorHold;
   final void Function(String)? onResume;
+  final BuildContext? parentContext; // Parent context for showing nested dialogs
   final String? jobNumber; // Add jobNumber parameter
   final int? stepNo; // Add stepNo parameter
   final JobApiService? apiService; // Add apiService parameter
@@ -38,6 +42,7 @@ class WorkActionForm extends StatefulWidget {
     this.onPause,
     this.onStop,
     this.onHold,
+    this.onMajorHold,
     this.onResume,
     this.hasData = false,
     this.jobNumber, // Add jobNumber
@@ -48,6 +53,7 @@ class WorkActionForm extends StatefulWidget {
     this.jobData, // Add jobData
     this.machineId, // Add machineId
     this.nrcJobNo, // Add nrcJobNo
+    this.parentContext, // Add parentContext
   });
 
   @override
@@ -67,6 +73,25 @@ class _WorkActionFormState extends State<WorkActionForm> {
   int? _availableQuantity;
   int? _remainingQuantity; // Remaining after other machines' submission
   bool _isLoadingAvailableQty = false;
+  
+  // Dispatch cumulative tracking
+  int? _jobTotalQuantity; // Total PO quantity for the job
+  int? _totalDispatchedQty; // Total quantity already dispatched
+  
+  // Track if stop button was just pressed
+  bool _stopButtonJustPressed = false;
+
+  // Get adjusted available quantity for Flap Pasting (multiplies by No. of Ups)
+  int? get _adjustedAvailableQuantity {
+    if (widget.stepType == StepType.flapPasting && _availableQuantity != null && widget.jobData != null) {
+      final noUps = widget.jobData!['noUps'];
+      if (noUps != null) {
+        final noUpsInt = noUps is int ? noUps : (int.tryParse(noUps.toString()) ?? 1);
+        return _availableQuantity! * noUpsInt;
+      }
+    }
+    return _availableQuantity;
+  }
 
   /// Helper: return current time in IST (UTC+05:30) with milliseconds and proper offset
   String _formatDateWithMilliseconds() {
@@ -103,9 +128,11 @@ class _WorkActionFormState extends State<WorkActionForm> {
       return;
     }
 
-    setState(() {
-      _isLoadingAvailableQty = true;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoadingAvailableQty = true;
+      });
+    }
 
     try {
       // Get available quantity from previous step
@@ -201,6 +228,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
   @override
   void initState() {
     super.initState();
+    _job = JobApi(DioService.instance); // Initialize JobApi instance
     _initializeControllers();
     _autoPopulateFields();
     // Load current status from database if API service is available
@@ -457,6 +485,8 @@ class _WorkActionFormState extends State<WorkActionForm> {
     for (var controller in _controllers.values) {
       controller.dispose();
     }
+    _okQuantityController.dispose();
+    _completeRemarkController.dispose();
     super.dispose();
   }
 
@@ -472,24 +502,39 @@ class _WorkActionFormState extends State<WorkActionForm> {
          widget.stepType == StepType.qc || 
          widget.stepType == StepType.dispatch)) {
       print('🚀 Using initialStatus for ${widget.stepType}: ${widget.initialStatus}');
-      setState(() {
-        _status = widget.initialStatus!;
-        if (_status == 'hold') {
-          _isStartDisabled = true;
-          _isPauseDisabled = true;
-          _isStopDisabled = false;
-          print('🚀 Set hold status with correct button states');
-        } else if (_status == 'start' || _status == 'started') {
-          _isStartDisabled = true;
-          _isPauseDisabled = false;
-          _isStopDisabled = false;
-          print('🚀 Set start status with correct button states');
-        }
-      });
+      if (mounted) {
+        setState(() {
+          _status = widget.initialStatus!;
+          if (_status == 'hold') {
+            _isStartDisabled = true;
+            _isPauseDisabled = true;
+            _isStopDisabled = false;
+            print('🚀 Set hold status with correct button states');
+          } else if (_status == 'start' || _status == 'started') {
+            _isStartDisabled = true;
+            _isPauseDisabled = false;
+            _isStopDisabled = false;
+            print('🚀 Set start status with correct button states');
+          } else if (_status == 'major_hold') {
+            _isStartDisabled = true;
+            _isPauseDisabled = true;
+            _isStopDisabled = true;
+            print('🚀 Set major_hold status with correct button states');
+          } else if (_status == 'pending' || _status == 'planned') {
+            // Pending status - show start button
+            _isStartDisabled = false;
+            _isPauseDisabled = true;
+            _isStopDisabled = true;
+            print('🚀 Set pending status with correct button states');
+          }
+        });
+      }
       return;
     }
 
-    setState(() => _isLoading = true);
+    if (mounted) {
+      setState(() => _isLoading = true);
+    }
 
     try {
       // For machine-specific work, get machine status instead of step status
@@ -508,8 +553,37 @@ class _WorkActionFormState extends State<WorkActionForm> {
             final startDate = currentMachine['startedAt'];
             final endDate = currentMachine['completedAt'];
             
-            setState(() {
-              if (machineStatus == 'stop' || endDate != null) {
+            if (mounted) {
+              setState(() {
+              if (machineStatus == 'stop') {
+                // Machine is stopped but may not be completed yet
+                // Check if formData exists to determine if work is completed
+                final formData = currentMachine['formData'];
+                bool isCompleted = false;
+                
+                if (formData != null) {
+                  // formData can be a Map or a string (JSON)
+                  if (formData is Map) {
+                    isCompleted = formData.isNotEmpty;
+                  } else if (formData is String) {
+                    // Parse JSON string to check if it has content
+                    try {
+                      final parsed = Map<String, dynamic>.from(jsonDecode(formData));
+                      isCompleted = parsed.isNotEmpty;
+                    } catch (e) {
+                      isCompleted = false;
+                    }
+                  }
+                }
+                
+                                 _status = 'stop'; // Always 'stop' when machineStatus is 'stop'
+                 _startTime = DateTime.tryParse(startDate);
+                 _endTime = DateTime.tryParse(endDate);
+                 _isStartDisabled = true;
+                 _isPauseDisabled = true;
+                 _isStopDisabled = true;
+                 print('Machine work is stopped, status: $machineStatus');
+              } else if (endDate != null && machineStatus != 'stop') {
                 // Machine work is completed
                 _status = 'stopped';
                 _startTime = DateTime.tryParse(startDate);
@@ -534,6 +608,14 @@ class _WorkActionFormState extends State<WorkActionForm> {
                 _isPauseDisabled = true;
                 _isStopDisabled = false;
                 print('Machine is on hold, showing resume and stop buttons');
+              } else if (machineStatus == 'major_hold') {
+                // Machine is on major hold - disable all buttons except admin resume
+                _status = 'major_hold';
+                _startTime = DateTime.tryParse(startDate);
+                _isStartDisabled = true;
+                _isPauseDisabled = true;
+                _isStopDisabled = true;
+                print('Machine is on major hold, disabling all buttons');
               } else {
                 // Machine is available - show start button
                 _isStartDisabled = false;
@@ -541,7 +623,8 @@ class _WorkActionFormState extends State<WorkActionForm> {
                 _isStopDisabled = true;
                 print('Machine is available, showing start button');
               }
-            });
+              });
+            }
             return;
           }
         }
@@ -553,7 +636,8 @@ class _WorkActionFormState extends State<WorkActionForm> {
         final startDate = stepDetails['startDate'];
         final endDate = stepDetails['endDate'];
         final status = stepDetails['status'];
-        setState(() {
+        if (mounted) {
+          setState(() {
           if (status == 'stop' || endDate != null) {
             // Work is completed - all disabled, show Ended Time
             _status = 'stopped';
@@ -586,18 +670,29 @@ class _WorkActionFormState extends State<WorkActionForm> {
             _isPauseDisabled = true;
             _isStopDisabled = true;
             print('Step is on hold, setting status to hold and enabling resume button');
+          } else if (status == 'major_hold') {
+            // Work is on major hold - disable all buttons
+            _status = 'major_hold';
+            _startTime = DateTime.tryParse(startDate);
+            _isStartDisabled = true;
+            _isPauseDisabled = true;
+            _isStopDisabled = true;
+            print('Step is on major hold, disabling all buttons');
           } else {
             // No work started yet
             _isStartDisabled = false;
             _isPauseDisabled = false;
             _isStopDisabled = false;
           }
-        });
+          });
+        }
       }
     } catch (e) {
       print('Error loading current status: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -626,7 +721,9 @@ class _WorkActionFormState extends State<WorkActionForm> {
         return;
       }
       
-      setState(() => _isLoading = true);
+      if (mounted) {
+        setState(() => _isLoading = true);
+      }
       
       try {
         final formData = _collectFormData();
@@ -641,20 +738,26 @@ class _WorkActionFormState extends State<WorkActionForm> {
           print('Work started on machine: ${widget.machineId}');
           _startTime = DateTime.now();
           
-          setState(() {
-            _status = 'start';
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() {
+              _status = 'start';
+              _isLoading = false;
+            });
+          }
           
           widget.onStart?.call();
           print('✅ Work started on machine - data will auto-refresh');
         } else {
           print('Failed to start work on machine');
-          setState(() => _isLoading = false);
+          if (mounted) {
+            setState(() => _isLoading = false);
+          }
         }
       } catch (e) {
         print('Error starting work on machine: $e');
-        setState(() => _isLoading = false);
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
         
         // Show user-friendly error message
         if (mounted) {
@@ -731,8 +834,8 @@ class _WorkActionFormState extends State<WorkActionForm> {
       return;
     }
 
-    // Show remarks dialog
-    final remarks = await _showRemarksDialog('Hold Work');
+    // Show remarks dialog for hold action
+    final remarks = await _showRemarksDialog('Hold Work', hintText: 'Enter reason for holding the work');
     if (remarks != null) {
       setState(() => _status = 'hold');
       
@@ -801,13 +904,57 @@ class _WorkActionFormState extends State<WorkActionForm> {
     }
   }
 
+  void _handleMajorHold() async {
+    if (_status != 'start' && _status != 'in_progress') {
+      return;
+    }
+
+    // Show remarks dialog for major hold action
+    final remarks = await _showRemarksDialog('Major Hold Work', hintText: 'Enter reason for major hold (machine breakdown, major issue)');
+    if (remarks != null) {
+      setState(() => _status = 'major_hold');
+      
+      // If this is machine-specific work, call the machine API
+      if (widget.machineId != null && widget.nrcJobNo != null && widget.stepNo != null && widget.apiService != null) {
+        try {
+          final formData = _collectFormData();
+          final result = await widget.apiService!.majorHoldWorkOnMachine(
+            widget.nrcJobNo!,
+            widget.stepNo!,
+            widget.machineId!,
+            formData: formData,
+            majorHoldReason: remarks,
+          );
+          
+          if (result != null) {
+            print('✅ Work major held on machine: ${widget.machineId} - data will auto-refresh');
+          } else {
+            print('Failed to major hold work on machine');
+            setState(() => _status = 'start'); // Revert status on failure
+          }
+        } catch (e) {
+          print('Error major holding work on machine: $e');
+          setState(() => _status = 'start'); // Revert status on error
+          
+          // Show user-friendly error message
+          if (mounted) {
+            _showWorkflowError(e, 'major hold');
+          }
+        }
+      } else {
+        // Fallback: Call the original callback for non-machine work
+        widget.onMajorHold?.call(remarks);
+      }
+    }
+  }
+
   void _handleResume() async {
     if (_status != 'hold') {
       return;
     }
 
-    // Show remarks dialog
-    final remarks = await _showRemarksDialog('Resume Work');
+    // Show remarks dialog for resume action
+    final remarks = await _showRemarksDialog('Resume Work', hintText: 'Enter remarks for resuming the work');
     if (remarks != null) {
       setState(() => _status = 'start');
       
@@ -876,7 +1023,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
     }
   }
 
-  Future<String?> _showRemarksDialog(String title) async {
+  Future<String?> _showRemarksDialog(String title, {String? hintText}) async {
     final controller = TextEditingController();
     return showDialog<String>(
       context: context,
@@ -884,9 +1031,10 @@ class _WorkActionFormState extends State<WorkActionForm> {
         title: Text(title),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(
-            hintText: 'Enter remarks (optional)',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            hintText: hintText ?? 'Enter remarks (optional)',
+            border: const OutlineInputBorder(),
+            helperText: _getRemarksHelperText(title),
           ),
           maxLines: 3,
         ),
@@ -902,6 +1050,19 @@ class _WorkActionFormState extends State<WorkActionForm> {
         ],
       ),
     );
+  }
+
+  String _getRemarksHelperText(String title) {
+    switch (title.toLowerCase()) {
+      case 'hold work':
+        return 'Enter reason for holding the work';
+      case 'resume work':
+        return 'Enter remarks for resuming the work';
+      case 'complete work':
+        return 'Enter completion remarks';
+      default:
+        return 'Enter remarks (optional)';
+    }
   }
 
   /// Show user-friendly workflow error messages
@@ -1038,28 +1199,22 @@ class _WorkActionFormState extends State<WorkActionForm> {
           // NO formData parameter - backend only changes status
         );
         
-        if (result != null) {
+                         if (result != null) {
           print('✅ Machine stopped successfully');
           
-          setState(() {
-            _status = 'stop';
-            _endTime = DateTime.now();
-            _isLoading = false;
-          });
-          
-          // Show message to user to complete work details
+          // Update local state to show "Complete Work" button immediately
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Machine stopped. Please review and complete the work details.'),
-                backgroundColor: Colors.orange,
-                duration: Duration(seconds: 3),
-              ),
-            );
+            setState(() {
+              _status = 'stop';
+              _endTime = DateTime.now();
+              _isLoading = false;
+              _stopButtonJustPressed = true; // Mark that stop was just pressed
+            });
           }
           
           widget.onStop?.call();
-          print('✅ Work stopped - form remains editable for completion');
+          
+          print('✅ Work stopped - status changed to stop');
         } else{
           print('Failed to stop work on machine');
           setState(() {
@@ -1095,11 +1250,14 @@ class _WorkActionFormState extends State<WorkActionForm> {
     setState(() => _isLoading = true);
 
     try {
-      // Update JobStep endDate
+      // Update JobStep endDate and status
       await widget.apiService!.updateJobPlanningStepFields(
         widget.jobNumber!,
         widget.stepNo!,
-        {'endDate': _formatDateWithMilliseconds()},
+        {
+          'endDate': _formatDateWithMilliseconds(),
+          'status': 'stop',
+        },
       );
 
       // Also update individual step status to accept
@@ -1112,12 +1270,14 @@ class _WorkActionFormState extends State<WorkActionForm> {
         _status = 'stop';
         _endTime = DateTime.now();
         _isLoading = false;
+        _stopButtonJustPressed = true; // Mark that stop was just pressed
       });
 
       widget.onStop?.call();
 
       if (mounted) {
-        print('✅ Work stopped successfully - data will auto-refresh');
+        print('✅ Work stopped successfully - status changed to stop');
+        // 🧭 For non-machine steps we wait for user to click Complete; machines handled above
       }
     } catch (e) {
       setState(() => _isLoading = false);
@@ -1127,6 +1287,338 @@ class _WorkActionFormState extends State<WorkActionForm> {
         print('Stop work error: $e');
         
           print('Stop work validation warning or server error (operation may have succeeded): $e');
+      }
+    }
+  }
+
+  void _showCompletionFormWithContext() async {
+    // Use parent context if available, otherwise fallback to widget context
+    final contextToUse = widget.parentContext ?? context;
+    
+    // Check if context is still valid
+    if (!mounted || contextToUse == null) {
+      print('⚠️ Context not available for showing completion form');
+      return;
+    }
+
+    // Close the work dialog first (before setState)
+    if (mounted && Navigator.canPop(context)) {
+      Navigator.of(context).pop();
+    }
+    
+    // Set status to 'stop' and mark that stop button was pressed
+    setState(() {
+      _status = 'stop';
+      _endTime = DateTime.now();
+      _stopButtonJustPressed = true;
+    });
+
+    // Get available quantity from previous step for validation
+    int? availableQuantity;
+    if (widget.apiService != null && widget.jobNumber != null && widget.stepType != null) {
+      availableQuantity = await widget.apiService!.getPreviousStepAvailableQuantity(
+        widget.jobNumber!,
+        widget.stepType!,
+      );
+      
+      // Store available quantity for use in _completeWorkWithFormData (only if widget is still mounted)
+      if (mounted) {
+        setState(() {
+          _availableQuantity = availableQuantity;
+        });
+      }
+    }
+
+    // For Dispatch, get dispatch tracking data
+    int? totalDispatchedQty;
+    dynamic dispatchHistory;
+    int? jobTotalQuantity;
+    
+    // Get job data if not already available (needed for Flap Pasting noUps calculation)
+    Map<String, dynamic>? jobDataForDialog = widget.jobData;
+    
+    // For PaperStore and Dispatch, get job total quantity from purchase orders
+    // Also fetch job data for Flap Pasting if not available
+    if ((widget.stepType == StepType.paperStore || widget.stepType == StepType.dispatch || 
+         (widget.stepType == StepType.flapPasting && jobDataForDialog == null))
+        && widget.apiService != null && widget.jobNumber != null) {
+      try {
+        print('🔍 [PO Fetch] Fetching job data for ${widget.stepType} step');
+        
+        // For Dispatch, get dispatch tracking data
+        if (widget.stepType == StepType.dispatch) {
+          final dispatchDetailsResponse = await widget.apiService!.getStepDetailsWithEditability(widget.jobNumber!, StepType.dispatch);
+          totalDispatchedQty = 0; // Default to 0 if no records
+          if (dispatchDetailsResponse.isNotEmpty) {
+            final dispatchData = dispatchDetailsResponse[0].data;
+            totalDispatchedQty = dispatchData['totalDispatchedQty'] ?? 0;
+            dispatchHistory = dispatchData['dispatchHistory'];
+          }
+        }
+        
+        // Get purchase orders to calculate total quantity (for both PaperStore and Dispatch)
+        // Also get job data for Flap Pasting noUps calculation
+        final allJobs = await _job.getJobsByNo(widget.jobNumber!);
+        print('🔍 [PO Fetch] All jobs: ${allJobs.length}');
+        if (allJobs.isNotEmpty) {
+          final job = allJobs[0];
+          
+          // Build jobData map for Flap Pasting
+          if (widget.stepType == StepType.flapPasting && jobDataForDialog == null) {
+            jobDataForDialog = {
+              'id': job.id,
+              'nrcJobNo': job.nrcJobNo,
+              'noUps': job.noUps,
+              'purchaseOrders': job.purchaseOrders,
+            };
+            if (job.purchaseOrders != null && job.purchaseOrders!.isNotEmpty) {
+              jobDataForDialog!['totalPOQuantity'] = job.purchaseOrders![0].totalPOQuantity;
+            }
+            print('🔍 [PO Fetch] Fetched jobData for Flap Pasting: noUps=${job.noUps}');
+          }
+          
+          // Calculate total PO quantity for PaperStore and Dispatch
+          if ((widget.stepType == StepType.paperStore || widget.stepType == StepType.dispatch) 
+              && job.purchaseOrders != null) {
+            final List pos = job.purchaseOrders!;
+            jobTotalQuantity = pos.fold<int>(0, (sum, po) {
+              final poDynamic = po as dynamic;
+              final poQty = poDynamic?.totalPOQuantity;
+              final intQty = poQty is int ? poQty : (int.tryParse(poQty?.toString() ?? '0') ?? 0);
+              return sum + intQty;
+            });
+            print('🔍 [PO Fetch] Total PO Quantity: $jobTotalQuantity');
+          }
+        }
+        
+        // Store in state for validation
+        if (mounted) {
+          setState(() {
+            _totalDispatchedQty = totalDispatchedQty;
+            _jobTotalQuantity = jobTotalQuantity;
+          });
+        }
+      } catch (e) {
+        print('Error fetching tracking data: $e');
+      }
+    }
+
+    // Show completion form dialog using the context
+    final result = await showDialog<Map<String, String>>(
+      context: contextToUse,
+      barrierDismissible: false, // Prevent closing by tapping outside
+      builder: (context) => CompletionFormDialog(
+        availableQuantity: availableQuantity,
+        stepType: widget.stepType,
+        totalDispatchedQty: totalDispatchedQty,
+        dispatchHistory: dispatchHistory,
+        jobTotalQuantity: jobTotalQuantity,
+        jobData: jobDataForDialog ?? widget.jobData, // Use fetched jobData if available, otherwise fallback to widget.jobData
+      ),
+    );
+
+    if (result != null) {
+      // Complete the work with the form data
+      await _completeWorkWithFormData(result);
+    } else {
+      // If user cancelled, show a message
+      print('⚠️ Completion form was cancelled');
+      if (mounted) {
+        try {
+          ScaffoldMessenger.of(contextToUse).showSnackBar(
+            const SnackBar(
+              content: Text('Work stopped. Please complete the work details later.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        } catch (e) {
+          print('Could not show snackbar: $e');
+        }
+      }
+    }
+  }
+
+  Future<void> _completeWorkWithFormData(Map<String, String> formData) async {
+    if (widget.apiService == null || widget.jobNumber == null || widget.stepNo == null) {
+      print('Missing API parameters for completion');
+      return;
+    }
+
+    if (mounted) {
+      setState(() => _isLoading = true);
+    }
+
+    try {
+      // Calculate wastage: Previous Step OK Qty - Current Step OK Qty
+      int? wastage;
+      if (formData['OK Quantity'] != null) {
+        final okQuantity = int.tryParse(formData['OK Quantity']!);
+        if (okQuantity != null && _availableQuantity != null) {
+          wastage = _availableQuantity! - okQuantity;
+          if (wastage < 0) wastage = 0; // Prevent negative wastage
+        }
+      }
+
+      // Add wastage to form data
+      if (wastage != null) {
+        formData['Wastage'] = wastage.toString();
+      }
+
+      // Add complete remark - handle both 'Complete Remark' and 'completeRemark' keys
+      if (formData['Complete Remark'] != null && formData['Complete Remark']!.isNotEmpty) {
+        formData['completeRemark'] = formData['Complete Remark']!;
+        print('🔍 Adding complete remark: ${formData['Complete Remark']}');
+      } else if (formData['completeRemark'] != null && formData['completeRemark']!.isNotEmpty) {
+        print('🔍 Complete remark already present: ${formData['completeRemark']}');
+      }
+
+      // ✅ FIXED: Map form data fields to backend schema for all steps
+      if (widget.stepType == StepType.paperStore) {
+        // PaperStore backend expects 'available' field
+        final availableFromOk = formData['OK Quantity'];
+        final availableFromLong = formData['Available Quantity'];
+        final availableFromShort = formData['Available Qty'];
+        final resolvedAvailable = (availableFromLong?.isNotEmpty == true)
+            ? availableFromLong
+            : (availableFromShort?.isNotEmpty == true)
+                ? availableFromShort
+                : availableFromOk;
+        if (resolvedAvailable != null) {
+          formData['available'] = resolvedAvailable;
+          formData['Available Qty'] = resolvedAvailable;
+        }
+        formData['quantity'] = _availableQuantity?.toString() ?? resolvedAvailable ?? '0';
+        // Map 'Complete Remark' to 'remarks' and 'Remarks' for PaperStore backend
+        if (formData['Complete Remark'] != null && formData['Complete Remark']!.isNotEmpty) {
+          formData['remarks'] = formData['Remarks'] = formData['Complete Remark']!;
+        }
+      } else if (widget.stepType == StepType.printing) {
+        // Printing backend expects 'quantity' field
+        if (formData['OK Quantity'] != null) {
+          formData['quantity'] = formData['Quantity OK'] = formData['OK Quantity']!;
+        }
+        // Map 'Complete Remark' to 'remarks' and 'Remarks' for Printing backend
+        if (formData['Complete Remark'] != null && formData['Complete Remark']!.isNotEmpty) {
+          formData['remarks'] = formData['Remarks'] = formData['Complete Remark']!;
+        }
+      } else if (widget.stepType == StepType.corrugation) {
+        // Corrugation: "Sheets Count" -> 'quantity' field
+        if (formData['OK Quantity'] != null) {
+          formData['quantity'] = formData['Sheets Count'] = formData['OK Quantity']!;
+        }
+        // Map 'Complete Remark' to 'remarks' and 'Remarks' for Corrugation backend
+        if (formData['Complete Remark'] != null && formData['Complete Remark']!.isNotEmpty) {
+          formData['remarks'] = formData['Remarks'] = formData['Complete Remark']!;
+        }
+      } else if (widget.stepType == StepType.fluteLamination || 
+                 widget.stepType == StepType.punching || 
+                 widget.stepType == StepType.dieCutting) {
+        // Flute Lamination, Punching, Die Cutting backend expects 'quantity' field
+        if (formData['OK Quantity'] != null) {
+          formData['quantity'] = formData['okQuantity'] = formData['OK Quantity']!;
+        }
+        // Map 'Complete Remark' to 'remarks' and 'Remarks' for Flute Lamination/Punching/Die Cutting backend
+        if (formData['Complete Remark'] != null && formData['Complete Remark']!.isNotEmpty) {
+          formData['remarks'] = formData['Remarks'] = formData['Complete Remark']!;
+        }
+      } else if (widget.stepType == StepType.flapPasting) {
+        // Flap Pasting backend expects 'quantity' field
+        if (formData['OK Quantity'] != null) {
+          formData['quantity'] = formData['Quantity'] = formData['OK Quantity']!;
+        }
+        // Map 'Complete Remark' to 'remarks' and 'Remarks' for Flap Pasting backend
+        if (formData['Complete Remark'] != null && formData['Complete Remark']!.isNotEmpty) {
+          formData['remarks'] = formData['Remarks'] = formData['Complete Remark']!;
+        }
+      } else if (widget.stepType == StepType.qc) {
+        // QC backend expects 'quantity' (Pass Quantity) and 'rejectedQty' fields
+        if (formData['Pass Quantity'] != null) {
+          formData['quantity'] = formData['passQuantity'] = formData['Pass Quantity']!;
+        }
+        // Set default rejectedQty if not provided
+        if (formData['Reject Quantity'] == null) {
+          formData['rejectedQty'] = formData['rejectQuantity'] = '0';
+        } else {
+          formData['rejectedQty'] = formData['rejectQuantity'] = formData['Reject Quantity']!;
+        }
+        if (formData['Reason for Rejection'] != null) {
+          formData['reasonForRejection'] = formData['Reason for Rejection']!;
+        }
+        // Map 'Complete Remark' to 'remarks' and 'Remarks' for Quality backend
+        if (formData['Complete Remark'] != null && formData['Complete Remark']!.isNotEmpty) {
+          formData['remarks'] = formData['Remarks'] = formData['Complete Remark']!;
+          print('🔍 Mapping Complete Remark to remarks for QC: ${formData['Complete Remark']}');
+        }
+      } else if (widget.stepType == StepType.dispatch) {
+        // Dispatch backend expects 'quantity' field - get from 'No of Boxes' or 'quantity'
+        if (formData['No of Boxes'] != null) {
+          formData['quantity'] = formData['noOfBoxes'] = formData['No of Boxes']!;
+        } else if (formData['OK Quantity'] != null) {
+          formData['quantity'] = formData['noOfBoxes'] = formData['No of Boxes'] = formData['OK Quantity']!;
+        }
+        // Map 'Complete Remark' to 'remarks' and 'Remarks' for Dispatch backend
+        if (formData['Complete Remark'] != null && formData['Complete Remark']!.isNotEmpty) {
+          formData['remarks'] = formData['Remarks'] = formData['Complete Remark']!;
+        }
+      }
+
+      // ✅ FIXED: Only call machine completion API for machine-based steps
+      // For non-machine steps, let JobStep.dart handle the API call to avoid duplicate calls
+      if (widget.machineId != null && widget.nrcJobNo != null) {
+        // Call machine completion API
+        print('✅ Completing work on machine ${widget.machineId}');
+        print('✅ Form data keys: ${formData.keys.toList()}');
+        print('✅ Form data values: ${formData.values.toList()}');
+        print('✅ Form data complete: $formData');
+        final result = await widget.apiService!.completeWorkOnMachine(
+          widget.nrcJobNo!,
+          widget.stepNo!,
+          widget.machineId!,
+          formData: formData,
+        );
+        print('✅ Machine completion result: $result');
+      } else {
+        // For non-machine steps, don't call putStepDetails here - it's handled by onComplete callback in JobStep.dart
+        print('✅ Non-machine step - completion handled by parent callback');
+      }
+
+      // For Dispatch, check if fully dispatched from backend response
+      bool isFullyDispatched = false;
+      if (widget.stepType == StepType.dispatch) {
+        // TODO: Check if fully dispatched by querying the updated JobStep status
+        // For now, assume not fully dispatched - backend handles setting JobStep to 'stop' when complete
+        isFullyDispatched = false;
+      }
+
+      if (mounted) {
+        setState(() {
+          _status = 'stop';
+          _isLoading = false;
+        });
+        
+        // Close the completion dialog first
+        Navigator.of(context).pop();
+        
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(widget.stepType == StepType.dispatch && !isFullyDispatched
+                ? 'Dispatch recorded. Remaining quantity to be dispatched.'
+                : 'Work completed successfully'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+
+      // Call the completion callback
+      widget.onComplete(formData);
+      
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showWorkflowError(e, 'complete');
       }
     }
   }
@@ -1266,6 +1758,8 @@ class _WorkActionFormState extends State<WorkActionForm> {
       case 'start':
       case 'in_progress':
         return Colors.orange;
+      case 'major_hold':
+        return Colors.deepOrange;
       case 'paused':
         return Colors.blue;
       case 'hold':
@@ -1283,6 +1777,8 @@ class _WorkActionFormState extends State<WorkActionForm> {
         return 'Started';
       case 'in_progress':
         return 'In Progress';
+      case 'major_hold':
+        return 'MAJOR HOLD';
       case 'paused':
         return 'Paused';
       case 'hold':
@@ -1298,10 +1794,14 @@ class _WorkActionFormState extends State<WorkActionForm> {
   bool _isStartDisabled = false;
   bool _isPauseDisabled = false;
   bool _isStopDisabled = false;
+  
+  // Form controllers for completion form
+  final TextEditingController _okQuantityController = TextEditingController();
+  final TextEditingController _completeRemarkController = TextEditingController();
 
   // Update button enabled checks
   bool _isStartEnabled() {
-    return !_isLoading && !_isStartDisabled && (_status == 'pending' || _status == 'paused');
+    return !_isLoading && !_isStartDisabled && (_status == 'pending' || _status == 'planned' || _status == 'paused');
   }
   bool _isPauseEnabled() {
     return !_isLoading && !_isPauseDisabled && (_status == 'start' || _status == 'in_progress');
@@ -1314,6 +1814,9 @@ class _WorkActionFormState extends State<WorkActionForm> {
   }
   bool _isResumeEnabled() {
     return !_isLoading && _status == 'hold';
+  }
+  bool _isMajorHoldEnabled() {
+    return !_isLoading && (_status == 'start' || _status == 'in_progress');
   }
 
   // Check if Complete button should be enabled
@@ -1627,126 +2130,19 @@ class _WorkActionFormState extends State<WorkActionForm> {
           child: SingleChildScrollView(
             child: Column(
               children: [
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: _controllers.entries.map((entry) {
-                      return _buildFormField(entry.key, entry.value);
-                    }).toList(),
+                // Only show form fields if there are any (most steps have no fields in the work form)
+                if (_controllers.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: _controllers.entries.map((entry) {
+                        return _buildFormField(entry.key, entry.value);
+                      }).toList(),
+                    ),
                   ),
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    Expanded(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _isStartEnabled() ? Colors.orange : Colors.grey,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        onPressed: _isStartEnabled() ? _handleStart : null,
-                        child: _isLoading && _status == 'pending'
-                            ? const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                            : Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  Icon(Icons.check_circle, size: 24),
-                                  Text(
-                                    'Start',
-                                    style: TextStyle(color: Colors.transparent),
-                                  ),
-                                ],
-                              ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _isHoldEnabled() ? Colors.orange : Colors.grey,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        onPressed: _isHoldEnabled() ? _handleHold : null,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Icon(Icons.pause_circle, size: 24),
-                            Text(
-                              'Hold',
-                              style: TextStyle(color: Colors.transparent),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _isStopEnabled() ? Colors.red : Colors.grey,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        onPressed: _isStopEnabled() ? _handleStop : null,
-                        child: _isLoading && (_status == 'start' || _status == 'in_progress')
-                            ? const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                            : Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  Icon(Icons.cancel, size: 24),
-                                  Text(
-                                    'Stop',
-                                    style: TextStyle(color: Colors.transparent),
-                                  ),
-                                ],
-                              ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _isResumeEnabled() ? Colors.green : Colors.grey,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        onPressed: _isResumeEnabled() ? _handleResume : null,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Icon(Icons.play_circle, size: 24),
-                            Text(
-                              'Resume',
-                                    style: TextStyle(color: Colors.transparent),
-                                  ),
-                                ],
-                              ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
+                ],
                 Row(
                   children: [
                     Container(
@@ -1772,71 +2168,1045 @@ class _WorkActionFormState extends State<WorkActionForm> {
                     ),
                   ],
                 ),
+                
+                // Show major hold warning if status is major_hold
+                if (_status == 'major_hold') ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.deepOrange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.deepOrange.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.error_outline, color: Colors.deepOrange[700], size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'MAJOR HOLD: This job is on major hold. Only admin/planner can resume.',
+                            style: TextStyle(
+                              color: Colors.deepOrange[700],
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
         ),
       ),
       actions: [
-        Column(
-          mainAxisSize: MainAxisSize.min,
+        // Always show action buttons (Start, Hold, Major Hold, Stop, Resume, Close)
+        _buildActionButtons(),
+      ],
+    );
+  }
+
+  // Build action buttons (Start, Hold, Major Hold, Stop) - All in one row
+  Widget _buildActionButtons() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // All buttons in a single row
+        Row(
           children: [
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _isCompleteEnabled() ? Colors.green : Colors.grey,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  elevation: 2,
-                ),
-                onPressed: _isCompleteEnabled() ? _handleComplete : null,
-                child: _isLoading && _status == 'stop'
-                    ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            // Start Button
+            if (_isStartEnabled()) ...[
+              Expanded(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    elevation: 2,
                   ),
-                )
-                    : Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.check_circle, size: 20),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Complete Work',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+                  onPressed: _handleStart,
+                  child: _isLoading && _status == 'pending'
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.play_arrow, size: 16),
+                            SizedBox(width: 4),
+                            Text(
+                              'Start',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            
+            // Hold Button
+            if (_isHoldEnabled()) ...[
+              Expanded(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.amber,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: _handleHold,
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.pause, size: 16),
+                      SizedBox(width: 4),
+                      Text(
+                        'Hold',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: TextButton(
-                onPressed: _isLoading ? null : () => Navigator.pop(context),
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.grey[600],
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    side: BorderSide(color: Colors.grey[300]!),
+                    ],
                   ),
                 ),
-                child: const Text('Close'),
+              ),
+              const SizedBox(width: 8),
+            ],
+            
+            // Major Hold Button
+            if (_isMajorHoldEnabled()) ...[
+              Expanded(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepOrange,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: _handleMajorHold,
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error_outline, size: 16),
+                      SizedBox(width: 4),
+                      Text(
+                        'Major Hold',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            
+            // Resume Button
+            if (_isResumeEnabled()) ...[
+              Expanded(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    elevation: 2,
+                  ),
+                  onPressed: _handleResume,
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.play_arrow, size: 16),
+                      SizedBox(width: 4),
+                      Text(
+                        'Resume',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            
+            // Stop Button
+            if (_isStopEnabled()) ...[
+              Expanded(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    elevation: 2,
+                  ),
+                  onPressed: _handleStop,
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.stop, size: 16),
+                      SizedBox(width: 4),
+                      Text(
+                        'Stop',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        
+        // Show "Complete Work" button when status is 'stop' - SAME FLOW FOR ALL STEPS
+        if (_status == 'stop') ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _isLoading ? null : _showCompletionFormWithContext,
+              icon: Icon(Icons.check_circle, size: 18),
+              label: const Text(
+                'Complete Work',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
             ),
-          ],
+          ),
+        ],
+        
+        const SizedBox(height: 12),
+        
+        // Close Button - Always functional, even during loading
+        SizedBox(
+          width: double.infinity,
+          child: TextButton(
+            onPressed: () {
+              // Always allow closing the dialog, even during loading
+              if (Navigator.canPop(context)) {
+                Navigator.pop(context);
+              }
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.grey[600],
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: BorderSide(color: Colors.grey[300]!),
+              ),
+            ),
+            child: const Text('Close'),
+          ),
         ),
       ],
     );
   }
 
+  // Build completion form content
+  Widget _buildCompletionFormContent() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // OK Quantity Field
+        TextFormField(
+          controller: _okQuantityController,
+          decoration: InputDecoration(
+            labelText: 'OK Quantity *',
+            hintText: _adjustedAvailableQuantity != null 
+                ? 'Enter OK quantity (0-${_adjustedAvailableQuantity})'
+                : 'Enter OK quantity',
+            border: const OutlineInputBorder(),
+            helperText: _adjustedAvailableQuantity != null 
+                ? widget.stepType == StepType.flapPasting && _availableQuantity != null && widget.jobData != null
+                    ? 'Must be between 0 and ${_adjustedAvailableQuantity} (Punching OK: ${_availableQuantity} × No. of Ups: ${widget.jobData!['noUps'] is int ? widget.jobData!['noUps'] : (int.tryParse(widget.jobData!['noUps'].toString()) ?? 1)})'
+                    : 'Must be between 0 and ${_adjustedAvailableQuantity}'
+                : 'Enter the quantity that passed quality check',
+          ),
+          keyboardType: TextInputType.number,
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'Please enter OK quantity';
+            }
+            
+            final okQuantity = int.tryParse(value);
+            if (okQuantity == null) {
+              return 'Please enter a valid number';
+            }
+            
+            if (okQuantity < 0) {
+              return 'OK quantity cannot be negative';
+            }
+            
+            if (_adjustedAvailableQuantity != null && okQuantity > _adjustedAvailableQuantity!) {
+              return 'OK quantity cannot exceed available quantity (${_adjustedAvailableQuantity})';
+            }
+            
+            return null;
+          },
+        ),
+        const SizedBox(height: 16),
+        
+        // Complete Remark Field
+        TextFormField(
+          controller: _completeRemarkController,
+          decoration: InputDecoration(
+            labelText: 'Complete Remark',
+            hintText: 'Enter completion remarks (optional)',
+            border: const OutlineInputBorder(),
+            helperText: 'Optional remarks about the completion',
+          ),
+          maxLines: 3,
+        ),
+        const SizedBox(height: 16),
+        
+        // Complete Work Button
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              elevation: 2,
+            ),
+            onPressed: _handleCompleteWithForm,
+            child: _isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.check_circle, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'Complete Work',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        
+        // Cancel Button
+        SizedBox(
+          width: double.infinity,
+          child: TextButton(
+            onPressed: _isLoading ? null : () => Navigator.pop(context),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.grey[600],
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: BorderSide(color: Colors.grey[300]!),
+              ),
+            ),
+            child: const Text('Cancel'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Handle complete with form data
+  void _handleCompleteWithForm() async {
+    // Validate form
+    if (_okQuantityController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter OK quantity'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final okQuantity = int.tryParse(_okQuantityController.text);
+    if (okQuantity == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid number for OK quantity'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (okQuantity < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('OK quantity cannot be negative'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (_availableQuantity != null && okQuantity > _availableQuantity!) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('OK quantity cannot exceed available quantity ($_availableQuantity)'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final formData = <String, String>{
+        'OK Quantity': _okQuantityController.text,
+        'Complete Remark': _completeRemarkController.text,
+      };
+
+      // Complete the work with the form data
+      await _completeWorkWithFormData(formData);
+    } catch (e) {
+      setState(() => _isLoading = false);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+}
+
+class CompletionFormDialog extends StatefulWidget {
+  final int? availableQuantity;
+  final StepType? stepType;
+  final int? totalDispatchedQty; // For Dispatch - cumulative dispatched so far
+  final dynamic dispatchHistory; // For Dispatch - array of previous dispatches
+  final int? jobTotalQuantity; // For Dispatch - total job quantity
+  final Map<String, dynamic>? jobData; // Job data for validation (e.g., noUps for FlapPasting)
+
+  const CompletionFormDialog({
+    super.key,
+    this.availableQuantity,
+    this.stepType,
+    this.totalDispatchedQty,
+    this.dispatchHistory,
+    this.jobTotalQuantity,
+    this.jobData,
+  });
+
+  @override
+  State<CompletionFormDialog> createState() => _CompletionFormDialogState();
+}
+
+class _CompletionFormDialogState extends State<CompletionFormDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _okQuantityController = TextEditingController();
+  final _passQuantityController = TextEditingController(); // For QC: Pass Quantity
+  final _rejectQuantityController = TextEditingController(); // For QC: Reject Quantity
+  final _rejectReasonController = TextEditingController(); // For QC: Reason for Rejection
+  final _completeRemarkController = TextEditingController();
+  bool _isLoading = false;
+
+  // Get adjusted available quantity for Flap Pasting (multiplies by No. of Ups)
+  int? get _adjustedAvailableQuantity {
+    if (widget.stepType == StepType.flapPasting && widget.availableQuantity != null && widget.jobData != null) {
+      final noUps = widget.jobData!['noUps'];
+      print('🔍 [CompletionFormDialog] Flap Pasting - availableQuantity: ${widget.availableQuantity}, jobData: ${widget.jobData?.keys.toList()}, noUps: $noUps');
+      if (noUps != null) {
+        final noUpsInt = noUps is int ? noUps : (int.tryParse(noUps.toString()) ?? 1);
+        final adjusted = widget.availableQuantity! * noUpsInt;
+        print('🔍 [CompletionFormDialog] Calculated adjusted quantity: $adjusted (${widget.availableQuantity} × $noUpsInt)');
+        return adjusted;
+      } else {
+        print('⚠️ [CompletionFormDialog] noUps is null in jobData');
+      }
+    } else {
+      print('🔍 [CompletionFormDialog] Not Flap Pasting or missing data - stepType: ${widget.stepType}, availableQuantity: ${widget.availableQuantity}, jobData: ${widget.jobData != null}');
+    }
+    return widget.availableQuantity;
+  }
+
+  // Get display text for available quantity (shows calculation for Flap Pasting)
+  String get _availableQuantityDisplayText {
+    if (widget.stepType == StepType.flapPasting && widget.availableQuantity != null && widget.jobData != null) {
+      final noUps = widget.jobData!['noUps'];
+      if (noUps != null) {
+        final noUpsInt = noUps is int ? noUps : (int.tryParse(noUps.toString()) ?? 1);
+        final adjustedQty = widget.availableQuantity! * noUpsInt;
+        return 'Available from previous step: ${widget.availableQuantity} (sheets) × No. of Ups: $noUpsInt = $adjustedQty (boxes)';
+      }
+    }
+    return 'Available from previous step: ${widget.availableQuantity}';
+  }
+
+  // Get previous step display name for helper text
+  String _getPreviousStepDisplayName(StepType? stepType) {
+    if (stepType == null) return 'PaperStore';
+    switch (stepType) {
+      case StepType.printing:
+      case StepType.corrugation:
+        return 'PaperStore';
+      case StepType.fluteLamination:
+        return 'Printing';
+      case StepType.punching:
+        return 'Flute Lamination';
+      case StepType.flapPasting:
+        return 'Punching';
+      case StepType.qc:
+        return 'Flap Pasting';
+      case StepType.dispatch:
+        return 'Quality Control';
+      default:
+        return 'previous step';
+    }
+  }
+
+  // Helper method to build dispatch progress row
+  Widget _buildDispatchProgressRow(String label, int value, Color color) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: Colors.grey[700],
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withOpacity(0.4)),
+          ),
+          child: Text(
+            value.toString(),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Color.fromRGBO(
+                (color.red * 0.6).round(),
+                (color.green * 0.6).round(),
+                (color.blue * 0.6).round(),
+                1.0,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  void dispose() {
+    _okQuantityController.dispose();
+    _passQuantityController.dispose();
+    _rejectQuantityController.dispose();
+    _rejectReasonController.dispose();
+    _completeRemarkController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.white,
+      title: const Text('Complete Work'),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Please enter the completion details:',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // Partial Dispatch Tracking (for Dispatch step)
+              if (widget.stepType == StepType.dispatch && widget.totalDispatchedQty != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.withOpacity(0.3), width: 2),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.local_shipping, color: Colors.orange[700], size: 24),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Partial Dispatch Tracking',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orange[900],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      if (widget.jobTotalQuantity != null) ...[
+                        _buildDispatchProgressRow('Total Order Quantity', widget.jobTotalQuantity!, Colors.blue),
+                        const SizedBox(height: 8),
+                        _buildDispatchProgressRow('Already Dispatched', widget.totalDispatchedQty!, Colors.green),
+                        const SizedBox(height: 8),
+                        _buildDispatchProgressRow('Remaining', widget.jobTotalQuantity! - widget.totalDispatchedQty!, Colors.orange),
+                        const SizedBox(height: 12),
+                        LinearProgressIndicator(
+                          value: widget.totalDispatchedQty! / widget.jobTotalQuantity!,
+                          backgroundColor: Colors.grey[300],
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.green[600]!),
+                          minHeight: 8,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${((widget.totalDispatchedQty! / widget.jobTotalQuantity!) * 100).toStringAsFixed(1)}% Completed',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.green[700],
+                          ),
+                        ),
+                      ] else ...[
+                        _buildDispatchProgressRow('Already Dispatched', widget.totalDispatchedQty!, Colors.green),
+                      ],
+                    ],
+                  ),
+                ),
+            ],
+            const SizedBox(height: 16),
+            
+            // PO Quantity Display (for PaperStore only)
+            if (widget.stepType == StepType.paperStore) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.shopping_cart, color: Colors.blue[700], size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        widget.jobTotalQuantity != null 
+                            ? 'PO Quantity: ${widget.jobTotalQuantity}' 
+                            : 'PO Quantity: Loading...',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.blue[700],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            
+            // Available Quantity Display (for reference) - Not shown for Dispatch and PaperStore as they have their own tracking UI
+            if (widget.availableQuantity != null && widget.stepType != StepType.dispatch && widget.stepType != StepType.paperStore) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info, color: Colors.blue[700], size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _availableQuantityDisplayText,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.blue[700],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            
+            // QC-specific fields (Pass/Reject Quantity and Reason)
+            if (widget.stepType == StepType.qc) ...[
+              TextFormField(
+                controller: _passQuantityController,
+                decoration: InputDecoration(
+                  labelText: 'Pass Quantity *',
+                  hintText: widget.availableQuantity != null 
+                      ? 'Enter pass quantity (0-${widget.availableQuantity})'
+                      : 'Enter pass quantity',
+                  border: const OutlineInputBorder(),
+                  helperText: widget.availableQuantity != null 
+                      ? 'Must be between 0 and ${widget.availableQuantity} (Available from ${_getPreviousStepDisplayName(widget.stepType)})'
+                      : 'Enter quantity that passed quality check',
+                ),
+                keyboardType: TextInputType.number,
+                autofocus: true,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter pass quantity';
+                  }
+                  
+                  final quantity = int.tryParse(value);
+                  if (quantity == null) {
+                    return 'Please enter a valid number';
+                  }
+                  
+                  if (quantity < 0) {
+                    return 'Pass quantity cannot be negative';
+                  }
+                  
+                  if (widget.availableQuantity != null && quantity > widget.availableQuantity!) {
+                    return 'Pass quantity cannot exceed available quantity (${widget.availableQuantity})';
+                  }
+                  
+                  // Check if Pass + Reject doesn't exceed available
+                  if (_rejectQuantityController.text.isNotEmpty) {
+                    final rejectQty = int.tryParse(_rejectQuantityController.text);
+                    if (rejectQty != null && quantity + rejectQty > widget.availableQuantity!) {
+                      return 'Pass + Reject quantity cannot exceed available quantity (${widget.availableQuantity})';
+                    }
+                  }
+                  
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              
+              TextFormField(
+                controller: _rejectQuantityController,
+                decoration: InputDecoration(
+                  labelText: 'Reject Quantity *',
+                  hintText: widget.availableQuantity != null 
+                      ? 'Enter reject quantity (0-${widget.availableQuantity})'
+                      : 'Enter reject quantity',
+                  border: const OutlineInputBorder(),
+                  helperText: 'Enter quantity that failed quality check',
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter reject quantity';
+                  }
+                  
+                  final quantity = int.tryParse(value);
+                  if (quantity == null) {
+                    return 'Please enter a valid number';
+                  }
+                  
+                  if (quantity < 0) {
+                    return 'Reject quantity cannot be negative';
+                  }
+                  
+                  if (widget.availableQuantity != null && quantity > widget.availableQuantity!) {
+                    return 'Reject quantity cannot exceed available quantity (${widget.availableQuantity})';
+                  }
+                  
+                  // Check if Pass + Reject doesn't exceed available
+                  if (_passQuantityController.text.isNotEmpty) {
+                    final passQty = int.tryParse(_passQuantityController.text);
+                    if (passQty != null && passQty + quantity > widget.availableQuantity!) {
+                      return 'Pass + Reject quantity cannot exceed available quantity (${widget.availableQuantity})';
+                    }
+                  }
+                  
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              
+              TextFormField(
+                controller: _rejectReasonController,
+                decoration: InputDecoration(
+                  labelText: 'Reason for Rejection *',
+                  hintText: 'Enter reason for rejection',
+                  border: const OutlineInputBorder(),
+                  helperText: 'Required if reject quantity > 0',
+                ),
+                maxLines: 2,
+                validator: (value) {
+                  if (value != null && value.isNotEmpty) {
+                    // If reason is provided, check if reject quantity > 0
+                    final rejectQty = int.tryParse(_rejectQuantityController.text);
+                    if (rejectQty == null || rejectQty == 0) {
+                      return 'No reject quantity to provide reason for';
+                    }
+                  } else {
+                    // If no reason, check if reject quantity > 0
+                    final rejectQty = int.tryParse(_rejectQuantityController.text);
+                    if (rejectQty != null && rejectQty > 0) {
+                      return 'Reason is required when reject quantity > 0';
+                    }
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+            ] else ...[
+              // Quantity Field (Available Quantity for PaperStore, OK Quantity for others, No of Boxes for Dispatch)
+              TextFormField(
+                controller: _okQuantityController,
+                decoration: InputDecoration(
+                  labelText: widget.stepType == StepType.paperStore 
+                      ? 'Issued Quantity *' 
+                      : widget.stepType == StepType.dispatch 
+                          ? 'No of Boxes to Dispatch *' 
+                          : widget.stepType == StepType.corrugation
+                              ? 'Sheets Count *'
+                              : 'OK Quantity *',
+                  hintText: widget.stepType == StepType.dispatch 
+                      ? (widget.jobTotalQuantity != null && widget.totalDispatchedQty != null
+                          ? 'Enter quantity to dispatch (remaining: ${widget.jobTotalQuantity! - widget.totalDispatchedQty!})'
+                          : 'Enter quantity to dispatch')
+                      : (widget.availableQuantity != null 
+                          ? widget.stepType == StepType.paperStore
+                              ? 'Enter issued quantity (0-${widget.availableQuantity})'
+                              : widget.stepType == StepType.corrugation
+                                  ? 'Enter sheets count (0-${widget.availableQuantity})'
+                                  : widget.stepType == StepType.flapPasting
+                                      ? 'Enter OK quantity (0-${_adjustedAvailableQuantity})'
+                                      : 'Enter OK quantity (0-${widget.availableQuantity})'
+                          : widget.stepType == StepType.paperStore
+                              ? 'Enter issued quantity'
+                              : widget.stepType == StepType.corrugation
+                                  ? 'Enter sheets count'
+                                  : 'Enter OK quantity (available from ${_getPreviousStepDisplayName(widget.stepType)})'),
+                  border: const OutlineInputBorder(),
+                  helperText: widget.stepType == StepType.dispatch 
+                      ? (widget.jobTotalQuantity != null && widget.totalDispatchedQty != null
+                          ? 'Enter quantity to dispatch (remaining: ${widget.jobTotalQuantity! - widget.totalDispatchedQty!})'
+                          : 'Enter quantity to dispatch')
+                      : (widget.availableQuantity != null 
+                          ? widget.stepType == StepType.flapPasting
+                              ? 'Must be between 0 and ${_adjustedAvailableQuantity} (Available from ${_getPreviousStepDisplayName(widget.stepType)})'
+                              : 'Must be between 0 and ${widget.availableQuantity} (Available from ${_getPreviousStepDisplayName(widget.stepType)})'
+                          : widget.stepType == StepType.paperStore
+                              ? 'Enter the issued quantity'
+                              : widget.stepType == StepType.corrugation
+                                  ? 'Enter sheets count'
+                                  : 'Enter OK quantity (0 to ${_getPreviousStepDisplayName(widget.stepType)} available quantity)'),
+                ),
+                keyboardType: TextInputType.number,
+                autofocus: true,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return widget.stepType == StepType.dispatch 
+                        ? 'Please enter quantity to dispatch'
+                        : widget.stepType == StepType.paperStore 
+                            ? 'Please enter issued quantity'
+                            : widget.stepType == StepType.corrugation
+                                ? 'Please enter sheets count'
+                                : 'Please enter OK quantity';
+                  }
+                  
+                  final quantity = int.tryParse(value);
+                  if (quantity == null) {
+                    return 'Please enter a valid number';
+                  }
+                  
+                  if (quantity < 0) {
+                    return 'Quantity cannot be negative';
+                  }
+                  
+                  // For Flap Pasting, validate against (Punching OK Quantity * No. of Ups)
+                  if (widget.stepType == StepType.flapPasting && widget.availableQuantity != null && widget.jobData != null) {
+                    final noUps = widget.jobData!['noUps'];
+                    if (noUps != null) {
+                      final noUpsInt = noUps is int ? noUps : (int.tryParse(noUps.toString()) ?? 1);
+                      final maxAllowed = widget.availableQuantity! * noUpsInt;
+                      if (quantity > maxAllowed) {
+                        return 'OK quantity cannot exceed ${maxAllowed} (Punching OK: ${widget.availableQuantity} × No. of Ups: $noUpsInt)';
+                      }
+                    }
+                  }
+                  // For Dispatch, validate against remaining quantity
+                  else if (widget.stepType == StepType.dispatch && widget.jobTotalQuantity != null && widget.totalDispatchedQty != null) {
+                    final remaining = widget.jobTotalQuantity! - widget.totalDispatchedQty!;
+                    if (quantity > remaining) {
+                      return 'Cannot dispatch more than remaining quantity ($remaining)';
+                    }
+                  } else if (widget.availableQuantity != null) {
+                    // For Flap Pasting, use adjusted quantity; for others, use raw availableQuantity
+                    final maxAllowed = widget.stepType == StepType.flapPasting 
+                        ? _adjustedAvailableQuantity 
+                        : widget.availableQuantity;
+                    
+                    if (maxAllowed != null && quantity > maxAllowed) {
+                      final fieldName = widget.stepType == StepType.paperStore 
+                          ? 'issued quantity' 
+                          : widget.stepType == StepType.corrugation 
+                              ? 'sheets count' 
+                              : 'OK quantity';
+                      return '$fieldName cannot exceed available quantity ($maxAllowed)';
+                    }
+                  }
+                  
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+            
+            // Complete Remark Field
+            TextFormField(
+              controller: _completeRemarkController,
+              decoration: InputDecoration(
+                labelText: 'Complete Remark',
+                hintText: 'Enter completion remarks (optional)',
+                border: const OutlineInputBorder(),
+                helperText: 'Optional remarks about the completion',
+              ),
+              maxLines: 3,
+            ),
+            const SizedBox(height: 16),
+            
+          ],
+        ),
+      ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isLoading ? null : () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _handleComplete,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            foregroundColor: Colors.white,
+          ),
+          child: _isLoading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              : const Text('Complete'),
+        ),
+      ],
+    );
+  }
+
+  void _handleComplete() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final formData = <String, String>{};
+      
+      // Add quantity field - use "Available Quantity" for PaperStore, "OK Quantity" for others, "No of Boxes" for Dispatch
+      if (widget.stepType == StepType.paperStore) {
+        formData['Available Quantity'] = _okQuantityController.text;
+      } else if (widget.stepType == StepType.dispatch) {
+        formData['No of Boxes'] = _okQuantityController.text;
+        formData['quantity'] = _okQuantityController.text; // Also add quantity field for backend
+      } else if (widget.stepType == StepType.qc) {
+        // QC-specific fields
+        formData['Pass Quantity'] = _passQuantityController.text;
+        formData['Reject Quantity'] = _rejectQuantityController.text;
+        formData['Reason for Rejection'] = _rejectReasonController.text;
+        // Also add for backwards compatibility
+        formData['passQuantity'] = _passQuantityController.text;
+        formData['rejectQuantity'] = _rejectQuantityController.text;
+        formData['rejectedQty'] = _rejectQuantityController.text;
+        formData['reasonForRejection'] = _rejectReasonController.text;
+      } else {
+        formData['OK Quantity'] = _okQuantityController.text;
+      }
+      
+      formData['Complete Remark'] = _completeRemarkController.text;
+
+      // Calculate wastage if available quantity is present (not for Dispatch and not for QC)
+      if (widget.availableQuantity != null && widget.stepType != StepType.dispatch && widget.stepType != StepType.qc) {
+        final quantity = int.tryParse(_okQuantityController.text);
+        if (quantity != null) {
+          final wastage = widget.availableQuantity! - quantity;
+          formData['Wastage'] = wastage.toString();
+        }
+      }
+
+      Navigator.pop(context, formData);
+    } catch (e) {
+      setState(() => _isLoading = false);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 }

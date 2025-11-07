@@ -7,20 +7,20 @@ class StepStatusHelper {
   static String getStepStatusText(StepData step, String? jobNumber) {
     switch (step.status) {
       case StepStatus.pending:
-        if (step.type == StepType.jobAssigned) {
-          return 'Job Number: ${jobNumber ?? ''}';
-        }
         return 'Ready to start - Click to begin work';
       case StepStatus.started:
         return 'Work started - Click to add/edit details';
       case StepStatus.inProgress:
         return 'In progress - Details saved - Click to edit or complete';
-      case StepStatus.completed:
-        if (step.type == StepType.jobAssigned) {
-          return 'Job Number: ${jobNumber ?? ''}';
-        }
-        return 'Work completed ✓';
       case StepStatus.paused:
+        // Check if step has formData - if so, it's completed, not just paused
+        if (step.formData.isNotEmpty) {
+          if (step.type == StepType.paperStore) {
+            return 'Work completed - Accepted';
+          } else {
+            return 'Work completed - Click to view details';
+          }
+        }
         return 'Work paused - Click to resume or edit';
       case StepStatus.hold:
         // Enhanced text for hold status with better UX
@@ -32,10 +32,12 @@ class StepStatusHelper {
           return 'Dispatch paused - Click to resume work';
         }
         return 'Work paused - Click to resume or edit';
+      case StepStatus.major_hold:
+        return 'MAJOR HOLD: Work is on major hold - Only admin/planner can resume';
     }
   }
 
-  static Color getStepColor(StepStatus status) {
+  static Color getStepColor(StepStatus status, [StepData? step]) {
     switch (status) {
       case StepStatus.pending:
         return Colors.grey[200]!;
@@ -43,16 +45,20 @@ class StepStatusHelper {
         return Colors.orange[200]!;
       case StepStatus.inProgress:
         return AppColors.maincolor.withOpacity(0.2);
-      case StepStatus.completed:
-        return Colors.green[200]!;
       case StepStatus.paused:
+        // Show green for completed work (with formData), blue for paused
+        if (step != null && step.formData.isNotEmpty) {
+          return Colors.green[200]!;
+        }
         return Colors.blue[200]!;
       case StepStatus.hold:
         return Colors.orange[300]!;
+      case StepStatus.major_hold:
+        return Colors.deepOrange[300]!;
     }
   }
 
-  static Widget getStepIcon(StepStatus status, int stepNumber) {
+  static Widget getStepIcon(StepStatus status, int stepNumber, [StepData? step]) {
     switch (status) {
       case StepStatus.pending:
         return Text(
@@ -75,13 +81,15 @@ class StepStatusHelper {
           color: AppColors.maincolor,
           size: 24,
         );
-      case StepStatus.completed:
-        return const Icon(
-          Icons.check_circle,
-          color: Colors.green,
-          size: 24,
-        );
       case StepStatus.paused:
+        // Show check icon for completed work (with formData), pause icon for paused
+        if (step != null && step.formData.isNotEmpty) {
+          return Icon(
+            Icons.check_circle,
+            color: Colors.green,
+            size: 24,
+          );
+        }
         return Icon(
           Icons.pause_circle_filled,
           color: Colors.blue,
@@ -93,10 +101,16 @@ class StepStatusHelper {
           color: Colors.orange[700],
           size: 24,
         );
+      case StepStatus.major_hold:
+        return Icon(
+          Icons.error_outline,
+          color: Colors.deepOrange[700],
+          size: 24,
+        );
     }
   }
 
-  static Color getStatusTextColor(StepStatus status) {
+  static Color getStatusTextColor(StepStatus status, [StepData? step]) {
     switch (status) {
       case StepStatus.pending:
         return Colors.grey[600]!;
@@ -104,12 +118,16 @@ class StepStatusHelper {
         return Colors.orange[700]!;
       case StepStatus.inProgress:
         return AppColors.maincolor;
-      case StepStatus.completed:
-        return Colors.green[700]!;
       case StepStatus.paused:
+        // Show green for completed work (with formData), blue for paused
+        if (step != null && step.formData.isNotEmpty) {
+          return Colors.green;
+        }
         return Colors.blue;
       case StepStatus.hold:
         return Colors.orange[700]!;
+      case StepStatus.major_hold:
+        return Colors.deepOrange[700]!;
     }
   }
 
@@ -120,10 +138,6 @@ class StepStatusHelper {
       return Icons.edit;
     } else if (step.status == StepStatus.hold) {
       return Icons.play_circle_outline;
-    } else if (step.status == StepStatus.completed) {
-      return Icons.visibility;
-    } else if (step.type == StepType.jobAssigned) {
-      return Icons.info_outline;
     }
     return Icons.arrow_forward_ios;
   }
@@ -135,8 +149,6 @@ class StepStatusHelper {
       return AppColors.maincolor;
     } else if (step.status == StepStatus.hold) {
       return Colors.orange[700]!;
-    } else if (step.status == StepStatus.completed && step.formData.isNotEmpty) {
-      return Colors.grey[600]!;
     }
     return AppColors.maincolor;
   }

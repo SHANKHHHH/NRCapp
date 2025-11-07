@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nrc/constants/colors.dart';
 import 'package:nrc/core/services/dio_service.dart';
+import 'package:dio/dio.dart';
 import 'package:nrc/presentation/pages/job/work_action_form.dart';
 import 'package:nrc/presentation/pages/job/work_form.dart';
 import 'package:nrc/presentation/pages/process/DialogManager.dart';
@@ -102,6 +103,12 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     });
 
     _initializeSteps();
+    
+    // If no steps were initialized, try to fetch them from API
+    if (steps.isEmpty) {
+      await _fetchStepsIfNeeded();
+    }
+    
     await _initializeStepsWithBackendSync();
     
     // 🚀 REVOLUTIONARY: Update PaperStore, Quality, Dispatch statuses from backend
@@ -252,7 +259,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   /// Start work directly for non-machine steps
   void _startWorkDirectly(StepData step) {
     print('DEBUG: Starting work directly for ${step.title}');
-    _showNonMachineWorkDialog(step);
+    _showWorkForm(step); // Show WorkActionForm instead of custom dialog
   }
 
   /// 🎨 STUNNING: Show work form for non-machine steps (PaperStore, Quality, Dispatch)
@@ -264,6 +271,9 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       final stepNo = StepDataManager.getStepNumber(step.type);
       final stepDetails = await _apiService.getStepDetailsWithEditability(widget.jobNumber!, step.type);
       
+      // Also fetch JobStep to check the actual step status
+      final jobStepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
+      
       String currentStatus = 'pending';
       Map<String, dynamic>? stepData;
       
@@ -271,7 +281,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         stepData = stepDetails[0].data;
         currentStatus = stepData['status'] ?? 'pending';
       }
-      
       print('🎨 Current status for ${step.title}: $currentStatus');
       
       // Show the stunning dialog
@@ -621,22 +630,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
             color: Colors.orange,
             onPressed: () async {
               await _holdNonMachineStep(step, dialogContext, setDialogState);
-            },
-          ),
-        
-        SizedBox(height: 12),
-        
-        // Complete Button
-        if (currentStatus == 'in_progress')
-          _buildStunningButton(
-            context: context,
-            label: 'Complete Work',
-            icon: Icons.check_circle,
-            color: AppColors.maincolor,
-            onPressed: () async {
-              Navigator.pop(dialogContext);
-              // Navigate to work form for completion
-              await _openWorkActionForm(step);
             },
           ),
         
@@ -1038,7 +1031,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
               case 'completed':
               case 'complete':
               case 'accept':  // ✅ Paper Store uses "accept" for completed status
-                realStatus = StepStatus.completed;
+                realStatus = StepStatus.paused; // Backend uses 'stop' status, not 'completed'
                 break;
               default:
                 realStatus = StepStatus.pending;
@@ -1046,10 +1039,18 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
             
             print('🚀 REAL STATUS for ${step.title}: $realStatus');
             
-            // Update the step status
+            // Update the step status and populate formData if completed
             if (mounted) {
               setState(() {
                 step.status = realStatus;
+                // If status is accept/stop/completed, populate formData to indicate completion
+                if (realStatus == StepStatus.paused && (statusString == 'accept' || statusString == 'stop' || statusString == 'completed' || statusString == 'complete')) {
+                  // Populate formData from backend data to indicate step is completed
+                  if (step.formData.isEmpty && stepData.isNotEmpty) {
+                    step.formData = Map<String, dynamic>.from(stepData);
+                    print('✅ Populated formData for completed step ${step.title}');
+                  }
+                }
               });
             }
           } else {
@@ -1067,9 +1068,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   void _initializeSteps() {
     setState(() {
       steps = StepDataManager.initializeSteps(widget.assignedSteps, userRole: _primaryRole, userRoles: _userRoles);
-      if (steps.length > 1) {
-        currentActiveSteps = [1]; // Initialize with first step
-      }
+      // Don't hardcode active steps - let _determineCurrentActiveSteps() handle it properly
+      currentActiveSteps = [];
     });
     print('Initialized ${steps.length} steps for user roles: $_userRoles');
 
@@ -1080,6 +1080,34 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
     // Compute and report missing standard steps for visibility
     _computeMissingSteps();
+    
+    // Determine which steps should be active based on current status
+    _determineCurrentActiveSteps();
+  }
+
+  /// Fallback method to fetch steps if not provided
+  Future<void> _fetchStepsIfNeeded() async {
+    if (widget.assignedSteps == null || widget.assignedSteps!.isEmpty) {
+      print('No assigned steps provided, fetching from API...');
+      try {
+        final jobPlanningData = await _apiService.getJobPlanningStepsByNrcJobNo(widget.jobNumber!);
+        if (jobPlanningData != null && jobPlanningData['steps'] != null) {
+          final fetchedSteps = jobPlanningData['steps'] as List;
+          print('Fetched ${fetchedSteps.length} steps from API');
+          
+          setState(() {
+            steps = StepDataManager.initializeSteps(fetchedSteps, userRole: _primaryRole, userRoles: _userRoles);
+            currentActiveSteps = [];
+          });
+          
+          print('Re-initialized ${steps.length} steps after API fetch');
+          _computeMissingSteps();
+          _determineCurrentActiveSteps();
+        }
+      } catch (e) {
+        print('Error fetching steps from API: $e');
+      }
+    }
   }
 
   void _computeMissingSteps() {
@@ -1126,7 +1154,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     }
     
     // Check if user has no steps available for their role
-    if (steps.length <= 1) { // Only "Job Assigned" step
+    if (steps.isEmpty) {
       print('No steps available for user roles: $_userRoles');
     }
   }
@@ -1138,7 +1166,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     print('Starting optimized backend sync for ${steps.length} steps...');
 
     // Check if user has any steps available for their roles
-    if (steps.isEmpty || steps.length <= 1) {
+    if (steps.isEmpty) {
       print('No steps available for user roles: $_userRoles');
       return;
     }
@@ -1381,9 +1409,9 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       final step = steps[i];
       final stepNo = StepDataManager.getStepNumber(step.type);
       
-      // Skip if step has form data (already completed)
-      if (step.formData.isNotEmpty && step.status == StepStatus.completed) {
-        print('Step ${step.title} has form data, preserving completed status');
+      // Skip if step has form data (already stopped/completed)
+      if (step.formData.isNotEmpty && step.status == StepStatus.paused) {
+        print('Step ${step.title} has form data, preserving stopped status');
         continue;
       }
 
@@ -1446,8 +1474,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         step.internalStatus = 'hold'; // Internal status for button logic
         print('Step ${step.title} internal status set to hold');
       } else if (individualStatus == 'accept') {
-        step.status = StepStatus.completed;
-        print('Step ${step.title} marked as COMPLETED (individual status)');
+        step.status = StepStatus.paused; // Backend uses 'stop' status, not 'completed'
+        print('Step ${step.title} marked as STOPPED (individual status)');
       }
     });
   }
@@ -1539,10 +1567,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     }
 
     setState(() {
-      // 1. Work Complete: If planning/status is 'stop', mark as completed
+      // 1. Work Complete: If planning/status is 'stop', mark as paused/stopped
       if (planningStatus == 'stop') {
-        step.status = StepStatus.completed;
-        print('Step ${step.title} marked as WORK COMPLETE (stop detected)');
+        step.status = StepStatus.paused; // Backend uses 'stop' status, not 'completed'
+        print('Step ${step.title} marked as WORK STOPPED (stop detected)');
       }
       // 2. Work Started: If planning/status is 'start'
       else if (planningStatus == 'start') {
@@ -1589,8 +1617,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         print('Step ${step.title} marked as PENDING (planned)');
         
         // For new jobs where all steps are planned, allow multiple steps to be active
-        // Check if this is a new job (no steps are started or completed)
-        bool isNewJob = !steps.any((s) => s.status == StepStatus.started || s.status == StepStatus.completed);
+        // Check if this is a new job (no steps are started or stopped)
+        bool isNewJob = !steps.any((s) => s.status == StepStatus.started || s.status == StepStatus.paused);
         
         if (isNewJob) {
           // For new jobs, activate all steps that the user has access to
@@ -1599,30 +1627,27 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           }
           print('Forcing step ${step.title} to be active (new job - all steps planned)');
         } else {
-          // For existing jobs, check if all previous steps are completed
-          bool allPreviousCompleted = true;
-          for (int j = 1; j < stepIndex; j++) {
-            if (steps[j].status != StepStatus.completed) {
-              allPreviousCompleted = false;
-              break;
-            }
-          }
-          if (allPreviousCompleted) {
+          // For existing jobs, use the same logic as _determineCurrentActiveSteps
+          // This ensures consistency with our special case logic for FluteLamination, etc.
+          final shouldActivate = StepProgressManager.shouldActivateStep(steps, stepIndex);
+          if (shouldActivate) {
             if (!currentActiveSteps.contains(stepIndex)) {
               currentActiveSteps.add(stepIndex);
             }
-            print('Forcing step ${step.title} to be active due to planned status');
+            print('Forcing step ${step.title} to be active due to planned status (using StepProgressManager logic)');
+          } else {
+            print('Step ${step.title} should not be active according to StepProgressManager logic');
           }
         }
       }
-      // 4. Fallback: Pending (but preserve completed status if step has form data)
+      // 4. Fallback: Pending (but preserve stopped status if step has form data)
       else {
         if (step.formData.isEmpty) {
           step.status = StepStatus.pending;
           print('Step ${step.title} marked as PENDING (fallback)');
         } else {
-          step.status = StepStatus.completed;
-          print('Step ${step.title} preserved as COMPLETED (has form data)');
+          step.status = StepStatus.paused; // Backend uses 'stop' status, not 'completed'
+          print('Step ${step.title} preserved as STOPPED (has form data)');
         }
       }
     });
@@ -1681,95 +1706,38 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
   void _determineCurrentActiveSteps() {
     setState(() {
-      // Check if user has any steps available for their roles
-      if (steps.isEmpty || steps.length <= 1) {
-        print('No steps available for user roles: $_userRoles');
+      print('🔄 CLEAN ACTIVE: Determining active steps for ${steps.length} steps');
+      
+      if (steps.isEmpty) {
+        print('🔄 CLEAN ACTIVE: No steps available');
+        currentActiveSteps = [];
         return;
       }
 
       List<int> activeSteps = [];
 
-      // Debug logging for Flute Lamination
-      if (_startedStepIndex != null && _startedStepType == StepType.fluteLamination) {
-        print('🔍 DETERMINE ACTIVE STEPS: Flute Lamination started at index $_startedStepIndex');
-      }
-
-      // If we have a started step, keep it active and, for printing/corrugation,
-      // also activate its parallel pair so both can run independently
-      if (_startedStepIndex != null) {
-        activeSteps = [_startedStepIndex!];
-        print('🔍 DETERMINE ACTIVE STEPS: Found started step at index $_startedStepIndex (${_startedStepType})');
-
-        if (_startedStepType == StepType.printing || _startedStepType == StepType.corrugation) {
-          final parallelTypes = StepProgressManager.getParallelSteps(_startedStepType!);
-          for (final parallelType in parallelTypes) {
-            final parallelIndex = steps.indexWhere((s) => s.type == parallelType);
-            if (parallelIndex != -1 && StepProgressManager.shouldActivateStep(steps, parallelIndex)) {
-              activeSteps.add(parallelIndex);
-            }
-          }
-        }
-
-        // For other step types (like Flute Lamination), also check if previous steps should remain active
-        if (_startedStepType != StepType.printing && _startedStepType != StepType.corrugation) {
-          // Keep previous completed steps active for user interaction
-          for (int i = 1; i < _startedStepIndex!; i++) {
-            if (steps[i].status == StepStatus.completed) {
-              activeSteps.add(i);
-              print('Keeping completed step active at index $i (${steps[i].title})');
-            }
-          }
-        }
-
-        currentActiveSteps = activeSteps;
-        print('Active steps with started step: $currentActiveSteps');
-        return;
-      }
-
-      // Find all steps that should be active
-      print('🔍 DETERMINE ACTIVE STEPS: No started step, checking all steps for activation');
-      for (int i = 1; i < steps.length; i++) {
+      // Simple logic: make all available steps active
+      for (int i = 0; i < steps.length; i++) {
         final step = steps[i];
-        print('  Step $i: ${step.title} - Status: ${step.status}');
-
-        // Check if step is started or in progress
-        if (step.status == StepStatus.started || step.status == StepStatus.inProgress) {
-          activeSteps.add(i);
-          print('Found active step at index: $i (${step.title}) - status: ${step.status}');
-        }
-        // Check if step is pending and should be activated
-        else if (step.status == StepStatus.pending) {
-          final shouldActivate = StepProgressManager.shouldActivateStep(steps, i);
-          print('  Step $i (${step.title}) pending - shouldActivate: $shouldActivate');
-          if (shouldActivate) {
-            activeSteps.add(i);
-            print('Found pending step that should be active at index: $i (${step.title})');
-          }
-        }
-      }
-
-      // If no active steps found, find the first step that should be activated
-      if (activeSteps.isEmpty) {
-        for (int i = 1; i < steps.length; i++) {
-          if (StepProgressManager.shouldActivateStep(steps, i)) {
-            activeSteps.add(i);
-            print('Found first available step at index: $i (${steps[i].title})');
-            break;
-          }
-        }
+        print('🔄 CLEAN ACTIVE: Step $i: ${step.title} - Status: ${step.status}');
+        
+        // All steps should be active for their respective roles
+        activeSteps.add(i);
+        print('🔄 CLEAN ACTIVE: Added step $i to active steps');
       }
 
       currentActiveSteps = activeSteps;
-      print('Current active steps: $currentActiveSteps');
+      print('🔄 CLEAN ACTIVE: Final active steps: $currentActiveSteps');
     });
   }
+
 
   /// Legacy method for fallback - kept for backward compatibility
   Future<void> _syncStepWithBackend(StepData step, int stepIndex) async {
     try {
-      // If step has form data, it was completed, so preserve completed status
-      if (step.formData.isNotEmpty && step.status == StepStatus.completed) {
-        print('Step ${step.title} has form data, preserving completed status');
+      // If step has form data, it was stopped, so preserve stopped status
+      if (step.formData.isNotEmpty && step.status == StepStatus.paused) {
+        print('Step ${step.title} has form data, preserving stopped status');
         return;
       }
 
@@ -1798,12 +1766,12 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         planningStatus = null;
       }
 
-      // 1. Work Complete: If either status is 'stop', mark as completed and move to next step
+      // 1. Work Complete: If either status is 'stop', mark as paused/stopped and move to next step
       if (stepStatus == 'stop' || planningStatus == 'stop') {
         setState(() {
-          step.status = StepStatus.completed;
+          step.status = StepStatus.paused; // Backend uses 'stop' status, not 'completed'
         });
-        print('Step ${step.title} marked as WORK COMPLETE (stop detected)');
+        print('Step ${step.title} marked as WORK STOPPED (stop detected)');
         // Check if all parallel steps are completed before moving to next step
         bool shouldMoveToNext = true;
         if (StepProgressManager.canRunInParallel(step.type)) {
@@ -1849,8 +1817,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         print('Step ${step.title} marked as PENDING (planned)');
         
         // For new jobs where all steps are planned, allow multiple steps to be active
-        // Check if this is a new job (no steps are started or completed)
-        bool isNewJob = !steps.any((s) => s.status == StepStatus.started || s.status == StepStatus.completed);
+        // Check if this is a new job (no steps are started or stopped)
+        bool isNewJob = !steps.any((s) => s.status == StepStatus.started || s.status == StepStatus.paused);
         
         if (isNewJob) {
           // For new jobs, activate all steps that the user has access to
@@ -1861,21 +1829,18 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           });
           print('Forcing step ${step.title} to be active (new job - all steps planned)');
         } else {
-          // For existing jobs, check if all previous steps are completed
-          bool allPreviousCompleted = true;
-          for (int j = 1; j < stepIndex; j++) {
-            if (steps[j].status != StepStatus.completed) {
-              allPreviousCompleted = false;
-              break;
-            }
-          }
-          if (allPreviousCompleted) {
+          // For existing jobs, use the same logic as _determineCurrentActiveSteps
+          // This ensures consistency with our special case logic for FluteLamination, etc.
+          final shouldActivate = StepProgressManager.shouldActivateStep(steps, stepIndex);
+          if (shouldActivate) {
             setState(() {
               if (!currentActiveSteps.contains(stepIndex)) {
                 currentActiveSteps.add(stepIndex);
               }
             });
-            print('Forcing step ${step.title} to be active due to planned status');
+            print('Forcing step ${step.title} to be active due to planned status (using StepProgressManager logic)');
+          } else {
+            print('Step ${step.title} should not be active according to StepProgressManager logic');
           }
         }
         return;
@@ -1888,9 +1853,9 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           step.status = StepStatus.pending;
           print('Step ${step.title} marked as PENDING (fallback)');
         } else {
-          // If step has form data, it was completed, so keep it completed
-          step.status = StepStatus.completed;
-          print('Step ${step.title} preserved as COMPLETED (has form data)');
+          // If step has form data, it was stopped, so keep it stopped
+          step.status = StepStatus.paused; // Backend uses 'stop' status, not 'completed'
+          print('Step ${step.title} preserved as STOPPED (has form data)');
         }
       });
 
@@ -1928,7 +1893,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                 currentActiveSteps.add(paperStoreStepIndex);
               }
             } else if (status == 'accept') {
-              steps[paperStoreStepIndex].status = StepStatus.completed;
+              steps[paperStoreStepIndex].status = StepStatus.paused; // Backend uses 'stop' status, not 'completed'
             }
           });
         }
@@ -2040,10 +2005,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   void _handleStepTap(StepData step) {
     print('DEBUG: Step tapped: ${step.title}, Type: ${step.type}, Status: ${step.status}');
 
-    if (step.type == StepType.jobAssigned) {
-      _showCompleteJobDetails();
-      return;
-    }
 
     final isActive = _isStepActive(step);
     print('DEBUG: Step ${step.title} - isActive: $isActive, status: ${step.status}');
@@ -2074,8 +2035,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         print('DEBUG: Step ${step.title} is on hold, showing work form to resume');
         _showWorkForm(step);
       }
-    } else if (step.status == StepStatus.completed) {
-      print('DEBUG: Showing completed step details for ${step.title}');
+    } else if (step.status == StepStatus.paused) {
+      print('DEBUG: Showing stopped step details for ${step.title}');
       _showCompletedStepDetails(step);
     } else {
       print('DEBUG: Step ${step.title} is not available. Status: ${step.status}, Active: $isActive');
@@ -2577,10 +2538,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   void _handleStepTapWithMachine(StepData step, String machineId) {
     print('DEBUG: Step tapped with machine: ${step.title}, Machine: $machineId, Type: ${step.type}, Status: ${step.status}');
 
-    if (step.type == StepType.jobAssigned) {
-      _showCompleteJobDetails();
-      return;
-    }
 
     final isActive = _isStepActive(step);
     print('DEBUG: Step ${step.title} with machine $machineId - isActive: $isActive, status: ${step.status}');
@@ -2592,8 +2549,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       print('DEBUG: Step ${step.title} is already started - showing work form with machine $machineId');
       // For already started steps, show work form directly with machine info
       _showWorkFormWithMachine(step, machineId);
-    } else if (step.status == StepStatus.completed) {
-      print('DEBUG: Showing completed step details for ${step.title} with machine $machineId');
+    } else if (step.status == StepStatus.paused) {
+      print('DEBUG: Showing stopped step details for ${step.title} with machine $machineId');
       _showCompletedStepDetails(step);
     } else {
       print('DEBUG: Step ${step.title} with machine $machineId is not available. Status: ${step.status}, Active: $isActive');
@@ -2909,6 +2866,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     // Get PO details
     String poQuantity = 'N/A';
     String customerName = 'N/A';
+    String deliveryDate = 'N/A';
 
     if (jobDetails != null) {
       // Check if jobDetails is a list and get the first item
@@ -2920,6 +2878,15 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           final po = purchaseOrders[0];
           poQuantity = '${po.totalPOQuantity ?? 'N/A'}';
           customerName =  jobData.customerName ?? 'N/A';
+          // Get delivery date from PO
+          if (po.nrcDeliveryDate != null) {
+            try {
+              final date = po.nrcDeliveryDate is String ? DateTime.parse(po.nrcDeliveryDate) : po.nrcDeliveryDate;
+              deliveryDate = '${date.day}/${date.month}/${date.year}';
+            } catch (e) {
+              deliveryDate = po.nrcDeliveryDate.toString();
+            }
+          }
         }
       }
     }
@@ -3009,6 +2976,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                     Text('Job Number: ${widget.jobNumber}'),
                     Text('Customer: $customerName'),
                     Text('Quantity: $poQuantity'),
+                    Text('Delivery Date: $deliveryDate'),
                     if (jobDetails != null) ...[
                       Builder(
                         builder: (context) {
@@ -3592,7 +3560,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => WorkActionForm(
+      builder: (dialogContext) => WorkActionForm(
         title: step.title,
         description: step.description,
         initialQty: step.formData['Qty Sheet'] ?? '',
@@ -3606,6 +3574,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         jobData: _jobData,
         machineId: machineId, // Pass machine ID to form
         nrcJobNo: widget.jobNumber!,
+        parentContext: context, // Pass parent context for nested dialogs
         onComplete: (formData) async {
           String formatUtcDateToFixedIso(dynamic value) {
             if (value is DateTime) {
@@ -3806,7 +3775,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => WorkActionForm(
+      builder: (dialogContext) => WorkActionForm(
         title: step.title,
         description: step.description,
         initialQty: step.formData['Qty Sheet'] ?? '',
@@ -3820,6 +3789,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         jobData: _jobData,
         machineId: machineId,
         nrcJobNo: nrcJobNo,
+        parentContext: context, // Pass parent context for nested dialogs
         onComplete: (formData) async {
 
 
@@ -3953,25 +3923,39 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       }
     }
 
-    // 🚀 REVOLUTIONARY: Fetch REAL status from backend for PaperStore
-    String realStatus = 'started'; // Default fallback
+    // 🚀 REVOLUTIONARY: Fetch REAL status from backend - check both JobStep and PaperStore
+    String realStatus = 'pending'; // Default fallback
     try {
-      print('🚀 Fetching real PaperStore status from backend...');
-      final stepDetailsList = await _apiService.getPaperStoreStepByJobWithEditability(widget.jobNumber!);
-      if (stepDetailsList.isNotEmpty) {
-        final stepData = stepDetailsList.first.data;
-        realStatus = stepData['status']?.toString().toLowerCase() ?? 'started';
-        print('🚀 Real PaperStore status from backend: $realStatus');
-        print('🚀 Passing realStatus to WorkActionForm: $realStatus');
+      print('🚀 Fetching real status from backend...');
+      
+      // First check JobStep status - this is the authoritative status
+      final jobStepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
+      if (jobStepDetails != null) {
+        final jobStepStatus = jobStepDetails['status']?.toString().toLowerCase();
+        print('🚀 JobStep status: $jobStepStatus');
+        
+        if (jobStepStatus == 'stop' || jobStepStatus == 'stopped') {
+          realStatus = 'stop'; // Use JobStep status if stopped
+        } else {
+          // Only check PaperStore status if JobStep is not stopped
+          final stepDetailsList = await _apiService.getPaperStoreStepByJobWithEditability(widget.jobNumber!);
+          if (stepDetailsList.isNotEmpty) {
+            final stepData = stepDetailsList.first.data;
+            realStatus = stepData['status']?.toString().toLowerCase() ?? 'pending';
+            print('🚀 PaperStore status from backend: $realStatus');
+          }
+        }
       }
+      
+      print('🚀 Final realStatus to WorkActionForm: $realStatus');
     } catch (e) {
-      print('❌ Error fetching real PaperStore status: $e');
+      print('❌ Error fetching real status: $e');
     }
 
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => WorkActionForm(
+      builder: (dialogContext) => WorkActionForm(
         title: step.title,
         description: step.description,
         initialQty: step.formData['Qty Sheet'] ?? '',
@@ -3983,6 +3967,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         expectedQuantity: expectedQuantity,
         stepType: step.type,
         jobData: _jobData,
+        parentContext: context, // Pass parent context for nested dialogs
         onComplete: (formData) async {
           // Handle PaperStore completion
           await _completePaperStoreWork(step, formData);
@@ -4035,7 +4020,9 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       final stepNo = StepDataManager.getStepNumber(StepType.paperStore);
 
       // Only submit form data - don't change status (it's already 'stop' from Stop Work)
-      await _apiService.putStepDetails(StepType.paperStore, widget.jobNumber!, formData, stepNo);
+      // Extract completion remarks from form data if available
+      final completeRemark = formData['Complete Remark'] ?? formData['completeRemark'];
+      await _apiService.putStepDetails(StepType.paperStore, widget.jobNumber!, formData, stepNo, completeRemark: completeRemark);
 
       if (mounted && Navigator.canPop(context)) {
         Navigator.pop(context);
@@ -4103,23 +4090,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       if (step.type == StepType.paperStore || 
           step.type == StepType.qc || 
           step.type == StepType.dispatch) {
-        // For non-machine steps, call putStepDetails to update individual step table
+        // For non-machine steps, putStepDetails already includes status='stop' and all form data
+        // No need to call updateJobPlanningStepComplete separately - it would cause duplicate API calls
         await _apiService.putStepDetails(step.type, widget.jobNumber!, formData, stepNo);
-        
-        // Also update JobStep status to 'stop'
-        try {
-          await _apiService.updateJobPlanningStepComplete(widget.jobNumber!, stepNo, "stop", additionalFields: formData);
-          print('Successfully updated JobStep status to stop for non-machine step');
-        } catch (e) {
-          print('Failed to update step status to stop: $e');
-          // If it's a validation error, just log and continue
-          if (e.toString().contains('400') || e.toString().contains('Invalid transition')) {
-            print('Step status update failed due to validation, but continuing with completion...');
-          } else {
-            // Re-throw other errors
-            throw e;
-          }
-        }
+        print('Successfully updated JobStep and step table for non-machine step');
       } else {
         print('ℹ️ Machine-based step - Individual step table and JobStep status update handled by backend (completeWorkOnMachine API)');
         print('ℹ️ Skipping putStepDetails to avoid overwriting combined quantities with individual machine data');
@@ -4327,7 +4301,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   Future<void> _refreshStepStatuses() async {
     if (widget.jobNumber == null) return;
 
-    if (steps.isEmpty || steps.length <= 1) {
+    if (steps.isEmpty) {
       print('No steps available for user role: $_userRoles');
       return;
     }
@@ -4478,7 +4452,13 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     if (_completedStepDetailsCache.containsKey(step.type)) {
       final cachedDetails = _completedStepDetailsCache[step.type];
       if (cachedDetails != null) {
-        _showStepDetailsDialog(step, cachedDetails);
+        // Convert user IDs to names even for cached details
+        final convertedDetails = Map<String, dynamic>.from(cachedDetails);
+        final userName = await _getUserNameFromId(cachedDetails['user']);
+        final completedByName = await _getUserNameFromId(cachedDetails['completedBy']);
+        convertedDetails['user'] = userName;
+        convertedDetails['completedBy'] = completedByName;
+        _showStepDetailsDialog(step, convertedDetails);
         return;
       }
     }
@@ -4558,9 +4538,46 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         }
 
         if (details.isNotEmpty) {
+          // Fetch step information that includes user and completedBy fields
+          try {
+            final stepNo = StepDataManager.getStepNumber(step.type);
+            final jobPlanningData = await _apiService.getJobPlanningStepsByNrcJobNo(widget.jobNumber!);
+            
+            // Try both possible data structures since the API returns the job planning data directly
+            List? steps;
+            if (jobPlanningData != null && jobPlanningData['steps'] != null) {
+              steps = jobPlanningData['steps'] as List;
+            } else if (jobPlanningData != null && jobPlanningData['data'] != null && jobPlanningData['data']['steps'] != null) {
+              steps = jobPlanningData['data']['steps'] as List;
+            }
+            
+            if (steps != null) {
+              final stepInfo = steps.firstWhere(
+                (s) => s['stepNo'] == stepNo,
+                orElse: () => {},
+              );
+              
+              if (stepInfo.isNotEmpty) {
+                // Add user and completedBy information to details
+                details['user'] = stepInfo['user'];
+                details['completedBy'] = stepInfo['completedBy'];
+              }
+            }
+          } catch (e) {
+            print('Error fetching step user information: $e');
+          }
+          
           // Cache the details for future use
           _completedStepDetailsCache[step.type] = details;
-          _showStepDetailsDialog(step, details);
+          
+          // Convert user IDs to names before showing dialog
+          final convertedDetails = Map<String, dynamic>.from(details);
+          final userName = await _getUserNameFromId(details['user']);
+          final completedByName = await _getUserNameFromId(details['completedBy']);
+          convertedDetails['user'] = userName;
+          convertedDetails['completedBy'] = completedByName;
+          
+          _showStepDetailsDialog(step, convertedDetails);
         } else {
           // Handle case where step is assigned but has no details yet
           // Show a message indicating the step is ready to start
@@ -4646,6 +4663,62 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                   ],
                 ),
               ),
+              // Started By
+              if (details['user'] != null) Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 120,
+                      child: Text(
+                        'Started By:',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Icon(Icons.person_add, size: 16, color: Colors.blue[600]),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${details['user']}',
+                            style: TextStyle(fontSize: 14, color: Colors.blue[600]),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Completed By
+              if (details['completedBy'] != null) Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 120,
+                      child: Text(
+                        'Completed By:',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Icon(Icons.check_circle, size: 16, color: Colors.green[600]),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${details['completedBy']}',
+                            style: TextStyle(fontSize: 14, color: Colors.green[600]),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -4721,6 +4794,865 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                 fontSize: 14,
               ),
             ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Helper function to convert user IDs to user names
+  Future<String> _getUserNameFromId(String? userId) async {
+    if (userId == null || userId.isEmpty) return userId ?? '';
+    
+    try {
+      // Check if we have cached users, if not fetch them
+      if (_cachedUsers.isEmpty) {
+        final users = await _apiService.getAllUsers();
+        print('DEBUG: Fetched ${users.length} users from API');
+        for (var user in users) {
+          print('DEBUG: User from API - ID: "${user['id']}", Name: "${user['name']}"');
+        }
+        _cachedUsers = { for (var user in users) user['id']?.toString() ?? '': user['name']?.toString() ?? user['id']?.toString() ?? '' };
+        print('DEBUG: Cached users map: $_cachedUsers');
+      }
+      
+      // Return the user name if found, otherwise return the original ID
+      final userName = _cachedUsers[userId] ?? userId;
+      print('DEBUG: User ID "$userId" -> Name: "$userName" (from cache: ${_cachedUsers.containsKey(userId)})');
+      return userName;
+    } catch (e) {
+      print('DEBUG: Error fetching user name for ID $userId: $e');
+      return userId; // Return original ID if we can't fetch the name
+    }
+  }
+
+  // Cache for user names to avoid repeated API calls
+  Map<String, String> _cachedUsers = {};
+
+  /// Helper function to get previous step names for a given step (based on backend logic)
+  List<String> _getPreviousStepNames(StepType currentStepType) {
+    // Map StepType to backend step name format
+    String getStepName(StepType stepType) {
+      switch (stepType) {
+        case StepType.paperStore:
+          return 'PaperStore';
+        case StepType.printing:
+          return 'PrintingDetails';
+        case StepType.corrugation:
+          return 'Corrugation';
+        case StepType.fluteLamination:
+          return 'FluteLaminateBoardConversion';
+        case StepType.punching:
+          return 'Punching';
+        case StepType.dieCutting:
+          return 'Die Cutting';
+        case StepType.flapPasting:
+          return 'SideFlapPasting';
+        case StepType.qc:
+          return 'QualityDept';
+        case StepType.dispatch:
+          return 'DispatchProcess';
+        default:
+          return '';
+      }
+    }
+
+    String currentStepName = getStepName(currentStepType);
+    
+    // Based on backend dependency logic in machineAccess.ts
+    const stepDependencies = {
+      'PaperStore': <String>[], // First step, no dependencies
+      'PrintingDetails': <String>['PaperStore'],
+      'Corrugation': <String>['PaperStore'],
+      'FluteLaminateBoardConversion': <String>['PrintingDetails', 'Corrugation'], // Requires both parallel steps
+      'Punching': <String>['FluteLaminateBoardConversion'],
+      'Die Cutting': <String>['FluteLaminateBoardConversion'], // Alternative to Punching
+      'SideFlapPasting': <String>['Punching', 'Die Cutting'], // Can follow either
+      'QualityDept': <String>['SideFlapPasting'],
+      'DispatchProcess': <String>['QualityDept']
+    };
+
+    return stepDependencies[currentStepName] ?? [];
+  }
+
+  /// Show previous step information dialog
+  /// Show artwork in a dialog
+  Future<void> _showArtworkDialog() async {
+    // Fetch job details if not already loaded
+    if (jobDetails == null) {
+      await _fetchJobDetails();
+    }
+
+    String? imageUrl;
+    if (jobDetails != null) {
+      final jobData = jobDetails is List ? (jobDetails as List)[0] : jobDetails;
+      imageUrl = jobData?.imageURL;
+    }
+
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder: (context) => Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.9,
+              maxHeight: MediaQuery.of(context).size.height * 0.9,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.image, color: Colors.blue[700], size: 24),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Artwork',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue[700],
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.close, color: Colors.blue[700]),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ],
+                  ),
+                ),
+                // Content
+                Expanded(
+                  child: imageUrl == null || imageUrl.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.image_not_supported, size: 64, color: Colors.grey[400]),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No Artwork Available',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Center(
+                            child: InteractiveViewer(
+                              minScale: 0.5,
+                              maxScale: 4.0,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.3),
+                                      spreadRadius: 2,
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Builder(
+                                    builder: (context) {
+                                      try {
+                                        final bytes = base64Decode(imageUrl!);
+                                        return Image.memory(
+                                          bytes,
+                                          fit: BoxFit.contain,
+                                          errorBuilder: (context, error, stackTrace) {
+                                            return Container(
+                                              width: 300,
+                                              height: 300,
+                                              color: Colors.grey[200],
+                                              child: Column(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(Icons.broken_image, size: 64, color: Colors.grey[400]),
+                                                  const SizedBox(height: 16),
+                                                  Text(
+                                                    'Failed to load image',
+                                                    style: TextStyle(color: Colors.grey[600]),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          },
+                                        );
+                                      } catch (e) {
+                                        return Container(
+                                          width: 300,
+                                          height: 300,
+                                          color: Colors.grey[200],
+                                          child: Column(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Icon(Icons.broken_image, size: 64, color: Colors.grey[400]),
+                                              const SizedBox(height: 16),
+                                              Text(
+                                                'Invalid image format',
+                                                style: TextStyle(color: Colors.grey[600]),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      }
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
+  /// Show previous step details for current active step
+  Future<void> _showTopPreviousStepDetails() async {
+    try {
+      if (widget.jobNumber == null) {
+        DialogManager.showErrorMessage(context, 'Job number not available.');
+        return;
+      }
+
+      // Determine current step's stepNo (not array index) 
+      int? currentStepNo;
+      
+      // Try to get the first active step's stepNo
+      if (currentActiveSteps.isNotEmpty) {
+        final currentStepIndex = currentActiveSteps.first;
+        if (currentStepIndex >= 0 && currentStepIndex < steps.length) {
+          final currentStep = steps[currentStepIndex];
+          currentStepNo = StepDataManager.getStepNumber(currentStep.type);
+        }
+      } else if (steps.isNotEmpty) {
+        // If no active steps, try to find the first step that's not step 1 (has a previous)
+        for (final step in steps) {
+          final stepNo = StepDataManager.getStepNumber(step.type);
+          if (stepNo > 1) {
+            currentStepNo = stepNo;
+            break;
+          }
+        }
+        // If we couldn't find one, use the first step's stepNo anyway (will check for previous step later)
+        if (currentStepNo == null && steps.isNotEmpty) {
+          currentStepNo = StepDataManager.getStepNumber(steps[0].type);
+        }
+      }
+
+      if (currentStepNo == null) {
+        DialogManager.showErrorMessage(context, 'No steps available.');
+        return;
+      }
+
+      // Check if there's a previous step (stepNo > 1 means there's a previous step)
+      if (currentStepNo <= 1) {
+        DialogManager.showErrorMessage(context, 'No previous step available. This is the first step.');
+        return;
+      }
+      
+      final previousStepNo = currentStepNo - 1;
+      
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => JobTimelineUI.buildLoadingDialog('Loading previous step details...'),
+      );
+
+      // Get the current step's jobPlanningId from cached data to ensure we use the correct planning
+      int? currentJobPlanId;
+      final currentStepDetails = _stepDetailsCache[currentStepNo];
+      if (currentStepDetails != null && currentStepDetails['jobPlanningId'] != null) {
+        currentJobPlanId = currentStepDetails['jobPlanningId'] is int 
+            ? currentStepDetails['jobPlanningId'] 
+            : int.tryParse(currentStepDetails['jobPlanningId'].toString());
+        print('🔍 [Previous Step Details] Using jobPlanningId from current step cache: $currentJobPlanId');
+      }
+      
+      print('🔍 [Previous Step Details] Looking for previous step for job: ${widget.jobNumber}, currentStepNo: $currentStepNo, previousStepNo: $previousStepNo, jobPlanId: $currentJobPlanId');
+      
+      // Fetch all plannings for this job to find the correct one
+      final allJobPlannings = await _apiService.getAllJobPlannings();
+      final jobPlannings = allJobPlannings
+          .where((p) => p['nrcJobNo'] == widget.jobNumber)
+          .toList();
+      
+      print('🔍 [Previous Step Details] Found ${jobPlannings.length} plannings for job ${widget.jobNumber}');
+      
+      // Find the correct planning - prefer the one matching currentJobPlanId, otherwise use the one with the current step
+      Map<String, dynamic>? selectedPlanning;
+      if (currentJobPlanId != null) {
+        try {
+          selectedPlanning = jobPlannings.firstWhere(
+            (p) => p['jobPlanId'] == currentJobPlanId || p['jobPlanId'].toString() == currentJobPlanId.toString(),
+          );
+          if (selectedPlanning != null) {
+            print('🔍 [Previous Step Details] Selected planning by jobPlanId: ${selectedPlanning['jobPlanId']}');
+          }
+        } catch (e) {
+          print('🔍 [Previous Step Details] No planning found with jobPlanId $currentJobPlanId');
+        }
+      }
+      
+      // If we didn't find by jobPlanId, try to find the planning that has the current step
+      if (selectedPlanning == null) {
+        for (final planning in jobPlannings) {
+          if (planning['steps'] is List) {
+            final steps = planning['steps'] as List;
+            final hasCurrentStep = steps.any((s) => s['stepNo'] == currentStepNo);
+            if (hasCurrentStep) {
+              selectedPlanning = planning;
+              print('🔍 [Previous Step Details] Selected planning by current step match: ${planning['jobPlanId']}');
+              break;
+            }
+          }
+        }
+      }
+      
+      // Fallback: use API method if we still don't have a planning
+      Map<String, dynamic>? jobPlanningData;
+      if (selectedPlanning != null && selectedPlanning['steps'] is List) {
+        jobPlanningData = {'steps': selectedPlanning['steps']};
+      } else {
+        jobPlanningData = await _apiService.getJobPlanningStepsByNrcJobNo(widget.jobNumber!);
+      }
+      
+      if (mounted) Navigator.pop(context); // Close loading dialog
+      
+      String? startedBy;
+      String? completedBy;
+      String previousStepTitle = '';
+      Map<String, dynamic>? previousStepData;
+      
+      List? stepsList;
+      if (jobPlanningData != null && jobPlanningData['steps'] != null) {
+        stepsList = jobPlanningData['steps'] as List;
+      } else if (jobPlanningData != null && jobPlanningData['data'] != null && jobPlanningData['data']['steps'] != null) {
+        stepsList = jobPlanningData['data']['steps'] as List;
+      }
+      
+      print('🔍 [Previous Step Details] Found ${stepsList?.length ?? 0} steps in job planning data');
+      
+      // Find the step with stepNo = previousStepNo in the backend data
+      if (stepsList != null && stepsList.isNotEmpty) {
+        for (final stepData in stepsList) {
+          final stepNo = stepData['stepNo'];
+          final jobPlanId = stepData['jobPlanningId'];
+          print('🔍 [Previous Step Details] Checking step: stepNo=$stepNo, jobPlanningId=$jobPlanId, stepName=${stepData['stepName']}');
+          
+          if (stepNo != null && (stepNo == previousStepNo || stepNo.toString() == previousStepNo.toString())) {
+            previousStepData = stepData is Map<String, dynamic> ? stepData : Map<String, dynamic>.from(stepData);
+            previousStepTitle = previousStepData['stepName'] ?? 'Unknown Step';
+            
+            // Improved logic for "startedBy" - check status, startDate, and user
+            final status = previousStepData['status']?.toString().toLowerCase();
+            final startDate = previousStepData['startDate'];
+            final user = previousStepData['user'];
+            
+            if (status == 'start' || status == 'in_progress' || startDate != null) {
+              startedBy = user ?? 'Started (user not assigned)';
+            } else {
+              startedBy = 'Not started';
+            }
+            
+            // Check if completed
+            final endDate = previousStepData['endDate'];
+            completedBy = previousStepData['completedBy'];
+            if (completedBy == null && (status == 'stop' || status == 'stopped' || status == 'accept' || endDate != null)) {
+              completedBy = 'Completed (user not assigned)';
+            } else if (completedBy == null) {
+              completedBy = 'Not completed';
+            }
+            
+            print('🔍 [Previous Step Details] Found previous step: $previousStepTitle, jobPlanningId=$jobPlanId, startedBy=$startedBy, completedBy=$completedBy');
+            break;
+          }
+        }
+      }
+      
+      if (previousStepData == null) {
+        previousStepTitle = 'No previous step found (Step $previousStepNo)';
+        startedBy = 'N/A';
+        completedBy = 'N/A';
+      }
+
+      // Show the dialog
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Row(
+              children: [
+                Icon(Icons.arrow_back, color: AppColors.maincolor),
+                const SizedBox(width: 8),
+                Text('Previous Step Details'),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue[200]!),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Previous Step: $previousStepTitle',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Colors.blue[900],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Icon(Icons.person_add, size: 18, color: Colors.blue[700]),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text('Started By: $startedBy'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(Icons.check_circle, size: 18, color: Colors.green[700]),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text('Completed By: $completedBy'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Close', style: TextStyle(color: AppColors.maincolor)),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog if still open
+        DialogManager.showErrorMessage(context, 'Failed to load previous step details: ${e.toString()}');
+      }
+    }
+  }
+
+  void _showPreviousStepInfo(StepData currentStep, int currentIndex) async {
+    try {
+      if (widget.jobNumber == null) return;
+
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => JobTimelineUI.buildLoadingDialog('Loading previous step details...'),
+      );
+
+      final jobPlanningData = await _apiService.getJobPlanningStepsByNrcJobNo(widget.jobNumber!);
+      
+      if (mounted) Navigator.pop(context); // Close loading dialog
+      
+      String? startedBy;
+      String? completedBy;
+      String previousStepTitle = '';
+      
+      List? steps;
+      if (jobPlanningData != null && jobPlanningData['steps'] != null) {
+        steps = jobPlanningData['steps'] as List;
+      } else if (jobPlanningData != null && jobPlanningData['data'] != null && jobPlanningData['data']['steps'] != null) {
+        steps = jobPlanningData['data']['steps'] as List;
+      }
+      
+      if (steps != null && steps.isNotEmpty) {
+        // Find the previous step (step before current one)
+        if (currentIndex > 0 && currentIndex < steps.length) {
+          final previousStepData = steps[currentIndex - 1];
+          previousStepTitle = previousStepData['stepName'] ?? 'Unknown Step';
+          startedBy = previousStepData['user'] ?? 'Not started';
+          completedBy = previousStepData['completedBy'] ?? 'Not completed';
+        } else {
+          previousStepTitle = 'No previous step';
+          startedBy = 'N/A';
+          completedBy = 'N/A';
+        }
+      } else {
+        previousStepTitle = 'No previous step found';
+        startedBy = 'N/A';
+        completedBy = 'N/A';
+      }
+
+      // Show the dialog
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Previous Step Details'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Previous Step: $previousStepTitle', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Text('Started By: $startedBy'),
+                const SizedBox(height: 4),
+                Text('Completed By: $completedBy'),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Close'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog if still open
+        DialogManager.showErrorMessage(context, 'Failed to load previous step details: ${e.toString()}');
+      }
+    }
+  }
+
+  /// Show user information dialog for tick mark button - shows PREVIOUS step's user info
+  void _showStepUserInfo(StepData step) async {
+    print('DEBUG: _showStepUserInfo called for step: ${step.title} (${step.type})');
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: true,
+      builder: (context) => JobTimelineUI.buildLoadingDialog('Loading user information...'),
+    );
+
+    try {
+      // Get previous step names for this step
+      final previousStepNames = _getPreviousStepNames(step.type);
+      
+      print('DEBUG: Previous step names for ${step.title}: $previousStepNames');
+      
+      if (previousStepNames.isEmpty) {
+        if (mounted) Navigator.pop(context); // Close loading dialog
+        if (mounted) {
+          DialogManager.showErrorMessage(context, 'No previous steps found for ${step.title}');
+        }
+        return;
+      }
+
+      final jobPlanningData = await _apiService.getJobPlanningStepsByNrcJobNo(widget.jobNumber!);
+      
+      print('DEBUG: Raw jobPlanningData response: $jobPlanningData');
+      
+      if (mounted) Navigator.pop(context); // Close loading dialog
+      
+      String? startedBy;
+      String? completedBy;
+      String previousStepTitle = '';
+      
+      List? steps;
+      
+      // Try both possible data structures since the API returns the job planning data directly
+      if (jobPlanningData != null && jobPlanningData['steps'] != null) {
+        steps = jobPlanningData['steps'] as List;
+        print('DEBUG: Found ${steps.length} steps in job planning data (direct access)');
+      } else if (jobPlanningData != null && jobPlanningData['data'] != null && jobPlanningData['data']['steps'] != null) {
+        steps = jobPlanningData['data']['steps'] as List;
+        print('DEBUG: Found ${steps.length} steps in job planning data (nested access)');
+      }
+      
+      if (steps != null && steps.isNotEmpty) {
+        print('DEBUG: Raw steps data: $steps');
+        for (final stepData in steps) {
+          print('DEBUG: Step - Name: ${stepData['stepName']}, Status: ${stepData['status']}, User: ${stepData['user']}, CompletedBy: ${stepData['completedBy']}');
+        }
+      } else {
+        print('DEBUG: jobPlanningData is null or missing steps');
+        print('DEBUG: jobPlanningData structure: ${jobPlanningData?.keys}');
+        if (jobPlanningData != null && jobPlanningData['data'] != null) {
+          print('DEBUG: data structure: ${jobPlanningData['data']?.keys}');
+        }
+      }
+
+      if (steps != null && steps.isNotEmpty) {
+        // For better user experience, let's check for relevant completed steps
+        // This includes both direct dependencies and parallel steps that are commonly visible
+        List<String> searchStepNames = List.from(previousStepNames);
+        
+        // Add commonly visible parallel steps for better UX
+        if (step.type == StepType.corrugation && !searchStepNames.contains('PrintingDetails')) {
+          searchStepNames.insert(0, 'PrintingDetails'); // Show Printing info for Corrugation user
+        }
+        if (step.type == StepType.printing && !searchStepNames.contains('Corrugation')) {
+          searchStepNames.insert(0, 'Corrugation'); // Show Corrugation info for Printing user  
+        }
+        
+        print('DEBUG: Searching for completed steps in: $searchStepNames');
+        
+        // Find the first completed previous step (prioritize showing most recent completed step)
+        Map<String, dynamic>? completedPreviousStep;
+        for (final prevStepName in searchStepNames.reversed) { // Check in reverse order for most recent
+          print('DEBUG: Looking for completed step: $prevStepName');
+          
+          try {
+            final matchingSteps = steps.where((s) {
+              final stepName = s['stepName']?.toString();
+              final status = s['status']?.toString();
+              final user = s['user'];
+              final completedBy = s['completedBy'];
+              print('DEBUG: Checking step - Name: "$stepName" (looking for "$prevStepName"), Status: "$status", User: "$user", CompletedBy: "$completedBy"');
+              final isMatch = stepName == prevStepName && (status == 'stop' || status == 'completed' || status == 'accept');
+              print('DEBUG: Is match for $prevStepName: $isMatch');
+              return isMatch;
+            }).toList();
+            
+            if (matchingSteps.isNotEmpty) {
+              completedPreviousStep = matchingSteps.first;
+              previousStepTitle = StepDataManager.getDisplayName(prevStepName);
+              print('DEBUG: Found completed previous step: $prevStepName');
+              break;
+            }
+          } catch (e) {
+            print('DEBUG: Error searching for step $prevStepName: $e');
+          }
+        }
+        
+        if (completedPreviousStep != null) {
+          startedBy = completedPreviousStep['user'];
+          completedBy = completedPreviousStep['completedBy'];
+          print('DEBUG: Using completed step - StartedBy: $startedBy, CompletedBy: $completedBy');
+        } else {
+          // No completed previous steps found, but let's still show the most recent previous step info if available
+          print('DEBUG: No completed steps found, checking for any previous step info');
+          for (final prevStepName in searchStepNames.reversed) {
+            try {
+              final matchingSteps = steps.where(
+                (s) => s['stepName']?.toString() == prevStepName
+              ).toList();
+              
+              if (matchingSteps.isNotEmpty) {
+                final prevStepInfo = matchingSteps.first;
+                startedBy = prevStepInfo['user'];
+                completedBy = prevStepInfo['completedBy'];
+                previousStepTitle = StepDataManager.getDisplayName(prevStepName);
+                print('DEBUG: Using any available step info - StartedBy: $startedBy, CompletedBy: $completedBy');
+                break;
+              }
+            } catch (e) {
+              print('DEBUG: Error searching for any step $prevStepName: $e');
+            }
+          }
+        }
+      }
+      
+      if (mounted) {
+        // Convert user IDs to names before showing dialog
+        print('DEBUG: Before user name conversion - StartedBy: "$startedBy", CompletedBy: "$completedBy"');
+        final startedByName = await _getUserNameFromId(startedBy);
+        final completedByName = await _getUserNameFromId(completedBy);
+        print('DEBUG: After user name conversion - StartedByName: "$startedByName", CompletedByName: "$completedByName"');
+        print('DEBUG: Showing dialog with previousStepTitle: "$previousStepTitle"');
+        _showUserInfoDialog(step, previousStepTitle, startedByName, completedByName);
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context); // Close loading dialog
+      if (mounted) {
+        DialogManager.showErrorMessage(context, 'Failed to load user information: ${e.toString()}');
+      }
+    }
+  }
+
+  void _showUserInfoDialog(StepData step, String previousStepTitle, String? startedBy, String? completedBy) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.white,
+        title: Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.blue[600]),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                previousStepTitle.isNotEmpty 
+                    ? '$previousStepTitle - User Info'
+                    : '${step.title} - Previous Step Info',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Description
+            if (previousStepTitle.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(
+                  'Previous step information for ${step.title}:',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ),
+            // Show message if no previous step data found
+            if ((startedBy == null || startedBy.isEmpty) && (completedBy == null || completedBy.isEmpty))
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.orange[600], size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        previousStepTitle.isNotEmpty 
+                            ? 'No user information found for $previousStepTitle'
+                            : 'No previous step information available',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.orange[600],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            // Started By
+            if (startedBy != null && startedBy.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 100,
+                      child: Text(
+                        'Started By:',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Icon(Icons.person_add, size: 16, color: Colors.blue[600]),
+                          const SizedBox(width: 8),
+                          Text(
+                            startedBy,
+                            style: TextStyle(fontSize: 14, color: Colors.blue[600]),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            // Completed By
+            if (completedBy != null && completedBy.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 100,
+                      child: Text(
+                        'Completed By:',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Icon(Icons.check_circle, size: 16, color: Colors.green[600]),
+                          const SizedBox(width: 8),
+                          Text(
+                            completedBy,
+                            style: TextStyle(fontSize: 14, color: Colors.green[600]),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            // Show message if no user info available
+            if ((startedBy == null || startedBy.isEmpty) && (completedBy == null || completedBy.isEmpty))
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.orange[700], size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'No user information available for this step yet.',
+                        style: TextStyle(fontSize: 14, color: Colors.orange[700]),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
         actions: [
@@ -4929,6 +5861,64 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             children: [
+              // Three action buttons at the top
+              Container(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    // Step Details Button
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => _showJobDetailsDialog(),
+                        icon: Icon(Icons.info_outline, size: 18),
+                        label: Text('Step Details', style: TextStyle(fontSize: 12)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue[600],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Artwork Button
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => _showArtworkDialog(),
+                        icon: Icon(Icons.image, size: 18),
+                        label: Text('Artwork', style: TextStyle(fontSize: 12)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.purple[600],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Previous Step Details Button
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => _showTopPreviousStepDetails(),
+                        icon: Icon(Icons.arrow_back, size: 18),
+                        label: Text('Prev Step', style: TextStyle(fontSize: 12)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green[600],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               // Show loading indicator while initializing
               if (_isInitializing)
                 Container(
@@ -4945,7 +5935,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                   ),
                 )
               // Show message if no steps available for user role
-              else if (steps.length <= 1)
+              else if (steps.isEmpty)
                 Container(
                   padding: const EdgeInsets.all(20),
                   margin: const EdgeInsets.all(16),
@@ -5001,18 +5991,9 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                       ),
                     ],
                   ),
-                )
-              else
-                JobTimelineUI.buildProgressIndicator(steps),
-              
-              // Artwork Display Widget
-              if (_jobData != null)
-                ArtworkDisplayWidget(
-                  imageURL: _jobData!['imageURL'] as String?,
-                  jobNumber: widget.jobNumber ?? 'Unknown Job',
                 ),
               
-              if (steps.length > 1)
+              if (steps.isNotEmpty)
                 ListView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
@@ -5021,46 +6002,15 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                     final step = steps[index];
                     return Column(
                       children: [
+                        // Step Card
                         StepItemWidget(
                           step: step,
                           index: index,
                           isActive: _isStepActive(step),
                           jobNumber: widget.jobNumber,
                           onTap: () => _handleStepTap(step),
+                          onInfoTap: () => _showStepUserInfo(step),
                         ),
-                        // Show Step Details button right after any active step
-                        if (currentActiveSteps.contains(index) && index > 0)
-                          Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            child: Row(
-                              children: [
-                                Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () => _showJobDetailsDialog(),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.white,
-                                foregroundColor: Colors.blue[700],
-                                elevation: 2,
-                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  side: BorderSide(color: Colors.blue[200]!),
-                                ),
-                              ),
-                              icon: Icon(Icons.info_outline, size: 20),
-                              label: Text(
-                                'Step Details',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                              ],
-                            ),
-                          ),
                       ],
                     );
                   },
@@ -5158,6 +6108,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
             'startDate': step['startDate'],
             'endDate': step['endDate'],
             'user': step['user'],
+            'completedBy': step['completedBy'],
           };
         }
       }
@@ -5321,7 +6272,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         return 'in_progress';
       case StepStatus.hold:
         return 'hold';
-      case StepStatus.completed:
+      case StepStatus.paused:
         return 'stop';
       default:
         return 'planned';

@@ -831,7 +831,9 @@ class _WorkDetailsScreenState extends State<WorkDetailsScreen> with TickerProvid
                 if (step['status'] != null)
                   _buildStepDetailRow(Icons.info_outline, 'Status', step['status']),
                 if (step['user'] != null)
-                  _buildStepDetailRow(Icons.person_outline, 'User', step['user']),
+                  _buildStepDetailRow(Icons.person_add, 'Started By', step['user']),
+                if (step['completedBy'] != null)
+                  _buildStepDetailRow(Icons.check_circle, 'Completed By', step['completedBy']),
                 if (step['startDate'] != null)
                   _buildStepDetailRow(Icons.play_arrow, 'Start Date', step['startDate']),
                 if (step['endDate'] != null)

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 // Enums for step status and type
-enum StepStatus { pending, started, inProgress, paused, hold, completed }
+enum StepStatus { pending, started, inProgress, paused, hold, major_hold }
 
-enum StepType { jobAssigned, paperStore, printing, corrugation, fluteLamination, punching, dieCutting, flapPasting, qc, dispatch }
+enum StepType { paperStore, printing, corrugation, fluteLamination, punching, dieCutting, flapPasting, qc, dispatch }
 
 // StepData model class
 class StepData {

@@ -11,7 +11,7 @@ class StepItemWidget extends StatelessWidget {
   final bool isActive;
   final String? jobNumber;
   final VoidCallback onTap;
-
+  final VoidCallback? onInfoTap;
   const StepItemWidget({
     Key? key,
     required this.step,
@@ -19,20 +19,20 @@ class StepItemWidget extends StatelessWidget {
     required this.isActive,
     required this.jobNumber,
     required this.onTap,
+    this.onInfoTap,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    final isClickable = step.type == StepType.jobAssigned ||
-        (step.status == StepStatus.pending && isActive) ||
+    final isClickable = (step.status == StepStatus.pending && isActive) ||
         step.status == StepStatus.started ||
         step.status == StepStatus.inProgress ||
-        step.status == StepStatus.completed ||
+        step.status == StepStatus.paused ||
         step.status == StepStatus.hold; // Add hold status as clickable
 
     // Enhanced styling for hold status
     final isHoldStatus = step.status == StepStatus.hold;
-    final isCompletedStatus = step.status == StepStatus.completed;
+    final isCompletedStatus = step.status == StepStatus.paused;
     final isInProgress = step.status == StepStatus.inProgress || step.status == StepStatus.started;
 
     return Container(
@@ -71,6 +71,29 @@ class StepItemWidget extends StatelessWidget {
               padding: const EdgeInsets.all(20),
               child: Row(
                 children: [
+                  // Info/Tick mark button - shows PREVIOUS step's "Started By" and "Completed By"
+                  // Only show for steps that haven't started yet, so users can see who worked on prerequisite steps
+                  if (onInfoTap != null && step.status == StepStatus.pending)
+                    Container(
+                      margin: EdgeInsets.only(right: 8),
+                      child: InkWell(
+                        onTap: onInfoTap,
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.blue[50],
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.blue[200]!),
+                          ),
+                          child: Icon(
+                            Icons.check_circle_outline,
+                            color: Colors.blue[600],
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                    ),
                   // Enhanced icon container with better styling
                   Container(
                     width: 60,
@@ -78,7 +101,7 @@ class StepItemWidget extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: isHoldStatus
                           ? Colors.orange[200]
-                          : StepStatusHelper.getStepColor(step.status),
+                          : StepStatusHelper.getStepColor(step.status, step),
                       borderRadius: BorderRadius.circular(30),
                       boxShadow: [
                         BoxShadow(
@@ -95,7 +118,7 @@ class StepItemWidget extends StatelessWidget {
                               color: Colors.orange[700],
                               size: 28,
                             )
-                          : StepStatusHelper.getStepIcon(step.status, index + 1),
+                          : StepStatusHelper.getStepIcon(step.status, index + 1, step),
                     ),
                   ),
                   const SizedBox(width: 20),
@@ -133,12 +156,12 @@ class StepItemWidget extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: isHoldStatus
                                 ? Colors.orange[100]
-                                : StepStatusHelper.getStatusTextColor(step.status).withOpacity(0.1),
+                                : StepStatusHelper.getStatusTextColor(step.status, step).withOpacity(0.1),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
                               color: isHoldStatus
                                   ? Colors.orange[300]!
-                                  : StepStatusHelper.getStatusTextColor(step.status).withOpacity(0.3),
+                                  : StepStatusHelper.getStatusTextColor(step.status, step).withOpacity(0.3),
                               width: 1,
                             ),
                           ),
@@ -146,7 +169,7 @@ class StepItemWidget extends StatelessWidget {
                             StepStatusHelper.getStepStatusText(step, jobNumber),
                             style: TextStyle(
                               fontSize: 12,
-                              color: StepStatusHelper.getStatusTextColor(step.status),
+                              color: StepStatusHelper.getStatusTextColor(step.status, step),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -155,22 +178,28 @@ class StepItemWidget extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // Enhanced action icon
-                  if (isClickable)
-                    Container(
-                      padding: EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: isHoldStatus
-                            ? Colors.orange[100]
-                            : StepStatusHelper.getActionIconColor(step, isActive).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        StepStatusHelper.getActionIcon(step, isActive),
-                        color: StepStatusHelper.getActionIconColor(step, isActive),
-                        size: 20,
-                      ),
-                    ),
+                  // Action buttons - Play button
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Main action button (play/edit/eye icon)
+                      if (isClickable)
+                        Container(
+                          padding: EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: isHoldStatus
+                                ? Colors.orange[100]
+                                : StepStatusHelper.getActionIconColor(step, isActive).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            StepStatusHelper.getActionIcon(step, isActive),
+                            color: StepStatusHelper.getActionIconColor(step, isActive),
+                            size: 20,
+                          ),
+                        ),
+                    ],
+                  ),
                 ],
               ),
             ),

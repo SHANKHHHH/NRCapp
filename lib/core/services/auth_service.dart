@@ -95,4 +95,27 @@ class AuthService {
       rethrow;
     }
   }
+
+  Future<Response> logout(String token) async {
+    try {
+      print('🔒 [AuthService] Calling logout API to clear session...');
+      
+      final response = await DioService.instance.post(
+        '/auth/logout',
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+        ),
+      );
+      
+      print('✅ [AuthService] Logout response: ${response.statusCode}');
+      return response;
+    } catch (e) {
+      print('❌ [AuthService] Logout error: $e');
+      rethrow;
+    }
+  }
 } 

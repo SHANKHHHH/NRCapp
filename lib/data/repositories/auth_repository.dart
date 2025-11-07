@@ -28,6 +28,10 @@ class AuthRepository {
       return false;
     } catch (e) {
       print('Login error: $e');
+      // 🔒 IMPORTANT: Rethrow DioException so UI can handle 403 (already logged in) errors
+      if (e is DioException) {
+        rethrow;
+      }
       return false;
     }
   }
@@ -48,10 +52,25 @@ class AuthRepository {
   }
 
   Future<void> logout() async {
+    // 🔒 CRITICAL: Call backend logout API to clear session token from database
+    try {
+      final token = await getAccessToken();
+      if (token != null) {
+        print('🔒 [Logout] Calling backend logout API...');
+        await _authService.logout(token);
+        print('✅ [Logout] Backend session cleared');
+      }
+    } catch (e) {
+      print('⚠️ [Logout] Backend logout failed (continuing with local logout): $e');
+      // Continue with local logout even if backend call fails
+    }
+    
+    // Clear local storage
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
     await prefs.remove(_userIdKey);
     await prefs.remove(_userRoleKey);
+    print('✅ [Logout] Local session cleared');
   }
 
   Future<Map<String, dynamic>?> checkUserValidAndGetData(String id, String accessToken) async {

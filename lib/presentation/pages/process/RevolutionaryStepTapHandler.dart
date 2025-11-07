@@ -347,7 +347,7 @@ class RevolutionaryStepTapHandler {
         ));
         break;
         
-      case StepStatus.completed:
+      case StepStatus.paused:
         buttons.add(_buildStunningButton(
           context: context,
           label: 'View Details',
@@ -617,7 +617,7 @@ class RevolutionaryStepTapHandler {
       _showLoadingDialog(context, 'Completing work...');
       
       // For now, just update status
-      RevolutionaryStepStatusManager.updateStatusCache(jobNumber, step.type, StepStatus.completed);
+      RevolutionaryStepStatusManager.updateStatusCache(jobNumber, step.type, StepStatus.paused);
       
       Navigator.pop(context); // Close loading
       
@@ -643,12 +643,14 @@ class RevolutionaryStepTapHandler {
         return 'Work Started';
       case StepStatus.inProgress:
         return 'In Progress';
-      case StepStatus.completed:
-        return 'Completed';
+      case StepStatus.paused:
+        return 'Stopped';
       case StepStatus.hold:
         return 'On Hold';
       case StepStatus.paused:
         return 'Paused';
+      case StepStatus.major_hold:
+        return 'Major Hold';
     }
   }
   

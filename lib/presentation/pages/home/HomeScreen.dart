@@ -7,8 +7,11 @@ import 'package:dio/dio.dart';
 import '../../../constants/strings.dart';
 import '../../../data/datasources/job_api.dart';
 import 'dart:convert'; // Added for jsonDecode
-import '../activity/UserOwnActivityPage.dart';
+import '../activity/UserDailyActivityPage.dart';
 import 'package:fl_chart/fl_chart.dart';
+import '../process/JobApiService.dart';
+import '../../../core/services/dio_service.dart';
+import '../work/WorkScreen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -31,10 +34,14 @@ class _HomeScreenState extends State<HomeScreen> {
   bool isLoadingStatus = false;
   JobApi? _jobApi;
 
-  // Activity logs state
-  List<Map<String, dynamic>> activityLogs = [];
-  bool isLoadingLogs = false;
-  int activeMemberCount = 0;
+
+  // Machine state
+  List<Map<String, dynamic>> _userMachines = [];
+  List<Map<String, dynamic>> _allMachines = [];
+  Map<String, int> _machineJobCounts = {};
+  int _totalJobPlanningsCount = 0; // Total number of job plannings accessible to user
+  bool isLoadingMachines = false;
+  JobApiService? _apiService;
 
   // Derived for insights
   int get _notStarted => (totalOrders - completedOrders - inProgress).clamp(0, totalOrders);
@@ -59,6 +66,55 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // Check if user has any of the valid dashboard roles
     return _userRoles.any((role) => validDashboardRoles.contains(role));
+  }
+
+  // Check if user has roles that can see all jobs (excluding roles without machine access like paperstore, dispatch, quality)
+  bool _canUserSeeAllJobs() {
+    final allJobsRoles = {
+      'flyingsquad',
+      'planner', // Planner can see all jobs
+      'admin', // Admin can see everything
+    };
+    
+    return _userRoles.any((role) => allJobsRoles.contains(role.toLowerCase()));
+  }
+
+  // Check if user has roles that don't have machine access (paperstore, dispatch, quality)
+  bool _hasNoMachineAccess() {
+    final noMachineAccessRoles = {
+      'paperstore',
+      'qc_manager', 
+      'qc_manager_flying',
+      'dispatch_executive',
+    };
+    
+    return _userRoles.any((role) => noMachineAccessRoles.contains(role.toLowerCase()));
+  }
+
+  // Check if user is specifically a paperstore user
+  bool _isPaperstoreUser() {
+    return _userRoles.any((role) => role.toLowerCase() == 'paperstore');
+  }
+
+  // Check if user is specifically a quality control user
+  bool _isQualityUser() {
+    return _userRoles.any((role) => 
+      role.toLowerCase() == 'qc_manager' || 
+      role.toLowerCase() == 'qc_manager_flying'
+    );
+  }
+
+  // Check if user is specifically a dispatch user
+  bool _isDispatchUser() {
+    return _userRoles.any((role) => role.toLowerCase() == 'dispatch_executive');
+  }
+
+  // Get appropriate section title based on user role
+  String _getSectionTitle() {
+    if (_isPaperstoreUser() || _isQualityUser() || _isDispatchUser()) {
+      return 'Work Access';
+    }
+    return _canUserSeeAllJobs() ? 'All Machines' : 'My Machines';
   }
 
   @override
@@ -99,146 +155,438 @@ class _HomeScreenState extends State<HomeScreen> {
     final dio = Dio();
     dio.options.baseUrl = AppStrings.baseUrl;
     _jobApi = JobApi(dio);
-    print('JobApi initialized, calling _fetchStatusOverviewData...');
-    _fetchStatusOverviewData();
-    _fetchActivityLogs();
+    _apiService = JobApiService(_jobApi!);
+    print('JobApi initialized, calling _fetchMachinesAndJobs...');
+    _fetchMachinesAndJobs();
   }
 
-  Future<void> _fetchActivityLogs() async {
-    if (_jobApi == null) {
-      print('JobApi not initialized for activity logs!');
+
+  Future<void> _fetchMachinesAndJobs() async {
+    print('_fetchMachinesAndJobs called, _apiService is: ${_apiService == null ? "null" : "initialized"}');
+    if (_apiService == null) {
+      print('ApiService not initialized!');
       return;
     }
     
     // Check if widget is still mounted before setting state
     if (!mounted) return;
-    setState(() { isLoadingLogs = true; });
+    setState(() { isLoadingMachines = true; });
     
     try {
-      final allLogs = await _jobApi!.getActivityLogs();
-
-      // Filter out "User Login" actions
-      final filteredLogs = allLogs.where((log) => 
-        log['action'] != null && 
-        log['action'] != 'User Login'
-      ).toList();
-
-      // Get unique users for active member count (excluding login actions)
-      final uniqueUsers = <String>{};
-      for (var log in filteredLogs) {
-        if (log['userId'] != null) {
-          uniqueUsers.add(log['userId']);
-        }
-      }
-
-      // Check if widget is still mounted before setting state
-      if (!mounted) return;
-      setState(() {
-        activityLogs = filteredLogs;
-        activeMemberCount = uniqueUsers.length;
-      });
-    } catch (e) {
-      print('Error fetching activity logs: $e');
+      print('Fetching user machines (role-filtered)...');
       
-      // Check if widget is still mounted before setting state
-      if (!mounted) return;
-      setState(() {
-        activityLogs = [];
-        activeMemberCount = 0;
-      });
-    }
-    
-    // Check if widget is still mounted before setting state
-    if (!mounted) return;
-    setState(() { isLoadingLogs = false; });
-  }
-
-  Future<void> _fetchStatusOverviewData() async {
-    print('_fetchStatusOverviewData called, _jobApi is: ${_jobApi == null ? "null" : "initialized"}');
-    if (_jobApi == null) {
-      print('JobApi not initialized!');
-      return;
-    }
-    
-    // Check if widget is still mounted before setting state
-    if (!mounted) return;
-    setState(() { isLoadingStatus = true; });
-    
-    try {
-      print('Fetching job plannings (role-filtered)...');
+      // Check user role types for machine and job access
+      final canSeeAllJobs = _canUserSeeAllJobs(); // admin, planner, flyingsquad
+      final hasNoMachineAccess = _hasNoMachineAccess(); // paperstore, dispatch, quality
+      print('User can see all jobs: $canSeeAllJobs');
+      print('User has no machine access: $hasNoMachineAccess');
       
+      // Fetch job plannings first (backend already filters correctly based on user role)
       final jobPlannings = await _jobApi!.getAllJobPlanningsFresh();
+      print('Job Plannings: ${jobPlannings.length} items');
       
-      print('Job Plannings List: ${jobPlannings.length} items');
+      List<Map<String, dynamic>> accessibleMachines = [];
       
-      // Check if widget is still mounted before updating state
-      if (!mounted) return;
-      
-      // Use job plannings count (already filtered by role)
-      totalOrders = jobPlannings.length;
-      print('Total Orders (Role-filtered): $totalOrders');
-      
-      // Count active jobs based on job plannings
-      activeJobs = jobPlannings.where((j) => 
-        (j['status'] ?? '').toString().toUpperCase() == 'ACTIVE' ||
-        (j['jobDemand'] ?? '').toString().toLowerCase() == 'high'
-      ).length;
-      print('Active Jobs: $activeJobs');
-      
-      // Fetch completed jobs
-      try {
-        print('Fetching completed jobs...');
-        final completedJobs = await _jobApi!.getCompletedJobs();
-        print('Completed Jobs: ${completedJobs.length} items');
+      if (canSeeAllJobs) {
+        // For admin, planner, flyingsquad - show ALL machines
+        print('User can see all jobs - fetching all machines');
+        accessibleMachines = await _apiService!.getMachinesRaw();
+        print('All Machines: ${accessibleMachines.length} items');
+      } else if (hasNoMachineAccess) {
+        // For roles without machine access (paperstore, dispatch, quality) - show all machines for job counting
+        print('User has no machine access - fetching all machines for job counting');
+        accessibleMachines = await _apiService!.getMachinesRaw();
+        print('All Machines: ${accessibleMachines.length} items');
+      } else {
+        // For machine access roles (printer, corrugator, etc.) - get user's assigned machines
+        print('Getting user assigned machines...');
         
-        if (!mounted) return;
-        completedOrders = completedJobs.length;
+        // Step 1: Try to get user's assigned machines from backend
+        Set<String> userMachineIds = {};
+        
+        try {
+          final userMachines = await _apiService!.getUserMachines();
+          print('User Machines API: ${userMachines.length} items');
+          print('User Machines sample: ${userMachines.take(2).toList()}');
+          
+          // Extract machine IDs from user machines (handle different field names and isActive)
+          for (final userMachine in userMachines) {
+            final isActive = userMachine['isActive'];
+            final isActiveBool = isActive == true || isActive == null || isActive == 1 || isActive == 'true';
+            
+            if (isActiveBool) {
+              final machineId = userMachine['machineId']?.toString();
+              if (machineId != null) {
+                userMachineIds.add(machineId);
+              }
+            }
+          }
+          
+          // Fallback: if no active machines found, use all user machines
+          if (userMachineIds.isEmpty && userMachines.isNotEmpty) {
+            print('No active machines found, using all user machines');
+            for (final userMachine in userMachines) {
+              final machineId = userMachine['machineId']?.toString();
+              if (machineId != null) {
+                userMachineIds.add(machineId);
+              }
+            }
+          }
       } catch (e) {
-        print('Error fetching completed jobs: $e');
-        completedOrders = 0;
-      }
-      
-      // Fetch job plannings for in-progress calculation
-      try {
-        print('Fetching job plannings for in-progress calculation...');
-        final planningList = await _jobApi!.getAllJobPlannings();
+          print('Error getting user machines from API: $e');
+        }
         
-        inProgress = 0;
-        for (var job in planningList) {
-          if (job['steps'] is List) {
-            final steps = job['steps'] as List;
-            final dispatchStep = steps.firstWhere(
-                  (step) => step['stepName'] == 'DispatchProcess',
-              orElse: () => null,
-            );
-            if (dispatchStep != null && dispatchStep['status'] != 'stop') {
-              inProgress++;
+        // Step 2: Fallback - if getUserMachines() failed, extract from job plannings for user's role
+        if (userMachineIds.isEmpty) {
+          print('User Machines API failed, extracting from job plannings based on role');
+          
+          // Get current user ID to match with job steps
+          final prefs = await SharedPreferences.getInstance();
+          final currentUserId = prefs.getString('userId');
+          print('Current User ID: $currentUserId');
+          
+          for (final planning in jobPlannings) {
+            if (planning['steps'] is List) {
+              final steps = planning['steps'] as List;
+              for (final step in steps) {
+                final stepName = step['stepName']?.toString();
+                final stepUser = step['user']?.toString();
+                
+                // Check if this step matches user's role and is assigned to this user
+                bool shouldIncludeStep = false;
+                if (_userRoles.any((role) => role.toLowerCase() == 'printer') && stepName == 'PrintingDetails') {
+                  shouldIncludeStep = true;
+                } else if (_userRoles.any((role) => role.toLowerCase() == 'corrugator') && stepName == 'Corrugation') {
+                  shouldIncludeStep = true;
+                } else if (_userRoles.any((role) => role.toLowerCase() == 'flutelaminator') && stepName == 'FluteLaminateBoardConversion') {
+                  shouldIncludeStep = true;
+                } else if (_userRoles.any((role) => role.toLowerCase() == 'puncher') && stepName == 'Punching') {
+                  shouldIncludeStep = true;
+                } else if (_userRoles.any((role) => role.toLowerCase() == 'flap') && stepName == 'SideFlapPasting') {
+                  shouldIncludeStep = true;
+                }
+                
+                // If step matches role and user assignment, add machines
+                if (shouldIncludeStep && step['machineDetails'] is List) {
+                  final machineDetails = step['machineDetails'] as List;
+                  for (final machineDetail in machineDetails) {
+                    if (machineDetail is Map<String, dynamic>) {
+                      final machineId = machineDetail['id']?.toString();
+                      if (machineId != null) {
+                        userMachineIds.add(machineId);
+                        print('Added machine from job planning: $machineId (step: $stepName)');
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
         }
-        print('In Progress: $inProgress');
-      } catch (e) {
-        print('Error fetching planning list: $e');
-        inProgress = 0;
+        
+        print('User Machine IDs: ${userMachineIds.toList()}');
+        
+        // Step 3: Get all machines and filter to only show assigned ones
+        final allMachines = await _apiService!.getMachinesRaw();
+        print('All Machines: ${allMachines.length} items');
+        
+        accessibleMachines = allMachines
+            .where((machine) {
+              final machineId = machine['id']?.toString();
+              final isMatch = userMachineIds.contains(machineId);
+              if (isMatch) {
+                print('Found assigned machine: ${machine['machineCode']} (id: $machineId)');
+              }
+              return isMatch;
+            })
+            .toList();
       }
       
-    } catch (e) {
-      print('Error fetching status overview: ' + e.toString());
+      print('Accessible Machines: ${accessibleMachines.length} items');
+      
+      // Count jobs per machine
+      final machineJobCounts = <String, int>{};
+      for (final machine in accessibleMachines) {
+        final machineId = machine['id']?.toString();
+        if (machineId != null) {
+          machineJobCounts[machineId] = 0;
+        }
+      }
+      
+      // Group job plannings by nrcJobNo to avoid counting duplicate jobs
+      final Map<String, List<Map<String, dynamic>>> jobPlanningsByNrcJobNo = {};
+      for (final planning in jobPlannings) {
+        final nrcJobNo = planning['nrcJobNo']?.toString() ?? 'unknown';
+        if (!jobPlanningsByNrcJobNo.containsKey(nrcJobNo)) {
+          jobPlanningsByNrcJobNo[nrcJobNo] = [];
+        }
+        jobPlanningsByNrcJobNo[nrcJobNo]!.add(planning);
+      }
+      
+      print('DEBUG: Found ${jobPlanningsByNrcJobNo.length} unique jobs (grouped by nrcJobNo)');
+      
+      // Count how many unique jobs use each machine (count by nrcJobNo, not jobPlanId)
+      int totalActiveJobs = 0; // Track active jobs for non-machine roles
+      
+      for (final nrcJobNo in jobPlanningsByNrcJobNo.keys) {
+        final planningsForThisJob = jobPlanningsByNrcJobNo[nrcJobNo]!;
+        
+        // Track which machines are used in this unique job (across all its plannings)
+        final Set<String> machinesUsedInThisJob = {};
+        bool hasActiveNonMachineStep = false; // Track if job has active non-machine step
+        
+        print('🔍 [HomeScreen] Processing job $nrcJobNo with ${planningsForThisJob.length} plannings');
+        
+        // Process each planning for this job
+        for (final planning in planningsForThisJob) {
+          final planningId = planning['jobPlanId'] ?? planning['id'] ?? 'unknown';
+          
+          if (planning['steps'] is List) {
+            final steps = planning['steps'] as List;
+            for (final step in steps) {
+              final stepName = step['stepName']?.toString();
+              
+              // Determine which steps to include based on user role type
+              bool shouldIncludeStep = false;
+              
+              if (canSeeAllJobs) {
+                // For admin, planner, flyingsquad - count all steps
+                shouldIncludeStep = true;
+              } else if (hasNoMachineAccess) {
+                // For dispatch, quality - count all steps (existing behavior)
+                // For paperstore - only count paperstore step
+                if (_userRoles.any((role) => role.toLowerCase() == 'paperstore')) {
+                  shouldIncludeStep = (stepName == 'PaperStore');
+                  print('🔍 [HomeScreen] PaperStore user - stepName: $stepName, shouldIncludeStep: $shouldIncludeStep');
+                } else {
+                  shouldIncludeStep = true;
+                }
+              } else {
+                // For machine access roles (printer, corrugator, etc.) - ONLY count steps that match their role
+                if (_userRoles.any((role) => role.toLowerCase() == 'printer') && stepName == 'PrintingDetails') {
+                  shouldIncludeStep = true;
+                } else if (_userRoles.any((role) => role.toLowerCase() == 'corrugator') && stepName == 'Corrugation') {
+                  shouldIncludeStep = true;
+                } else if (_userRoles.any((role) => role.toLowerCase() == 'flutelaminator') && stepName == 'FluteLaminateBoardConversion') {
+                  shouldIncludeStep = true;
+                } else if (_userRoles.any((role) => role.toLowerCase() == 'punching_operator') && stepName == 'Punching') {
+                  shouldIncludeStep = true;
+                } else if (_userRoles.any((role) => role.toLowerCase() == 'pasting_operator') && stepName == 'SideFlapPasting') {
+                  shouldIncludeStep = true;
+                }
+              }
+              
+              // If this step should be included, check if it has machines
+              if (shouldIncludeStep) {
+                final stepStatus = step['status']?.toString().toLowerCase();
+                final hasMachines = step['machineDetails'] is List && (step['machineDetails'] as List).isNotEmpty;
+                
+                // Special handling for PaperStore step (check if it's completed)
+                if (stepName?.toLowerCase() == 'paperstore' || stepName?.toLowerCase() == 'paper store') {
+                  // For PaperStore, only hide if status is 'accept' (fully completed)
+                  if (stepStatus == 'accept') {
+                    print('🔍 [HomeScreen] PaperStore completed (accept) for job $nrcJobNo');
+                  } else {
+                    hasActiveNonMachineStep = true;
+                    print('🔍 [HomeScreen] Active PaperStore step for job $nrcJobNo');
+                  }
+                } else {
+                  // For other non-machine steps, use general completion logic
+                  final isCompleted = stepStatus == 'stop' || stepStatus == 'stopped' || stepStatus == 'completed' || stepStatus == 'accept';
+                  
+                  if (!hasMachines) {
+                    if (!isCompleted) {
+                      hasActiveNonMachineStep = true;
+                      print('🔍 [HomeScreen] Active non-machine step ${stepName} for job $nrcJobNo');
+                    } else {
+                      print('🔍 [HomeScreen] Completed non-machine step ${stepName} for job $nrcJobNo');
+                    }
+                  } else if (hasMachines) {
+                    // Machine-based step - handle as before
+                    if (isCompleted) {
+                      print('🔍 [HomeScreen] User completed step ${stepName} for job $nrcJobNo (planning ${planning['jobPlanId'] ?? planning['id']}), skipping');
+                      continue;
+                    }
+                    
+                    final machineDetails = step['machineDetails'] as List;
+                    for (final machineDetail in machineDetails) {
+                      if (machineDetail is Map<String, dynamic>) {
+                        final stepMachineId = machineDetail['id']?.toString();
+                        if (stepMachineId != null) {
+                          machinesUsedInThisJob.add(stepMachineId);
+                          print('🔍 [HomeScreen] Added machine $stepMachineId for job $nrcJobNo (step $stepName)');
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        
+        // For non-machine roles, count jobs with active steps
+        if (hasNoMachineAccess && hasActiveNonMachineStep) {
+          totalActiveJobs++;
+          print('🔍 [HomeScreen] Counting active job $nrcJobNo for non-machine role');
+        }
+        
+        // Apply the complete filtering logic:
+        // 1. Role-based step filtering (already applied above - only role-relevant steps included)
+        // 2. Machine access filtering (check if user has access to each machine)
+        // NOTE: Each unique job (by nrcJobNo) should add exactly 1 count to each machine it uses
+        for (final machineId in machinesUsedInThisJob) {
+          bool shouldCountThisMachine = true;
+          
+          // For machine access roles (printer, corrugator, etc.), verify they have access to this machine
+          // This ensures: Job counts only for machines the user actually has access to
+          if (!canSeeAllJobs && !hasNoMachineAccess) {
+            final isAccessibleMachine = accessibleMachines.any((machine) => 
+                machine['id']?.toString() == machineId);
+            shouldCountThisMachine = isAccessibleMachine;
+          }
+          
+          // Count this unique job for this specific machine
+          // This ensures: Each unique job (by nrcJobNo) is counted exactly once per machine
+          if (shouldCountThisMachine) {
+            machineJobCounts[machineId] = (machineJobCounts[machineId] ?? 0) + 1;
+          }
+        }
+      }
+      
+      // Ensure all accessible machines have job counts (even if 0)
+      // This applies to all role types
+      for (final machine in accessibleMachines) {
+        final machineId = machine['id']?.toString();
+        if (machineId != null && !machineJobCounts.containsKey(machineId)) {
+          machineJobCounts[machineId] = 0;
+        }
+      }
       
       // Check if widget is still mounted before updating state
       if (!mounted) return;
-      totalOrders = 0;
-      activeJobs = 0;
-      inProgress = 0;
-      completedOrders = 0;
+      
+      setState(() {
+        _userMachines = accessibleMachines; // Use accessible machines as user machines for role-based display
+        _allMachines = accessibleMachines;
+        _machineJobCounts = machineJobCounts;
+        // For non-machine roles (PaperStore, QC, Dispatch), use totalActiveJobs
+        // For machine roles, count jobs that have at least one machine assigned
+        if (hasNoMachineAccess) {
+          _totalJobPlanningsCount = totalActiveJobs;
+          print('Set _totalJobPlanningsCount to $totalActiveJobs (active jobs for non-machine role)');
+        } else {
+          _totalJobPlanningsCount = jobPlanningsByNrcJobNo.length; // Total number of unique jobs accessible to user (grouped by nrcJobNo)
+        }
+      });
+      
+      print('Machine setup complete - ${accessibleMachines.length} accessible machines');
+      
+    } catch (e) {
+      print('Error fetching machines and jobs: ' + e.toString());
+      
+      // Check if widget is still mounted before updating state
+      if (!mounted) return;
+      setState(() {
+        _userMachines = [];
+        _allMachines = [];
+        _machineJobCounts = {};
+        _totalJobPlanningsCount = 0;
+      });
     }
     
     // Check if widget is still mounted before setting state
     if (!mounted) return;
-    setState(() { isLoadingStatus = false; });
+    setState(() { isLoadingMachines = false; });
+  }
+
+  void _navigateToMachineJobs(Map<String, dynamic> machine) {
+    final machineId = machine['id']?.toString();
+    final machineName = machine['machineCode'] ?? machine['description'] ?? 'Unknown Machine';
+    
+    if (machineId != null) {
+      // Navigate to WorkScreen with machine-specific filtering
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => WorkScreen(
+            filterByMachineId: machineId,
+            filterByMachineName: machineName,
+          ),
+        ),
+      );
+    }
+  }
+
+  void _navigateToPaperstoreWork() async {
+    // Navigate to WorkScreen - shows the same UI that was previously on work tab for paperstore
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const WorkScreen(),
+      ),
+    );
+    // Refresh data when returning from WorkScreen
+    if (mounted) {
+      _fetchMachinesAndJobs();
+    }
+  }
+
+  void _navigateToQualityWork() async {
+    // Navigate to WorkScreen - shows the same UI that was previously on work tab for quality control
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const WorkScreen(),
+      ),
+    );
+    // Refresh data when returning from WorkScreen
+    if (mounted) {
+      _fetchMachinesAndJobs();
+    }
+  }
+
+  void _navigateToDispatchWork() async {
+    // Navigate to WorkScreen - shows the same UI that was previously on work tab for dispatch
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const WorkScreen(),
+      ),
+    );
+    // Refresh data when returning from WorkScreen
+    if (mounted) {
+      _fetchMachinesAndJobs();
+    }
   }
 
   void _logout() async {
+    print('🔒 [Logout] Starting logout process...');
+    
+    // 🔒 CRITICAL: Call backend logout API to clear session token from database
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('accessToken');
+      
+      if (token != null) {
+        print('🔒 [Logout] Calling backend logout API...');
+        final dio = Dio();
+        await dio.post(
+          '${AppStrings.baseUrl}/auth/logout',
+          options: Options(
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+          ),
+        );
+        print('✅ [Logout] Backend session cleared successfully');
+      }
+    } catch (e) {
+      print('⚠️ [Logout] Backend logout failed (continuing with local logout): $e');
+      // Continue with local logout even if backend call fails
+    }
+    
     // Clear in-memory and persisted roles to avoid stale roles on next login
     await UserRoleManager().clearUserRole();
 
@@ -248,107 +596,12 @@ class _HomeScreenState extends State<HomeScreen> {
     await prefs.remove('userRole');
     await prefs.remove('userRoles');
 
-    print('All authentication data cleared during logout');
+    print('✅ [Logout] All authentication data cleared');
     if (mounted) context.pushReplacement('/'); // Navigate back to the login screen
   }
 
-  String _getTimeAgo(String createdAt) {
-    try {
-      final dateTime = DateTime.parse(createdAt);
-      final now = DateTime.now();
-      final difference = now.difference(dateTime);
 
-      if (difference.inMinutes < 1) {
-        return 'Just now';
-      } else if (difference.inMinutes < 60) {
-        return '${difference.inMinutes} mins ago';
-      } else if (difference.inHours < 24) {
-        return '${difference.inHours} hours ago';
-      } else {
-        return '${difference.inDays} days ago';
-      }
-    } catch (e) {
-      return 'Unknown';
-    }
-  }
 
-  Color _getActionColor(String action) {
-    if (action.contains('Login')) {
-      return Colors.blue;
-    } else if (action.contains('Created')) {
-      return Colors.green;
-    } else if (action.contains('Updated')) {
-      return Colors.orange;
-    } else {
-      return Colors.grey;
-    }
-  }
-
-  String _formatActivityDetails(String details) {
-    try {
-      // Check if details contains JSON
-      if (details.contains('{') && details.contains('}')) {
-        // Extract JSON part and optional Resource part
-        final parts = details.split(' | Resource:');
-        final jsonPart = parts[0].trim();
-        final resourcePart = parts.length > 1 ? parts[1].trim() : null; // e.g., "JobStep (6)"
-
-        // Try to parse the JSON
-        final dynamic parsed = jsonDecode(jsonPart);
-        if (parsed is Map<String, dynamic>) {
-          final jsonData = parsed;
-          final message = (jsonData['message'] ?? '').toString();
-          final jobNo = (jsonData['nrcJobNo'] ?? jsonData['jobNo'] ?? '').toString();
-          final planId = (jsonData['jobPlanId'] ?? '').toString();
-          final stepNo = (jsonData['stepNo'] ?? '').toString();
-          final status = (jsonData['status'] ?? '').toString();
-
-          // Build a concise, human-friendly line
-          final List<String> chunks = [];
-          if (message.isNotEmpty) {
-            chunks.add(message);
-          } else if (status.isNotEmpty) {
-            chunks.add('Status: $status');
-          }
-          if (stepNo.isNotEmpty) chunks.add('Step #$stepNo');
-          if (jobNo.isNotEmpty) chunks.add('Job: $jobNo');
-          if (planId.isNotEmpty) chunks.add('Plan: $planId');
-          if (resourcePart != null && resourcePart.isNotEmpty) chunks.add(resourcePart);
-
-          if (chunks.isNotEmpty) {
-            return chunks.join(' — ');
-          }
-        }
-      }
-      
-      // For non-JSON details, clean up common patterns
-      String cleaned = details;
-      
-      // Remove jobStepId patterns
-      cleaned = cleaned.replaceAll(RegExp(r'for jobStepId: \d+'), '');
-      cleaned = cleaned.replaceAll(RegExp(r'jobStepId: \d+'), '');
-      
-      // Remove extra spaces and clean up
-      cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
-      
-      // Remove trailing | Resource part if present
-      if (cleaned.contains(' | Resource:')) {
-        cleaned = cleaned.split(' | Resource:')[0].trim();
-      }
-      
-      return cleaned;
-    } catch (e) {
-      // If parsing fails, clean up the original details
-      String cleaned = details;
-      cleaned = cleaned.replaceAll(RegExp(r'for jobStepId: \d+'), '');
-      cleaned = cleaned.replaceAll(RegExp(r'jobStepId: \d+'), '');
-      cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
-      if (cleaned.contains(' | Resource:')) {
-        cleaned = cleaned.split(' | Resource:')[0].trim();
-      }
-      return cleaned;
-    }
-  }
 
   Widget _buildDrawer() {
     return Drawer(
@@ -480,7 +733,7 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => const UserOwnActivityPage(),
+                    builder: (_) => const UserDailyActivityPage(),
                   ),
                 );
               },
@@ -535,7 +788,7 @@ class _HomeScreenState extends State<HomeScreen> {
             if (_userRoles.isNotEmpty) ...[
               Container(
                 padding: const EdgeInsets.all(12),
-                margin: const EdgeInsets.only(bottom: 20),
+                margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
                   color: Colors.blue.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
@@ -606,15 +859,7 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildDashboardDropdown(),
               const SizedBox(height: 28),
             ],
-            _buildStatusOverview(),
-            const SizedBox(height: 20),
-            _buildWorkInsights(),
-            const SizedBox(height: 28),
-            _buildLiveUpdates(),
-            const SizedBox(height: 28),
-            _buildDailySnapshots(),
-            const SizedBox(height: 28),
-            _buildActiveMemberCount(),
+            _buildMachineCards(),
           ],
         ),
       ),
@@ -957,7 +1202,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
 
-  Widget _buildLiveUpdates() {
+
+
+  Widget _buildMachineCards() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -977,9 +1224,9 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           Row(
             children: [
-              const Text(
-                'Live Updates',
-                style: TextStyle(
+              Text(
+                _getSectionTitle(),
+                style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: Colors.black87,
@@ -987,143 +1234,535 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const Spacer(),
               IconButton(
-                icon: isLoadingLogs
+                icon: isLoadingMachines
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.refresh),
-                onPressed: isLoadingLogs ? null : _fetchActivityLogs,
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (isLoadingLogs)
-            const Center(child: CircularProgressIndicator())
-          else if (activityLogs.isEmpty)
-            const Center(
-              child: Text(
-                'No recent activity',
-                style: TextStyle(color: Colors.grey),
-              ),
-            )
-          else
-            ...activityLogs.take(3).map((log) => _buildUpdateItem(
-              _formatActivityDetails(log['details'] ?? log['action'] ?? 'Unknown action'),
-              _getTimeAgo(log['createdAt'] ?? ''),
-              _getActionColor(log['action'] ?? ''),
-            )).toList(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildUpdateItem(String title, String time, Color color) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(4),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.black87,
-                  ),
-                ),
-                Text(
-                  time,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusOverview() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text(
-                'Status Overview',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-              Spacer(),
-              IconButton(
-                icon: isLoadingStatus
-                    ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Icon(Icons.refresh),
-                onPressed: isLoadingStatus ? null : () {
-                  if (_jobApi == null) {
+                onPressed: isLoadingMachines ? null : () {
+                  if (_apiService == null) {
                     _initializeApiAndFetch();
                   } else {
-                    _fetchStatusOverviewData();
+                    _fetchMachinesAndJobs();
                   }
                 },
               ),
             ],
           ),
           const SizedBox(height: 16),
-          Row(
+          if (isLoadingMachines)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32.0),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (_allMachines.isEmpty && !(_isPaperstoreUser() || _isQualityUser() || _isDispatchUser()))
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32.0),
+                child: Column(
+                  children: [
+                    const Icon(
+                      Icons.build_circle,
+                      size: 64,
+                      color: Colors.grey,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      _canUserSeeAllJobs() 
+                        ? 'No machines found in the system'
+                        : 'No machines assigned to your role',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            _buildMachineGrid(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMachineGrid() {
+    final List<Widget> rows = [];
+    
+    // Collect special cards based on user roles
+    final List<Widget> specialCards = [];
+    if (_isPaperstoreUser()) {
+      specialCards.add(_buildPaperstoreCard());
+    }
+    if (_isQualityUser()) {
+      specialCards.add(_buildQualityCard());
+    }
+    if (_isDispatchUser()) {
+      specialCards.add(_buildDispatchCard());
+    }
+    
+    // If user has special roles, show ONLY their department cards (no machines)
+    if (specialCards.isNotEmpty) {
+      // Add special cards in pairs (2x2 grid)
+      for (int i = 0; i < specialCards.length; i += 2) {
+        final firstCard = specialCards[i];
+        final secondCard = i + 1 < specialCards.length ? specialCards[i + 1] : null;
+        
+        rows.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: firstCard,
+                ),
+                if (secondCard != null) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: secondCard,
+                  ),
+                ] else ...[
+                  const SizedBox(width: 12),
+                  const Expanded(child: SizedBox()),
+                ],
+              ],
+            ),
+          ),
+        );
+      }
+      
+      return Column(children: rows);
+    }
+    
+    // For regular users (no special roles), show machine cards only
+    final machines = _allMachines;
+    for (int i = 0; i < machines.length; i += 2) {
+      final firstMachine = machines[i];
+      final secondMachine = i + 1 < machines.length ? machines[i + 1] : null;
+      
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12.0),
+          child: Row(
             children: [
               Expanded(
-                child: _buildOverviewCard('Total Orders', '$totalOrders', Colors.purple),
+                child: _buildMachineCard(firstMachine),
+              ),
+              if (secondMachine != null) ...[
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildMachineCard(secondMachine),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+    
+    return Column(children: rows);
+  }
+
+  Widget _buildMachineCard(Map<String, dynamic> machine) {
+    final machineId = machine['id']?.toString();
+    final machineName = machine['machineCode'] ?? machine['description'] ?? 'Unknown Machine';
+    final machineType = machine['machineType'] ?? machine['type'] ?? '';
+    final jobCount = _machineJobCounts[machineId] ?? 0;
+    
+    // Determine card color based on job count
+    Color cardColor;
+    if (jobCount == 0) {
+      cardColor = Colors.grey.shade50;
+    } else if (jobCount <= 2) {
+      cardColor = Colors.green.shade50;
+    } else if (jobCount <= 5) {
+      cardColor = Colors.orange.shade50;
+    } else {
+      cardColor = Colors.red.shade50;
+    }
+    
+    return GestureDetector(
+      onTap: () => _navigateToMachineJobs(machine),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: cardColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: cardColor == Colors.grey.shade50 ? Colors.grey.shade300 : Colors.transparent,
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1),
+              spreadRadius: 1,
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+          Row(
+            children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.maincolor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.build_circle,
+                    color: AppColors.maincolor,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+              Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        machineName,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (machineType.isNotEmpty)
+                        Text(
+                          machineType,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Text(
+                  '$jobCount',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: jobCount == 0 ? Colors.grey[600] : AppColors.maincolor,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    jobCount == 1 ? 'job' : 'jobs',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaperstoreCard() {
+    // Get total job count for paperstore (all jobs they can access)
+    final totalJobs = _totalJobPlanningsCount;
+    
+    return GestureDetector(
+      onTap: () => _navigateToPaperstoreWork(),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.blue.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.blue.shade100,
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1),
+              spreadRadius: 1,
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.inventory_2,
+                    color: Colors.blue.shade700,
+                    size: 20,
+                  ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _buildOverviewCard('Active Jobs', '$activeJobs', Colors.teal),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Paperstore',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        'All Jobs Access',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
               ),
             ],
           ),
           const SizedBox(height: 12),
           Row(
             children: [
+                Text(
+                  '$totalJobs',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: totalJobs == 0 ? Colors.grey[600] : Colors.blue.shade700,
+                  ),
+                ),
+                const SizedBox(width: 4),
               Expanded(
-                child: _buildOverviewCard('In Progress', '$inProgress', Colors.orange),
+                  child: Text(
+                    totalJobs == 1 ? 'job' : 'jobs',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQualityCard() {
+    // Get total job count for quality control (all jobs they can access)
+    final totalJobs = _totalJobPlanningsCount;
+    
+    return GestureDetector(
+      onTap: () => _navigateToQualityWork(),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.green.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.green.shade100,
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1),
+              spreadRadius: 1,
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.verified_user,
+                    color: Colors.green.shade700,
+                    size: 20,
+                  ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _buildOverviewCard('Completed Orders', '$completedOrders', Colors.blue),
-              ),
-            ],
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Quality Control',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        'All Jobs Access',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Text(
+                  '$totalJobs',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: totalJobs == 0 ? Colors.grey[600] : Colors.green.shade700,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    totalJobs == 1 ? 'job' : 'jobs',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDispatchCard() {
+    // Get total job count for dispatch (all jobs they can access)
+    final totalJobs = _totalJobPlanningsCount;
+    
+    return GestureDetector(
+      onTap: () => _navigateToDispatchWork(),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.orange.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.orange.shade100,
+            width: 1,
           ),
-        ],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1),
+              spreadRadius: 1,
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.local_shipping,
+                    color: Colors.orange.shade700,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Dispatch',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        'All Jobs Access',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Text(
+                  '$totalJobs',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: totalJobs == 0 ? Colors.grey[600] : Colors.orange.shade700,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    totalJobs == 1 ? 'job' : 'jobs',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1248,168 +1887,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildDailySnapshots() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text(
-                'Daily Snapshots',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-              const Spacer(),
-              IconButton(
-                icon: isLoadingLogs
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.refresh),
-                onPressed: isLoadingLogs ? null : _fetchActivityLogs,
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (isLoadingLogs)
-            const Center(child: CircularProgressIndicator())
-          else if (activityLogs.isEmpty)
-            const Center(
-              child: Text(
-                'No recent activity',
-                style: TextStyle(color: Colors.grey),
-              ),
-            )
-          else
-            Column(
-              children: activityLogs.take(5).map((log) => Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey[200]!),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: _getActionColor(log['action'] ?? ''),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _formatActivityDetails(log['details'] ?? log['action'] ?? 'Unknown action'),
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.black87,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                        ],
-                      ),
-                    ),
-                    Text(
-                      _getTimeAgo(log['createdAt'] ?? ''),
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey[500],
-                      ),
-                    ),
-                  ],
-                ),
-              )).toList(),
-            ),
-        ],
-      ),
-    );
-  }
 
 
-  Widget _buildActiveMemberCount() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(Icons.people, color: Colors.green, size: 24),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Active Members',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '$activeMemberCount members currently active',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Text(
-            '$activeMemberCount',
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              color: Colors.green,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   @override
   void dispose() {

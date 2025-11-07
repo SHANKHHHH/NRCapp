@@ -24,6 +24,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _isLoading = false;
   bool _obscurePassword = true;
+  
+  // 🔒 Session limit banner state
+  bool _showSessionLimitBanner = false;
+  String _sessionDevice = '';
+  String _sessionTime = '';
 
   @override
   void initState() {
@@ -53,6 +58,215 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+
+  // 🎨 Beautiful dialog for "Already Logged In" error
+  void _showAlreadyLoggedInDialog(dynamic responseData) {
+    String deviceInfo = 'Unknown device';
+    String loginTime = 'Unknown time';
+    String fullMessage = 'This account is already logged in on another device. Please logout from that device first.';
+    
+    try {
+      if (responseData != null && responseData is Map) {
+        final details = responseData['details'];
+        if (details != null && details is Map) {
+          deviceInfo = details['sessionDevice'] ?? deviceInfo;
+          loginTime = details['sessionLoginTime'] ?? loginTime;
+          fullMessage = details['message'] ?? fullMessage;
+        }
+      }
+    } catch (e) {
+      print('Error parsing response data: $e');
+    }
+    
+    // 🎨 Show banner at the top
+    setState(() {
+      _showSessionLimitBanner = true;
+      _sessionDevice = deviceInfo;
+      _sessionTime = loginTime;
+    });
+    
+    // Auto-hide banner after 10 seconds
+    Future.delayed(Duration(seconds: 10), () {
+      if (mounted) {
+        setState(() {
+          _showSessionLimitBanner = false;
+        });
+      }
+    });
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 20,
+                  offset: Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Icon with animated container
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.devices,
+                    size: 40,
+                    color: Colors.orange.shade600,
+                  ),
+                ),
+                SizedBox(height: 20),
+                
+                // Title
+                Text(
+                  'Already Logged In',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey.shade800,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 12),
+                
+                // Main message
+                Text(
+                  fullMessage,
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: Colors.grey.shade600,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 20),
+                
+                // Device info card
+                Container(
+                  padding: EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.grey.shade200,
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.computer, size: 18, color: Colors.grey.shade600),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              deviceInfo,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey.shade700,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(Icons.access_time, size: 18, color: Colors.grey.shade600),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              loginTime,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 24),
+                
+                // Help text
+                Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, size: 18, color: Colors.blue.shade700),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'You must logout from the other device before logging in here.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 24),
+                
+                // OK Button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.maincolor,
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: Text(
+                      'I Understand',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   void _checkExistingSession() async {
     setState(() { _isLoading = true; });
@@ -157,6 +371,10 @@ class _LoginScreenState extends State<LoginScreen> {
         
         String errorMessage = 'Login failed. Please try again.';
         if (e is DioException) {
+          print('🔍 [LoginScreen] DioException type: ${e.type}');
+          print('🔍 [LoginScreen] Response status code: ${e.response?.statusCode}');
+          print('🔍 [LoginScreen] Response data: ${e.response?.data}');
+          
           switch (e.type) {
             case DioExceptionType.connectionTimeout:
               errorMessage = 'Connection timeout. Please check your internet connection.';
@@ -168,7 +386,15 @@ class _LoginScreenState extends State<LoginScreen> {
               errorMessage = 'Cannot connect to server. Please check your internet connection.';
               break;
             case DioExceptionType.badResponse:
-              if (e.response?.statusCode == 401) {
+              print('🔍 [LoginScreen] Bad response detected, status: ${e.response?.statusCode}');
+              if (e.response?.statusCode == 403) {
+                print('✅ [LoginScreen] 403 detected - showing already logged in dialog');
+                // 🔒 ALREADY LOGGED IN - Show beautiful dialog and banner
+                if (mounted) {
+                  _showAlreadyLoggedInDialog(e.response?.data);
+                }
+                return; // Exit early, don't show snackbar
+              } else if (e.response?.statusCode == 401) {
                 errorMessage = 'Invalid email or password.';
               } else if (e.response?.statusCode == 500) {
                 errorMessage = 'Server error. Please try again later.';
@@ -179,6 +405,8 @@ class _LoginScreenState extends State<LoginScreen> {
             default:
               errorMessage = 'Network error. Please check your connection.';
           }
+        } else {
+          print('🔍 [LoginScreen] Non-Dio error: ${e.runtimeType}');
         }
         
         if (mounted) {
@@ -205,6 +433,111 @@ class _LoginScreenState extends State<LoginScreen> {
               padding: EdgeInsets.fromLTRB(24, 150, 24, 24),
               child: Column(
                 children: [
+                  // 🔒 Session Limit Banner (appears when login blocked)
+                  AnimatedContainer(
+                    duration: Duration(milliseconds: 300),
+                    height: _showSessionLimitBanner ? null : 0,
+                    child: _showSessionLimitBanner
+                        ? Container(
+                            margin: EdgeInsets.only(bottom: 20),
+                            padding: EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Color(0xFFFF6B35),
+                                  Color(0xFFFF8C42),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Color(0xFFFF6B35).withOpacity(0.3),
+                                  blurRadius: 15,
+                                  offset: Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Icon(
+                                        Icons.block,
+                                        color: Colors.white,
+                                        size: 24,
+                                      ),
+                                    ),
+                                    SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Login Limit Reached',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          SizedBox(height: 4),
+                                          Text(
+                                            'Already active on another device',
+                                            style: TextStyle(
+                                              color: Colors.white.withOpacity(0.9),
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: Icon(Icons.close, color: Colors.white, size: 20),
+                                      onPressed: () {
+                                        setState(() {
+                                          _showSessionLimitBanner = false;
+                                        });
+                                      },
+                                    ),
+                                  ],
+                                ),
+                                SizedBox(height: 12),
+                                Container(
+                                  padding: EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.info_outline, color: Colors.white, size: 16),
+                                      SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'Please logout from $_sessionDevice first',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : SizedBox.shrink(),
+                  ),
+                  
                   // Logo
                   Container(
                     width: 120,

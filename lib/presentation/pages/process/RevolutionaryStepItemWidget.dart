@@ -12,7 +12,7 @@ class RevolutionaryStepItemWidget extends StatelessWidget {
   final bool isActive;
   final String? jobNumber;
   final VoidCallback onTap;
-
+  final VoidCallback? onInfoTap;
   const RevolutionaryStepItemWidget({
     Key? key,
     required this.step,
@@ -20,6 +20,7 @@ class RevolutionaryStepItemWidget extends StatelessWidget {
     required this.isActive,
     required this.jobNumber,
     required this.onTap,
+    this.onInfoTap,
   }) : super(key: key);
 
   @override
@@ -33,7 +34,7 @@ class RevolutionaryStepItemWidget extends StatelessWidget {
     }
     
     // 🎨 Enhanced styling for different statuses
-    final isCompletedStatus = step.status == StepStatus.completed;
+    final isCompletedStatus = step.status == StepStatus.paused;
     final isInProgress = step.status == StepStatus.inProgress || step.status == StepStatus.started;
 
     return Container(
@@ -225,7 +226,7 @@ class RevolutionaryStepItemWidget extends StatelessWidget {
           color: Colors.white,
           size: 32,
         );
-      case StepStatus.completed:
+      case StepStatus.paused:
         return Icon(
           Icons.check_circle,
           color: Colors.white,
@@ -268,12 +269,14 @@ class RevolutionaryStepItemWidget extends StatelessWidget {
         return 'Work Started';
       case StepStatus.inProgress:
         return 'In Progress';
-      case StepStatus.completed:
-        return 'Completed';
+      case StepStatus.paused:
+        return 'Stopped';
       case StepStatus.hold:
         return 'On Hold - Click to Resume';
       case StepStatus.paused:
         return 'Paused';
+      case StepStatus.major_hold:
+        return 'Major Hold';
     }
   }
   
@@ -285,7 +288,7 @@ class RevolutionaryStepItemWidget extends StatelessWidget {
       return Icons.edit;
     } else if (status == StepStatus.hold) {
       return Icons.play_circle_outline;
-    } else if (status == StepStatus.completed) {
+    } else if (status == StepStatus.paused) {
       return Icons.visibility;
     }
       return Icons.arrow_forward_ios;
@@ -300,6 +303,7 @@ class RevolutionaryStepItemWidget extends StatelessWidget {
       isActive: isActive,
       jobNumber: jobNumber,
       onTap: onTap,
+      onInfoTap: onInfoTap,
     );
   }
 }

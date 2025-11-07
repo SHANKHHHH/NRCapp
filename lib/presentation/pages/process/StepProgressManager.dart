@@ -30,11 +30,11 @@ class StepProgressManager {
           type: parallelStepType,
           title: '',
           description: '',
-          status: StepStatus.completed, // Default to completed if not found
+          status: StepStatus.paused, // Default to paused/stopped if not found
         ),
       );
       
-      if (parallelStep.status != StepStatus.completed) {
+      if (parallelStep.status != StepStatus.paused) {
         return false;
       }
     }
@@ -42,28 +42,94 @@ class StepProgressManager {
   }
 
   // Check if a step should be activated (considering parallel execution)
+  // UPDATED LOGIC: Steps can activate when previous steps are STARTED (matches new backend logic)
+  // - Current step can START when previous step is at 'start' status
+  // - Current step can STOP when previous step is at 'stop' status
   static bool shouldActivateStep(List<StepData> steps, int stepIndex) {
     if (stepIndex <= 0) return false;
     
     final step = steps[stepIndex];
     
-    // If this step can run in parallel, check if previous steps are completed
+    print('🔍 ACTIVATION CHECK for ${step.title} (index: $stepIndex):');
+    
+    // Special case: FluteLamination requires both Printing AND Corrugation to be started or completed (matches backend)
+    if (step.type == StepType.fluteLamination) {
+      final printingStep = steps.firstWhere(
+        (s) => s.type == StepType.printing,
+        orElse: () => StepData(type: StepType.printing, title: '', description: '', status: StepStatus.paused),
+      );
+      final corrugationStep = steps.firstWhere(
+        (s) => s.type == StepType.corrugation,
+        orElse: () => StepData(type: StepType.corrugation, title: '', description: '', status: StepStatus.paused),
+      );
+      
+      // Both Printing and Corrugation must be started or stopped for FluteLamination to start (matches backend logic)
+      final printingReady = printingStep.status == StepStatus.started || printingStep.status == StepStatus.paused;
+      final corrugationReady = corrugationStep.status == StepStatus.started || corrugationStep.status == StepStatus.paused;
+      
+      print('  - Printing status: ${printingStep.status} (ready: $printingReady)');
+      print('  - Corrugation status: ${corrugationStep.status} (ready: $corrugationReady)');
+      print('  - FluteLamination can start: ${printingReady && corrugationReady}');
+      
+      return printingReady && corrugationReady;
+    }
+    
+    // Special case: SideFlapPasting requires either Punching OR Die Cutting to be started or completed (matches backend)
+    if (step.type == StepType.flapPasting) {
+      final punchingStep = steps.firstWhere(
+        (s) => s.type == StepType.punching,
+        orElse: () => StepData(type: StepType.punching, title: '', description: '', status: StepStatus.paused),
+      );
+      final dieCuttingStep = steps.firstWhere(
+        (s) => s.type == StepType.dieCutting,
+        orElse: () => StepData(type: StepType.dieCutting, title: '', description: '', status: StepStatus.paused),
+      );
+      
+      // Either Punching OR Die Cutting must be started or stopped for SideFlapPasting to start (matches backend logic)
+      final punchingReady = punchingStep.status == StepStatus.started || punchingStep.status == StepStatus.paused;
+      final dieCuttingReady = dieCuttingStep.status == StepStatus.started || dieCuttingStep.status == StepStatus.paused;
+      
+      print('  - Punching status: ${punchingStep.status} (ready: $punchingReady)');
+      print('  - Die Cutting status: ${dieCuttingStep.status} (ready: $dieCuttingReady)');
+      print('  - SideFlapPasting can start: ${punchingReady || dieCuttingReady}');
+      
+      return punchingReady || dieCuttingReady;
+    }
+    
+    // If this step can run in parallel, check if previous steps are started
     if (canRunInParallel(step.type)) {
-      // Check if all previous non-parallel steps are completed
+      print('  - Step can run in parallel, checking previous non-parallel steps...');
+      // Check if all previous non-parallel steps are started or completed
       for (int i = 1; i < stepIndex; i++) {
         final previousStep = steps[i];
-        if (!canRunInParallel(previousStep.type) && previousStep.status != StepStatus.completed) {
+        print('    Previous step $i: ${previousStep.title} (${previousStep.type}) - Status: ${previousStep.status}');
+        
+        if (!canRunInParallel(previousStep.type) && 
+            previousStep.status != StepStatus.started && 
+            previousStep.status != StepStatus.inProgress &&
+            previousStep.status != StepStatus.paused) {
+          print('    ❌ Blocked by non-parallel step: ${previousStep.title} (status: ${previousStep.status})');
           return false;
         }
       }
+      print('  ✅ All previous non-parallel steps are ready');
       return true;
     } else {
-      // For non-parallel steps, check if all previous steps are completed
+      print('  - Step cannot run in parallel, checking all previous steps...');
+      // For non-parallel steps, check if all previous steps are started or stopped
+      // This allows parallel work while maintaining completion order
       for (int i = 1; i < stepIndex; i++) {
-        if (steps[i].status != StepStatus.completed) {
+        final previousStep = steps[i];
+        print('    Previous step $i: ${previousStep.title} (${previousStep.type}) - Status: ${previousStep.status}');
+        
+        if (previousStep.status != StepStatus.started && 
+            previousStep.status != StepStatus.inProgress &&
+            previousStep.status != StepStatus.paused) {
+          print('    ❌ Blocked by previous step: ${previousStep.title} (status: ${previousStep.status})');
           return false;
         }
       }
+      print('  ✅ All previous steps are ready');
       return true;
     }
   }
@@ -110,24 +176,23 @@ class StepProgressManager {
             '${steps[completedStepIndex].title} completed! Activated: $stepNames'
         );
       } else {
-        // Only show "job completed" if ALL steps including Flap Pasting are completed
-        bool allStepsCompleted = steps.every((step) => step.status == StepStatus.completed);
-        if (allStepsCompleted) {
-          onShowMessage('All job steps completed! Job is ready for final review.');
+        // Only show "job completed" if ALL steps including Flap Pasting are stopped
+        bool allStepsStopped = steps.every((step) => step.status == StepStatus.paused);
+        if (allStepsStopped) {
+          onShowMessage('All job steps stopped! Job is ready for final review.');
         } else {
-          // Just show that this specific step completed
-          onShowMessage('${steps[completedStepIndex].title} completed!');
+          // Just show that this specific step stopped
+          onShowMessage('${steps[completedStepIndex].title} stopped!');
         }
       }
     }
   }
 
   static bool isStepClickable(StepData step, bool isActive) {
-    return step.type == StepType.jobAssigned ||
-        (step.status == StepStatus.pending && isActive) ||
+    return (step.status == StepStatus.pending && isActive) ||
         step.status == StepStatus.started ||
         step.status == StepStatus.inProgress ||
         step.status == StepStatus.hold || // Add hold status as clickable
-        (step.status == StepStatus.completed && step.formData.isNotEmpty);
+        (step.status == StepStatus.paused && step.formData.isNotEmpty);
   }
 }

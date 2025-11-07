@@ -105,7 +105,9 @@ class RevolutionaryStepStatusManager {
         return StepStatus.inProgress;
       case 'completed':
       case 'complete':
-        return StepStatus.completed;
+      case 'stop':
+      case 'stopped':
+        return StepStatus.pending; // Backend uses 'stop' status after completion
       case 'hold':
       case 'paused':
         return StepStatus.hold;
@@ -142,21 +144,14 @@ class RevolutionaryStepStatusManager {
     }
   }
   
-  /// 🎯 Check if step is clickable (REVOLUTIONARY LOGIC for PAPERSTORE, QUALITY, DISPATCH ONLY!)
+  /// 🎯 Check if step is clickable (REVOLUTIONARY LOGIC for ALL STEPS!)
   static bool isStepClickable(StepData step, bool isActive) {
-    // 🎯 ONLY make PaperStore, Quality, and Dispatch steps clickable
-    if (step.type != StepType.paperStore && step.type != StepType.qc && step.type != StepType.dispatch) {
-      return false; // Other steps use existing logic
-    }
-    
-    // 🚀 REVOLUTIONARY: These steps are ALWAYS clickable!
-    return step.type == StepType.jobAssigned ||
-        (step.status == StepStatus.pending && isActive) ||
+    // 🚀 REVOLUTIONARY: ALL steps are clickable when they should be!
+    return (step.status == StepStatus.pending && isActive) ||
         step.status == StepStatus.started ||
         step.status == StepStatus.inProgress ||
         step.status == StepStatus.hold || // ✅ HOLD IS ALWAYS CLICKABLE!
-        step.status == StepStatus.paused ||
-        (step.status == StepStatus.completed && step.formData.isNotEmpty);
+        step.status == StepStatus.paused;
   }
   
   /// 🎯 Get stunning status color
@@ -168,12 +163,12 @@ class RevolutionaryStepStatusManager {
         return Colors.orange[600]!;
       case StepStatus.inProgress:
         return Colors.blue[600]!;
-      case StepStatus.completed:
-        return Colors.green[600]!;
       case StepStatus.hold:
         return Colors.orange[700]!; // 🎯 SPECIAL ORANGE FOR HOLD!
       case StepStatus.paused:
         return Colors.blue[700]!;
+      case StepStatus.major_hold:
+        return Colors.deepOrange[700]!;
     }
   }
   
@@ -186,12 +181,12 @@ class RevolutionaryStepStatusManager {
         return Icons.play_circle_filled;
       case StepStatus.inProgress:
         return Icons.sync;
-      case StepStatus.completed:
-        return Icons.check_circle;
       case StepStatus.hold:
         return Icons.pause_circle_filled; // 🎯 SPECIAL PAUSE ICON!
       case StepStatus.paused:
         return Icons.pause_circle_outlined;
+      case StepStatus.major_hold:
+        return Icons.error_outline;
     }
   }
 }

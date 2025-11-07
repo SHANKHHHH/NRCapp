@@ -35,11 +35,10 @@ class _ExpandableStepCardWidgetState extends State<ExpandableStepCardWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final isClickable = widget.step.type == StepType.jobAssigned ||
-        (widget.step.status == StepStatus.pending && widget.isActive) ||
+    final isClickable = (widget.step.status == StepStatus.pending && widget.isActive) ||
         widget.step.status == StepStatus.started ||
         widget.step.status == StepStatus.inProgress ||
-        widget.step.status == StepStatus.completed;
+        widget.step.status == StepStatus.paused;
 
     final hasMultipleMachines = _machineDetails != null && 
         _machineDetails!.length > 1;
@@ -50,7 +49,7 @@ class _ExpandableStepCardWidgetState extends State<ExpandableStepCardWidget> {
         elevation: widget.isActive ? 4 : 1,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: widget.isActive && widget.step.status != StepStatus.completed
+          side: widget.isActive && widget.step.status != StepStatus.paused
               ? BorderSide(color: AppColors.maincolor, width: 2)
               : BorderSide.none,
         ),
@@ -68,11 +67,11 @@ class _ExpandableStepCardWidgetState extends State<ExpandableStepCardWidget> {
                       width: 50,
                       height: 50,
                       decoration: BoxDecoration(
-                        color: StepStatusHelper.getStepColor(widget.step.status),
+                        color: StepStatusHelper.getStepColor(widget.step.status, widget.step),
                         borderRadius: BorderRadius.circular(25),
                       ),
                       child: Center(
-                        child: StepStatusHelper.getStepIcon(widget.step.status, widget.index + 1),
+                        child: StepStatusHelper.getStepIcon(widget.step.status, widget.index + 1, widget.step),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -85,7 +84,7 @@ class _ExpandableStepCardWidgetState extends State<ExpandableStepCardWidget> {
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: widget.isActive && widget.step.status != StepStatus.completed
+                              color: widget.isActive && widget.step.status != StepStatus.paused
                                   ? AppColors.maincolor
                                   : Colors.black87,
                             ),
@@ -103,7 +102,7 @@ class _ExpandableStepCardWidgetState extends State<ExpandableStepCardWidget> {
                             StepStatusHelper.getStepStatusText(widget.step, widget.jobNumber),
                             style: TextStyle(
                               fontSize: 13,
-                              color: StepStatusHelper.getStatusTextColor(widget.step.status),
+                              color: StepStatusHelper.getStatusTextColor(widget.step.status, widget.step),
                               fontWeight: FontWeight.w500,
                             ),
                           ),

@@ -1415,6 +1415,7 @@ class _EditWorkingDetailsPageState extends State<EditWorkingDetailsPage> {
     final startDate = step['startDate']?.toString();
     final endDate = step['endDate']?.toString();
     final user = step['user']?.toString();
+    final completedBy = step['completedBy']?.toString();
     final machineDetails = step['machineDetails'] as List<dynamic>? ?? [];
 
     return Container(
@@ -1495,14 +1496,15 @@ class _EditWorkingDetailsPageState extends State<EditWorkingDetailsPage> {
              const SizedBox(height: 12),
              Row(
                children: [
-                 Icon(Icons.person, size: 16, color: Colors.grey[600]),
+                 Icon(Icons.person_add, size: 16, color: Colors.blue[600]),
                  const SizedBox(width: 8),
                  Expanded(
                    child: Text(
-                     'Assigned to: $user',
+                     'Started by: $user',
                      style: TextStyle(
                        fontSize: 12,
-                       color: Colors.grey[600],
+                       color: Colors.blue[600],
+                       fontWeight: FontWeight.w500,
                      ),
                      overflow: TextOverflow.ellipsis,
                      maxLines: 1,
@@ -1510,6 +1512,38 @@ class _EditWorkingDetailsPageState extends State<EditWorkingDetailsPage> {
                  ),
                ],
              ),
+           ],
+           if (completedBy != null && completedBy.isNotEmpty) ...[
+             Builder(
+               builder: (context) {
+                 final completedByUsers = completedBy.split(', ').map((u) => u.trim()).toSet();
+                 if (completedByUsers.contains(user)) return const SizedBox.shrink();
+                 
+                 return Column(
+                   children: [
+                     const SizedBox(height: 8),
+                     Row(
+                       children: [
+                         Icon(Icons.check_circle, size: 16, color: Colors.green[600]),
+                         const SizedBox(width: 8),
+                         Expanded(
+                           child: Text(
+                             'Completed by: $completedBy',
+                             style: TextStyle(
+                               fontSize: 12,
+                               color: Colors.green[600],
+                               fontWeight: FontWeight.w500,
+                             ),
+                             overflow: TextOverflow.ellipsis,
+                             maxLines: 1,
+                           ),
+                         ),
+                       ],
+                     ),
+                   ],
+                 );
+               }
+             )
            ],
           
                      if (startDate != null) ...[

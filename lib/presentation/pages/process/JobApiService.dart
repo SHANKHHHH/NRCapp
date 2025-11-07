@@ -137,7 +137,7 @@ class JobApiService {
         if (status == 'in_progress') {
           onStatusUpdate(StepStatus.started);
         } else if (status == 'accept') {
-          onStatusUpdate(StepStatus.completed);
+          onStatusUpdate(StepStatus.paused);
         } else {
           onStatusUpdate(StepStatus.pending);
         }
@@ -369,8 +369,8 @@ class JobApiService {
     invalidateJobCaches(jobNumber, stepNo: stepNo);
   }
 
-  /// Complete Paper Store work
-  Future<void> completePaperStoreWork(String jobNumber, Map<String, dynamic> jobDetails, Map<String, String> formData) async {
+  /// Complete Paper Store work with completion remarks
+  Future<void> completePaperStoreWork(String jobNumber, Map<String, dynamic> jobDetails, Map<String, String> formData, {String? completeRemark}) async {
 
     final stepDetails = await getJobPlanningStepDetails(jobNumber, 1); // stepNo 1 for Paper Store
 
@@ -397,6 +397,7 @@ class JobApiService {
       'extraMargin': formData['extraMargin'] ?? '',
       'gsm': jobDetails['fluteType'] ?? '',
       'quality': formData['quality'] ?? '',
+      if (completeRemark != null) 'completeRemark': completeRemark,
     };
 
     final paperStore = await _jobApi.getPaperStoreStepByJob(jobNumber);
@@ -408,14 +409,14 @@ class JobApiService {
     invalidateJobCaches(jobNumber, stepNo: 1);
   }
 
-  /// Post step details for different step types
-  Future<void> putStepDetails(StepType stepType, String jobNumber, Map<String, String> formData, int stepNo) async {
+  /// Post step details for different step types with completion remarks
+  Future<void> putStepDetails(StepType stepType, String jobNumber, Map<String, String> formData, int stepNo, {String? completeRemark}) async {
     // Instead of calling separate step-specific APIs, send form data directly to job planning step completion
-    await _putJobPlanningStepFormData(jobNumber, stepNo, formData);
+    await _putJobPlanningStepFormData(jobNumber, stepNo, formData, completeRemark: completeRemark);
   }
 
-  /// Send form data directly to job planning step completion endpoint
-  Future<void> _putJobPlanningStepFormData(String jobNumber, int stepNo, Map<String, String> formData) async {
+  /// Send form data directly to job planning step completion endpoint with completion remarks
+  Future<void> _putJobPlanningStepFormData(String jobNumber, int stepNo, Map<String, String> formData, {String? completeRemark}) async {
     try {
       print('[_putJobPlanningStepFormData] Sending form data to job planning step completion');
       print('Job Number: $jobNumber, Step No: $stepNo');
@@ -438,6 +439,7 @@ class JobApiService {
       // ✅ DO NOT send 'status' for machine-based steps - backend controls it!
       Map<String, dynamic> requestBody = {
         'user': 'NRC015', // Default user
+        if (completeRemark != null) 'completeRemark': completeRemark,
       };
       
       // Only include status for non-machine steps
@@ -695,7 +697,7 @@ class JobApiService {
       "quantity": int.tryParse(formData['Pass Quantity'] ?? '0') ?? 0, // ✅ Fixed: Use 'Pass Quantity'
       "rejectedQty": int.tryParse(formData['Reject Quantity'] ?? '0') ?? 0,
       "reasonForRejection": formData['Reason for Rejection'].toString() ?? '',
-      "remarks": formData['Remarks'] ?? '',
+      "remarks": formData['Remarks'] ?? formData['Complete Remark'] ?? formData['remarks'] ?? '',
     };
     print(body);
     await _jobApi.putQCDetails(body,jobNumber);
@@ -876,10 +878,10 @@ class JobApiService {
     }
   }
 
-  /// Hold PaperStore step with remarks
-  Future<Map<String, dynamic>?> holdPaperStoreStep(String jobNumber, String remarks) async {
+  /// Hold PaperStore step with hold remarks
+  Future<Map<String, dynamic>?> holdPaperStoreStep(String jobNumber, String holdRemark) async {
     try {
-      final result = await _jobApi.holdPaperStoreStep(jobNumber, remarks);
+      final result = await _jobApi.holdPaperStoreStep(jobNumber, holdRemark);
       // Clear cache to ensure fresh data on next fetch
       _clearCacheForJob(jobNumber);
       return result;
@@ -889,10 +891,10 @@ class JobApiService {
     }
   }
 
-  /// Resume PaperStore step with remarks
-  Future<Map<String, dynamic>?> resumePaperStoreStep(String jobNumber, String remarks) async {
+  /// Resume PaperStore step with resume remarks
+  Future<Map<String, dynamic>?> resumePaperStoreStep(String jobNumber, String resumeRemark) async {
     try {
-      final result = await _jobApi.resumePaperStoreStep(jobNumber, remarks);
+      final result = await _jobApi.resumePaperStoreStep(jobNumber, resumeRemark);
       // Clear cache to ensure fresh data on next fetch
       _clearCacheForJob(jobNumber);
       return result;
@@ -910,10 +912,10 @@ class JobApiService {
     }
   }
 
-  /// Hold any step with remarks
-  Future<Map<String, dynamic>?> holdStep(String stepType, String jobNumber, String remarks) async {
+  /// Hold any step with hold remarks
+  Future<Map<String, dynamic>?> holdStep(String stepType, String jobNumber, String holdRemark) async {
     try {
-      final result = await _jobApi.holdStep(stepType, jobNumber, remarks);
+      final result = await _jobApi.holdStep(stepType, jobNumber, holdRemark);
       // Clear cache to ensure fresh data on next fetch
       _clearCacheForJob(jobNumber);
       return result;
@@ -923,10 +925,23 @@ class JobApiService {
     }
   }
 
-  /// Resume any step with remarks
-  Future<Map<String, dynamic>?> resumeStep(String stepType, String jobNumber, String remarks) async {
+  /// Major hold work on machine
+  Future<Map<String, dynamic>?> majorHoldWorkOnMachine(String jobNumber, int stepNo, String machineId, {Map<String, dynamic>? formData, String? majorHoldReason}) async {
     try {
-      final result = await _jobApi.resumeStep(stepType, jobNumber, remarks);
+      final result = await _jobApi.majorHoldWorkOnMachine(jobNumber, stepNo, machineId, formData: formData, majorHoldReason: majorHoldReason);
+      // Clear cache to ensure fresh data on next fetch
+      _clearCacheForJob(jobNumber);
+      return result;
+    } catch (e) {
+      print('Error major holding work on machine: $e');
+      return null;
+    }
+  }
+
+  /// Resume any step with resume remarks
+  Future<Map<String, dynamic>?> resumeStep(String stepType, String jobNumber, String resumeRemark) async {
+    try {
+      final result = await _jobApi.resumeStep(stepType, jobNumber, resumeRemark);
       // Clear cache to ensure fresh data on next fetch
       _clearCacheForJob(jobNumber);
       return result;
@@ -1090,8 +1105,15 @@ class JobApiService {
         final innerData = paperStoreData['data'];
         print('🔍 DEBUG: innerData = $innerData');
         
-        final available = innerData['available'];
+        // Try 'available' field first
+        var available = innerData['available'];
         print('🔍 DEBUG: available = $available');
+        
+        // If 'available' is null, try 'quantity' field as fallback
+        if (available == null) {
+          available = innerData['quantity'];
+          print('🔍 DEBUG: available (from quantity) = $available');
+        }
         
         if (available != null) {
           final availableQty = int.tryParse(available.toString());
@@ -1133,6 +1155,16 @@ class JobApiService {
         case StepType.flapPasting:
           // Flap Pasting gets OK quantity from Punching
           previousStepType = StepType.punching;
+          break;
+          
+        case StepType.qc:
+          // QC gets OK quantity from Flap Pasting
+          previousStepType = StepType.flapPasting;
+          break;
+          
+        case StepType.dispatch:
+          // Dispatch gets OK quantity from QC
+          previousStepType = StepType.qc;
           break;
           
         default:
@@ -1225,6 +1257,16 @@ class JobApiService {
     } catch (e) {
       print('Error resuming work: $e');
       return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Get all users for name lookup
+  Future<List<Map<String, dynamic>>> getAllUsers() async {
+    try {
+      return await _jobApi.getAllUsers();
+    } catch (e) {
+      print('Error fetching all users: $e');
+      return [];
     }
   }
 

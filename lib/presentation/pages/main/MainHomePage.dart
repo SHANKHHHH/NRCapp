@@ -4,7 +4,6 @@ import 'dart:async';
 
 import '../home/HomeScreen.dart';
 import '../notification/NotificationsScreen.dart';
-import '../work/WorkScreen.dart';
 
 class MainScaffold extends StatefulWidget {
   const MainScaffold({Key? key}) : super(key: key);
@@ -20,7 +19,6 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   final List<Widget> _pages = const [
     HomeScreen(),
-    WorkScreen(),
     NotificationsScreen(),
   ];
 
@@ -38,10 +36,9 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   Future<void> _refreshBadgeCount() async {
     try {
-      final count = await fetchNotificationCountForBadge();
-      if (!mounted) return;
+      // Badge count removed - PD announcements don't need badge
       setState(() {
-        _badgeCount = count;
+        _badgeCount = 0;
       });
     } catch (_) {}
   }
@@ -51,7 +48,7 @@ class _MainScaffoldState extends State<MainScaffold> {
       setState(() {
         _selectedIndex = index;
         // Clear the badge when opening Alerts tab
-        if (_selectedIndex == 2) {
+        if (_selectedIndex == 1) {
           _badgeCount = 0;
         }
       });
@@ -93,11 +90,6 @@ class _MainScaffoldState extends State<MainScaffold> {
                 icon: Icon(Icons.home_outlined),
                 activeIcon: Icon(Icons.home),
                 label: 'Home',
-              ),
-              const BottomNavigationBarItem(
-                icon: Icon(Icons.work_outline),
-                activeIcon: Icon(Icons.work),
-                label: 'Work',
               ),
               BottomNavigationBarItem(
                 icon: Stack(
