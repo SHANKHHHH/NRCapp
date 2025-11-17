@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
@@ -297,6 +299,34 @@ class _UserOwnActivityPageState extends State<UserOwnActivityPage> {
     }
   }
 
+  String? _extractJobPlanId(Map<String, dynamic> log) {
+    if (log['jobPlanId'] != null && log['jobPlanId'].toString().isNotEmpty) {
+      return log['jobPlanId'].toString();
+    }
+
+    final details = (log['details'] ?? '').toString();
+    if (details.contains('{') && details.contains('}')) {
+      try {
+        final jsonPart = details.split(' | Resource:')[0].trim();
+        final jsonData = jsonDecode(jsonPart);
+
+        if (jsonData['jobPlanId'] != null) {
+          return jsonData['jobPlanId'].toString();
+        }
+
+        if (jsonData['jobPlanning'] != null &&
+            jsonData['jobPlanning'] is Map &&
+            jsonData['jobPlanning']['jobPlanId'] != null) {
+          return jsonData['jobPlanning']['jobPlanId'].toString();
+        }
+      } catch (_) {
+        // If parsing fails, ignore and fall through to null
+      }
+    }
+
+    return null;
+  }
+
   IconData _getActionIcon(String action) {
     if (action.contains('Created')) return Icons.add_circle_outline;
     if (action.contains('Updated')) return Icons.edit_outlined;
@@ -324,6 +354,7 @@ class _UserOwnActivityPageState extends State<UserOwnActivityPage> {
     final details = (log['details'] ?? '').toString();
     final createdAt = (log['createdAt'] ?? '').toString();
     final nrcJobNo = (log['nrcJobNo'] ?? '').toString();
+    final jobPlanId = _extractJobPlanId(log);
 
     final actionColor = _getActionColor(action);
     final actionIcon = _getActionIcon(action);
@@ -410,6 +441,24 @@ class _UserOwnActivityPageState extends State<UserOwnActivityPage> {
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                     color: AppColors.maincolor,
+                  ),
+                ),
+              ),
+            ],
+            if (jobPlanId != null && jobPlanId.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.deepPurple.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  'Plan ID: $jobPlanId',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.deepPurple[700],
                   ),
                 ),
               ),

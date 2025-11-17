@@ -127,6 +127,22 @@ class _UserDailyActivityPageState extends State<UserDailyActivityPage> {
       // Process and group activities by job
       final Map<String, Map<String, dynamic>> jobActivities = {};
       final Map<String, Map<String, String>> uniqueQuantities = {}; // Track unique quantities per job
+      const statusPriority = {
+        'Unknown': 0,
+        'In Progress': 1,
+        'On Hold': 2,
+        'Completed': 3,
+      };
+
+      void updateStatus(String activityKey, String newStatus) {
+        final currentStatus =
+            (jobActivities[activityKey]!['status'] ?? 'Unknown') as String;
+        final currentPriority = statusPriority[currentStatus] ?? 0;
+        final newPriority = statusPriority[newStatus] ?? 0;
+        if (newPriority >= currentPriority) {
+          jobActivities[activityKey]!['status'] = newStatus;
+        }
+      }
       
       for (final log in filteredLogs) {
         final nrcJobNo = (log['nrcJobNo'] ?? '').toString();
@@ -252,11 +268,11 @@ class _UserDailyActivityPageState extends State<UserDailyActivityPage> {
           final actionLower = action.toLowerCase();
           final detailsLower = details.toLowerCase();
           if (actionLower.contains('completed') || detailsLower.contains('completed')) {
-            jobActivities[activityKey]!['status'] = 'Completed';
+            updateStatus(activityKey, 'Completed');
           } else if (actionLower.contains('hold')) {
-            jobActivities[activityKey]!['status'] = 'On Hold';
+            updateStatus(activityKey, 'On Hold');
           } else if (actionLower.contains('started')) {
-            jobActivities[activityKey]!['status'] = 'In Progress';
+            updateStatus(activityKey, 'In Progress');
           }
         }
       }
