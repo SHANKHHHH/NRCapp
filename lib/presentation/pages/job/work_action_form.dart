@@ -28,8 +28,11 @@ class WorkActionForm extends StatefulWidget {
   final int? expectedQuantity; // Add expectedQuantity parameter for validation
   final StepType? stepType; // Add stepType parameter for dynamic fields
   final Map<String, dynamic>? jobData; // Add jobData parameter for auto-population
+  final int? jobPlanId;
+  final int? jobStepId;
   final String? machineId; // Add machineId parameter for machine-specific work
   final String? nrcJobNo; // Add nrcJobNo parameter
+  final int? initialAvailableQuantity;
 
   const WorkActionForm({
     super.key,
@@ -51,9 +54,12 @@ class WorkActionForm extends StatefulWidget {
     this.expectedQuantity, // Add expectedQuantity
     this.stepType, // Add stepType
     this.jobData, // Add jobData
+    this.jobPlanId,
     this.machineId, // Add machineId
     this.nrcJobNo, // Add nrcJobNo
     this.parentContext, // Add parentContext
+    this.jobStepId,
+    this.initialAvailableQuantity,
   });
 
   @override
@@ -86,7 +92,8 @@ class _WorkActionFormState extends State<WorkActionForm> {
     if (widget.stepType == StepType.flapPasting && _availableQuantity != null && widget.jobData != null) {
       final noUps = widget.jobData!['noUps'];
       if (noUps != null) {
-        final noUpsInt = noUps is int ? noUps : (int.tryParse(noUps.toString()) ?? 1);
+      final rawNoUps = noUps is int ? noUps : int.tryParse(noUps.toString());
+      final noUpsInt = (rawNoUps == null || rawNoUps <= 0) ? 1 : rawNoUps;
         return _availableQuantity! * noUpsInt;
       }
     }
@@ -138,7 +145,8 @@ class _WorkActionFormState extends State<WorkActionForm> {
       // Get available quantity from previous step
       final availableQty = await widget.apiService!.getPreviousStepAvailableQuantity(
         widget.jobNumber!, 
-        widget.stepType!
+        widget.stepType!,
+        jobPlanId: widget.jobPlanId,
       );
       
       int remainingQty = availableQty ?? 0;
@@ -148,7 +156,8 @@ class _WorkActionFormState extends State<WorkActionForm> {
         try {
           final machinesStatus = await widget.apiService!.getMachineWorkStatus(
             widget.nrcJobNo!,
-            widget.stepNo!
+            widget.stepNo!,
+            jobPlanId: widget.jobPlanId,
           );
           
           // Calculate total submitted by OTHER machines (exclude current machine)
@@ -230,6 +239,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
     super.initState();
     _job = JobApi(DioService.instance); // Initialize JobApi instance
     _initializeControllers();
+    _availableQuantity = widget.initialAvailableQuantity;
     _autoPopulateFields();
     // Load current status from database if API service is available
     _loadCurrentStatus();
@@ -540,7 +550,11 @@ class _WorkActionFormState extends State<WorkActionForm> {
       // For machine-specific work, get machine status instead of step status
       if (widget.machineId != null && widget.nrcJobNo != null) {
         // Get available machines to find the current machine status
-        final machinesData = await widget.apiService!.getAvailableMachines(widget.nrcJobNo!, widget.stepNo!);
+        final machinesData = await widget.apiService!.getAvailableMachines(
+          widget.nrcJobNo!,
+          widget.stepNo!,
+          jobPlanId: widget.jobPlanId,
+        );
         if (machinesData != null && machinesData['machines'] is List) {
           final machines = machinesData['machines'] as List;
           final currentMachine = machines.firstWhere(
@@ -732,6 +746,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
           widget.stepNo!,
           widget.machineId!,
           formData: formData,
+          jobPlanId: widget.jobPlanId,
         );
         
         if (result != null) {
@@ -787,6 +802,8 @@ class _WorkActionFormState extends State<WorkActionForm> {
         {
           'status': 'start',
         },
+        jobPlanId: widget.jobPlanId,
+        jobStepId: widget.jobStepId,
       );
 
       // Also update individual step status to in_progress
@@ -849,6 +866,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
             widget.machineId!,
             formData: formData,
             holdReason: remarks,
+            jobPlanId: widget.jobPlanId,
           );
           
           if (result != null) {
@@ -924,6 +942,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
             widget.machineId!,
             formData: formData,
             majorHoldReason: remarks,
+            jobPlanId: widget.jobPlanId,
           );
           
           if (result != null) {
@@ -967,6 +986,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
             widget.stepNo!,
             widget.machineId!,
             formData: formData,
+            jobPlanId: widget.jobPlanId,
           );
           
           if (result != null) {
@@ -1196,6 +1216,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
           widget.nrcJobNo!,
           widget.stepNo!,
           widget.machineId!,
+          jobPlanId: widget.jobPlanId,
           // NO formData parameter - backend only changes status
         );
         
@@ -1258,6 +1279,8 @@ class _WorkActionFormState extends State<WorkActionForm> {
           'endDate': _formatDateWithMilliseconds(),
           'status': 'stop',
         },
+        jobPlanId: widget.jobPlanId,
+        jobStepId: widget.jobStepId,
       );
 
       // Also update individual step status to accept
@@ -1314,19 +1337,23 @@ class _WorkActionFormState extends State<WorkActionForm> {
     });
 
     // Get available quantity from previous step for validation
-    int? availableQuantity;
-    if (widget.apiService != null && widget.jobNumber != null && widget.stepType != null) {
-      availableQuantity = await widget.apiService!.getPreviousStepAvailableQuantity(
+    int? availableQuantity = _availableQuantity;
+    if (availableQuantity == null &&
+        widget.apiService != null &&
+        widget.jobNumber != null &&
+        widget.stepType != null) {
+      final fetchedQuantity = await widget.apiService!.getPreviousStepAvailableQuantity(
         widget.jobNumber!,
         widget.stepType!,
+        jobPlanId: widget.jobPlanId,
       );
       
-      // Store available quantity for use in _completeWorkWithFormData (only if widget is still mounted)
       if (mounted) {
         setState(() {
-          _availableQuantity = availableQuantity;
+          _availableQuantity = fetchedQuantity;
         });
       }
+      availableQuantity = fetchedQuantity;
     }
 
     // For Dispatch, get dispatch tracking data
@@ -1347,7 +1374,11 @@ class _WorkActionFormState extends State<WorkActionForm> {
         
         // For Dispatch, get dispatch tracking data
         if (widget.stepType == StepType.dispatch) {
-          final dispatchDetailsResponse = await widget.apiService!.getStepDetailsWithEditability(widget.jobNumber!, StepType.dispatch);
+          final dispatchDetailsResponse = await widget.apiService!.getStepDetailsWithEditability(
+            widget.jobNumber!,
+            StepType.dispatch,
+            jobPlanId: widget.jobPlanId,
+          );
           totalDispatchedQty = 0; // Default to 0 if no records
           if (dispatchDetailsResponse.isNotEmpty) {
             final dispatchData = dispatchDetailsResponse[0].data;
@@ -1381,13 +1412,61 @@ class _WorkActionFormState extends State<WorkActionForm> {
           if ((widget.stepType == StepType.paperStore || widget.stepType == StepType.dispatch) 
               && job.purchaseOrders != null) {
             final List pos = job.purchaseOrders!;
-            jobTotalQuantity = pos.fold<int>(0, (sum, po) {
-              final poDynamic = po as dynamic;
-              final poQty = poDynamic?.totalPOQuantity;
-              final intQty = poQty is int ? poQty : (int.tryParse(poQty?.toString() ?? '0') ?? 0);
-              return sum + intQty;
-            });
-            print('🔍 [PO Fetch] Total PO Quantity: $jobTotalQuantity');
+            
+            // For PaperStore and Dispatch, use only the PO linked to the job planning
+            if ((widget.stepType == StepType.paperStore || widget.stepType == StepType.dispatch) && widget.jobPlanId != null) {
+              try {
+                print('🔍 [PO Fetch] Fetching job planning for ${widget.stepType}, jobPlanId: ${widget.jobPlanId}');
+                final jobPlanningData = await widget.apiService!.getJobPlanningStepsByNrcJobNo(
+                  widget.jobNumber!,
+                  jobPlanId: widget.jobPlanId,
+                );
+                
+                print('🔍 [PO Fetch] Job planning data: $jobPlanningData');
+                
+                if (jobPlanningData != null && jobPlanningData is Map) {
+                  final purchaseOrderId = jobPlanningData['purchaseOrderId'];
+                  print('🔍 [PO Fetch] purchaseOrderId from job planning: $purchaseOrderId');
+                  
+                  if (purchaseOrderId != null) {
+                    // Find matching PO
+                    print('🔍 [PO Fetch] Looking for PO with id: $purchaseOrderId');
+                    
+                    for (var po in pos) {
+                      final poId = po.id.toString();
+                      final poQty = po.totalPOQuantity;
+                      print('🔍 [PO Fetch] Checking PO: id=$poId, quantity=$poQty');
+                      if (poId == purchaseOrderId.toString()) {
+                        jobTotalQuantity = poQty;
+                        print('✅ [PO Fetch] Found matching PO! Quantity: $jobTotalQuantity');
+                        break;
+                      }
+                    }
+                    
+                    if (jobTotalQuantity == null) {
+                      print('⚠️ [PO Fetch] No matching PO found, will use sum');
+                    }
+                  } else {
+                    print('⚠️ [PO Fetch] purchaseOrderId is null in job planning data');
+                  }
+                } else {
+                  print('⚠️ [PO Fetch] jobPlanningData is null or not a Map');
+                }
+              } catch (e, stackTrace) {
+                print('⚠️ [PO Fetch] Error fetching job planning: $e');
+                print('⚠️ [PO Fetch] Stack trace: $stackTrace');
+              }
+            }
+            
+            // If not found, use sum of all POs
+            if (jobTotalQuantity == null) {
+              jobTotalQuantity = pos.fold<int>(0, (sum, po) {
+                final poQty = po.totalPOQuantity;
+                final intQty = poQty is int ? poQty : (int.tryParse(poQty?.toString() ?? '0') ?? 0);
+                return sum + intQty;
+              });
+              print('🔍 [PO Fetch] Total PO Quantity (sum): $jobTotalQuantity');
+            }
           }
         }
         
@@ -1408,7 +1487,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
       context: contextToUse,
       barrierDismissible: false, // Prevent closing by tapping outside
       builder: (context) => CompletionFormDialog(
-        availableQuantity: availableQuantity,
+        availableQuantity: _availableQuantity,
         stepType: widget.stepType,
         totalDispatchedQty: totalDispatchedQty,
         dispatchHistory: dispatchHistory,
@@ -1576,6 +1655,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
           widget.stepNo!,
           widget.machineId!,
           formData: formData,
+          jobPlanId: widget.jobPlanId,
         );
         print('✅ Machine completion result: $result');
       } else {
@@ -1657,6 +1737,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
               widget.stepNo!,
               widget.machineId!,
               formData: formData,
+              jobPlanId: widget.jobPlanId,
             );
             print('Machine completion result: $result');
             
@@ -2655,7 +2736,8 @@ class _CompletionFormDialogState extends State<CompletionFormDialog> {
       final noUps = widget.jobData!['noUps'];
       print('🔍 [CompletionFormDialog] Flap Pasting - availableQuantity: ${widget.availableQuantity}, jobData: ${widget.jobData?.keys.toList()}, noUps: $noUps');
       if (noUps != null) {
-        final noUpsInt = noUps is int ? noUps : (int.tryParse(noUps.toString()) ?? 1);
+        final rawNoUps = noUps is int ? noUps : int.tryParse(noUps.toString());
+        final noUpsInt = (rawNoUps == null || rawNoUps <= 0) ? 1 : rawNoUps;
         final adjusted = widget.availableQuantity! * noUpsInt;
         print('🔍 [CompletionFormDialog] Calculated adjusted quantity: $adjusted (${widget.availableQuantity} × $noUpsInt)');
         return adjusted;
@@ -2673,7 +2755,8 @@ class _CompletionFormDialogState extends State<CompletionFormDialog> {
     if (widget.stepType == StepType.flapPasting && widget.availableQuantity != null && widget.jobData != null) {
       final noUps = widget.jobData!['noUps'];
       if (noUps != null) {
-        final noUpsInt = noUps is int ? noUps : (int.tryParse(noUps.toString()) ?? 1);
+        final rawNoUps = noUps is int ? noUps : int.tryParse(noUps.toString());
+        final noUpsInt = (rawNoUps == null || rawNoUps <= 0) ? 1 : rawNoUps;
         final adjustedQty = widget.availableQuantity! * noUpsInt;
         return 'Available from previous step: ${widget.availableQuantity} (sheets) × No. of Ups: $noUpsInt = $adjustedQty (boxes)';
       }
@@ -3076,7 +3159,8 @@ class _CompletionFormDialogState extends State<CompletionFormDialog> {
                   if (widget.stepType == StepType.flapPasting && widget.availableQuantity != null && widget.jobData != null) {
                     final noUps = widget.jobData!['noUps'];
                     if (noUps != null) {
-                      final noUpsInt = noUps is int ? noUps : (int.tryParse(noUps.toString()) ?? 1);
+                      final rawNoUps = noUps is int ? noUps : int.tryParse(noUps.toString());
+                      final noUpsInt = (rawNoUps == null || rawNoUps <= 0) ? 1 : rawNoUps;
                       final maxAllowed = widget.availableQuantity! * noUpsInt;
                       if (quantity > maxAllowed) {
                         return 'OK quantity cannot exceed ${maxAllowed} (Punching OK: ${widget.availableQuantity} × No. of Ups: $noUpsInt)';

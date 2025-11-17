@@ -134,18 +134,81 @@ class _UserDailyActivityPageState extends State<UserDailyActivityPage> {
         final details = (log['details'] ?? '').toString();
         final createdAt = (log['createdAt'] ?? '').toString();
         
+        // Extract jobPlanId from log (try root level first, then from details JSON)
+        // IMPORTANT: Always extract jobPlanId to ensure completed jobs are separated
+        String? jobPlanId;
+        if (log['jobPlanId'] != null) {
+          jobPlanId = log['jobPlanId'].toString();
+        } else {
+          // Try to extract from details JSON
+          try {
+            if (details.contains('{') && details.contains('}')) {
+              final jsonPart = details.split(' | Resource:')[0].trim();
+              final jsonData = jsonDecode(jsonPart);
+              
+              // First priority: jobPlanId from JSON
+              if (jsonData['jobPlanId'] != null) {
+                jobPlanId = jsonData['jobPlanId'].toString();
+              }
+              
+              // Second priority: jobPlanId from nested structures
+              if ((jobPlanId == null || jobPlanId.isEmpty) && jsonData['jobPlanning'] != null) {
+                final jobPlanning = jsonData['jobPlanning'];
+                if (jobPlanning is Map && jobPlanning['jobPlanId'] != null) {
+                  jobPlanId = jobPlanning['jobPlanId'].toString();
+                }
+              }
+              
+              // Third priority: stepNo or resourceId as fallback to make key unique
+              if (jobPlanId == null || jobPlanId.isEmpty) {
+                if (jsonData['stepNo'] != null) {
+                  jobPlanId = 'step_${jsonData['stepNo']}';
+                } else if (jsonData['resourceId'] != null) {
+                  jobPlanId = 'res_${jsonData['resourceId']}';
+                } else if (jsonData['id'] != null) {
+                  // Use id as last resort to ensure uniqueness
+                  jobPlanId = 'id_${jsonData['id']}';
+                }
+              }
+            }
+          } catch (e) {
+            // If JSON parsing fails, try to extract from resource part
+            try {
+              if (details.contains('Resource:')) {
+                final resourcePart = details.split('Resource:')[1].trim();
+                final resourceMatch = RegExp(r'(\d+)').firstMatch(resourcePart);
+                if (resourceMatch != null) {
+                  jobPlanId = 'res_${resourceMatch.group(1)}';
+                }
+              }
+            } catch (e2) {
+              // If all parsing fails, use a combination of timestamp and action to ensure uniqueness
+              // This ensures completed jobs are still separated even without jobPlanId
+              jobPlanId = '${createdAt}_${action.hashCode}';
+            }
+          }
+        }
+        
+        // Create composite key using nrcJobNo + jobPlanId to separate different plannings
+        // ALWAYS use composite key to prevent merging jobs with same nrcJobNo
+        // This ensures completed jobs with different jobPlanId are shown separately
+        final activityKey = jobPlanId != null && jobPlanId.isNotEmpty 
+            ? '${nrcJobNo}_$jobPlanId'
+            : '${nrcJobNo}_${createdAt}_${action.hashCode}'; // Use timestamp + action hash as fallback to ensure uniqueness
+        
         if (nrcJobNo.isNotEmpty) {
-          if (!jobActivities.containsKey(nrcJobNo)) {
-            jobActivities[nrcJobNo] = {
+          if (!jobActivities.containsKey(activityKey)) {
+            jobActivities[activityKey] = {
               'jobNumber': nrcJobNo,
+              'jobPlanId': jobPlanId, // Store jobPlanId for display
               'actions': <Map<String, dynamic>>[],
               'quantities': <String>[],
               'status': 'Unknown',
             };
-            uniqueQuantities[nrcJobNo] = {}; // Initialize quantities map
+            uniqueQuantities[activityKey] = {}; // Initialize quantities map
           }
           
-          jobActivities[nrcJobNo]!['actions'].add({
+          jobActivities[activityKey]!['actions'].add({
             'action': action,
             'details': details,
             'time': createdAt,
@@ -161,14 +224,14 @@ class _UserDailyActivityPageState extends State<UserDailyActivityPage> {
               // Extract totalOK and totalWastage from JSON - store unique values
               if (jsonData['totalOK'] != null) {
                 final okKey = 'OK: ${jsonData['totalOK']}';
-                if (!uniqueQuantities[nrcJobNo]!.containsKey('OK')) {
-                  uniqueQuantities[nrcJobNo]!['OK'] = okKey;
+                if (!uniqueQuantities[activityKey]!.containsKey('OK')) {
+                  uniqueQuantities[activityKey]!['OK'] = okKey;
                 }
               }
               if (jsonData['totalWastage'] != null && jsonData['totalWastage'] > 0) {
                 final wastageKey = 'Wastage: ${jsonData['totalWastage']}';
-                if (!uniqueQuantities[nrcJobNo]!.containsKey('Wastage')) {
-                  uniqueQuantities[nrcJobNo]!['Wastage'] = wastageKey;
+                if (!uniqueQuantities[activityKey]!.containsKey('Wastage')) {
+                  uniqueQuantities[activityKey]!['Wastage'] = wastageKey;
                 }
               }
             }
@@ -178,8 +241,8 @@ class _UserDailyActivityPageState extends State<UserDailyActivityPage> {
               final quantityMatch = RegExp(r'(\d+)').firstMatch(details);
               if (quantityMatch != null) {
                 final qtyKey = quantityMatch.group(1)!;
-                if (!uniqueQuantities[nrcJobNo]!.containsKey('qty')) {
-                  uniqueQuantities[nrcJobNo]!['qty'] = qtyKey;
+                if (!uniqueQuantities[activityKey]!.containsKey('qty')) {
+                  uniqueQuantities[activityKey]!['qty'] = qtyKey;
                 }
               }
             }
@@ -189,18 +252,18 @@ class _UserDailyActivityPageState extends State<UserDailyActivityPage> {
           final actionLower = action.toLowerCase();
           final detailsLower = details.toLowerCase();
           if (actionLower.contains('completed') || detailsLower.contains('completed')) {
-            jobActivities[nrcJobNo]!['status'] = 'Completed';
+            jobActivities[activityKey]!['status'] = 'Completed';
           } else if (actionLower.contains('hold')) {
-            jobActivities[nrcJobNo]!['status'] = 'On Hold';
+            jobActivities[activityKey]!['status'] = 'On Hold';
           } else if (actionLower.contains('started')) {
-            jobActivities[nrcJobNo]!['status'] = 'In Progress';
+            jobActivities[activityKey]!['status'] = 'In Progress';
           }
         }
       }
       
       // Convert unique quantities map to list, maintaining order (OK first, then Wastage)
-      for (final jobNumber in uniqueQuantities.keys) {
-        final quantitiesMap = uniqueQuantities[jobNumber]!;
+      for (final activityKey in uniqueQuantities.keys) {
+        final quantitiesMap = uniqueQuantities[activityKey]!;
         final quantitiesList = <String>[];
         if (quantitiesMap.containsKey('OK')) {
           quantitiesList.add(quantitiesMap['OK']!);
@@ -211,7 +274,7 @@ class _UserDailyActivityPageState extends State<UserDailyActivityPage> {
         if (quantitiesMap.containsKey('qty')) {
           quantitiesList.add(quantitiesMap['qty']!);
         }
-        jobActivities[jobNumber]!['quantities'] = quantitiesList;
+        jobActivities[activityKey]!['quantities'] = quantitiesList;
       }
       
       setState(() {
@@ -290,6 +353,7 @@ class _UserDailyActivityPageState extends State<UserDailyActivityPage> {
 
   Widget _buildActivityCard(Map<String, dynamic> jobActivity) {
     final jobNumber = jobActivity['jobNumber'] ?? '';
+    final jobPlanId = jobActivity['jobPlanId'];
     final status = jobActivity['status'] ?? 'Unknown';
     final actions = jobActivity['actions'] as List<Map<String, dynamic>>;
     final quantities = jobActivity['quantities'] as List<String>;
@@ -324,7 +388,9 @@ class _UserDailyActivityPageState extends State<UserDailyActivityPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Job: $jobNumber',
+                        jobPlanId != null && jobPlanId.toString().isNotEmpty
+                            ? 'Job: $jobNumber (Plan: $jobPlanId)'
+                            : 'Job: $jobNumber',
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,

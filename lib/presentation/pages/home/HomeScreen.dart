@@ -40,6 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> _allMachines = [];
   Map<String, int> _machineJobCounts = {};
   int _totalJobPlanningsCount = 0; // Total number of job plannings accessible to user
+  List<Map<String, dynamic>>? _jobPlannings; // Store job plannings for counter calculations
   bool isLoadingMachines = false;
   JobApiService? _apiService;
 
@@ -94,6 +95,27 @@ class _HomeScreenState extends State<HomeScreen> {
   // Check if user is specifically a paperstore user
   bool _isPaperstoreUser() {
     return _userRoles.any((role) => role.toLowerCase() == 'paperstore');
+  }
+
+  // Helper method to check if step has machine assignment (matching WorkScreen logic)
+  bool _hasMachineAssignment(List<dynamic>? machineDetails) {
+    if (machineDetails == null) return false;
+    for (final detail in machineDetails) {
+      if (detail is Map<String, dynamic>) {
+        final machineId = detail['machineId']?.toString();
+        final machineCode = detail['machineCode']?.toString();
+        final nestedMachine = detail['machine'];
+        final nestedId = nestedMachine is Map<String, dynamic> ? nestedMachine['id']?.toString() : null;
+        final nestedCode = nestedMachine is Map<String, dynamic> ? nestedMachine['machineCode']?.toString() : null;
+        if ((machineId != null && machineId.trim().isNotEmpty) ||
+            (machineCode != null && machineCode.trim().isNotEmpty) ||
+            (nestedId != null && nestedId.trim().isNotEmpty) ||
+            (nestedCode != null && nestedCode.trim().isNotEmpty)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   // Check if user is specifically a quality control user
@@ -313,111 +335,128 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
       
-      // Group job plannings by nrcJobNo to avoid counting duplicate jobs
-      final Map<String, List<Map<String, dynamic>>> jobPlanningsByNrcJobNo = {};
-      for (final planning in jobPlannings) {
-        final nrcJobNo = planning['nrcJobNo']?.toString() ?? 'unknown';
-        if (!jobPlanningsByNrcJobNo.containsKey(nrcJobNo)) {
-          jobPlanningsByNrcJobNo[nrcJobNo] = [];
-        }
-        jobPlanningsByNrcJobNo[nrcJobNo]!.add(planning);
-      }
-      
-      print('DEBUG: Found ${jobPlanningsByNrcJobNo.length} unique jobs (grouped by nrcJobNo)');
-      
-      // Count how many unique jobs use each machine (count by nrcJobNo, not jobPlanId)
+      // Count each job planning (card) separately - don't group by nrcJobNo
       int totalActiveJobs = 0; // Track active jobs for non-machine roles
       
-      for (final nrcJobNo in jobPlanningsByNrcJobNo.keys) {
-        final planningsForThisJob = jobPlanningsByNrcJobNo[nrcJobNo]!;
+      // Process each planning individually - count each card separately
+      for (final planning in jobPlannings) {
+        final nrcJobNo = planning['nrcJobNo']?.toString() ?? 'unknown';
+        final planningId = planning['jobPlanId'] ?? planning['id'] ?? 'unknown';
         
-        // Track which machines are used in this unique job (across all its plannings)
-        final Set<String> machinesUsedInThisJob = {};
-        bool hasActiveNonMachineStep = false; // Track if job has active non-machine step
+        // Track which machines are used in this planning (card)
+        final Set<String> machinesUsedInThisPlanning = {};
+        bool hasActiveNonMachineStep = false; // Track if planning has active non-machine step
         
-        print('🔍 [HomeScreen] Processing job $nrcJobNo with ${planningsForThisJob.length} plannings');
+        print('🔍 [HomeScreen] Processing planning $planningId (job $nrcJobNo)');
         
-        // Process each planning for this job
-        for (final planning in planningsForThisJob) {
-          final planningId = planning['jobPlanId'] ?? planning['id'] ?? 'unknown';
-          
-          if (planning['steps'] is List) {
-            final steps = planning['steps'] as List;
-            for (final step in steps) {
-              final stepName = step['stepName']?.toString();
-              
-              // Determine which steps to include based on user role type
-              bool shouldIncludeStep = false;
-              
-              if (canSeeAllJobs) {
-                // For admin, planner, flyingsquad - count all steps
+        if (planning['steps'] is List) {
+          final steps = planning['steps'] as List;
+          for (final step in steps) {
+            final stepName = step['stepName']?.toString();
+            
+            // Determine which steps to include based on user role type
+            bool shouldIncludeStep = false;
+            
+            if (canSeeAllJobs) {
+              // For admin, planner, flyingsquad - count all steps
+              shouldIncludeStep = true;
+            } else if (hasNoMachineAccess) {
+              // For dispatch, quality - count all steps (existing behavior)
+              // For paperstore - only count paperstore step
+              if (_userRoles.any((role) => role.toLowerCase() == 'paperstore')) {
+                shouldIncludeStep = (stepName == 'PaperStore');
+                print('🔍 [HomeScreen] PaperStore user - stepName: $stepName, shouldIncludeStep: $shouldIncludeStep');
+              } else {
                 shouldIncludeStep = true;
-              } else if (hasNoMachineAccess) {
-                // For dispatch, quality - count all steps (existing behavior)
-                // For paperstore - only count paperstore step
-                if (_userRoles.any((role) => role.toLowerCase() == 'paperstore')) {
-                  shouldIncludeStep = (stepName == 'PaperStore');
-                  print('🔍 [HomeScreen] PaperStore user - stepName: $stepName, shouldIncludeStep: $shouldIncludeStep');
+              }
+            } else {
+              // For machine access roles (printer, corrugator, etc.) - ONLY count steps that match their role
+              if (_userRoles.any((role) => role.toLowerCase() == 'printer') && stepName == 'PrintingDetails') {
+                shouldIncludeStep = true;
+              } else if (_userRoles.any((role) => role.toLowerCase() == 'corrugator') && stepName == 'Corrugation') {
+                shouldIncludeStep = true;
+              } else if (_userRoles.any((role) => role.toLowerCase() == 'flutelaminator') && stepName == 'FluteLaminateBoardConversion') {
+                shouldIncludeStep = true;
+              } else if (_userRoles.any((role) => role.toLowerCase() == 'punching_operator') && stepName == 'Punching') {
+                shouldIncludeStep = true;
+              } else if (_userRoles.any((role) => role.toLowerCase() == 'pasting_operator') && stepName == 'SideFlapPasting') {
+                shouldIncludeStep = true;
+              }
+            }
+            
+            // If this step should be included, check if it has machines
+            if (shouldIncludeStep) {
+              final stepStatus = step['status']?.toString().toLowerCase();
+              final hasMachines = step['machineDetails'] is List && (step['machineDetails'] as List).isNotEmpty;
+              
+              // Special handling for PaperStore step (check if it's completed)
+              if (stepName?.toLowerCase() == 'paperstore' || stepName?.toLowerCase() == 'paper store') {
+                // For PaperStore, only hide if status is 'accept' (fully completed)
+                if (stepStatus == 'accept') {
+                  print('🔍 [HomeScreen] PaperStore completed (accept) for planning $planningId');
                 } else {
-                  shouldIncludeStep = true;
+                  hasActiveNonMachineStep = true;
+                  print('🔍 [HomeScreen] Active PaperStore step for planning $planningId');
                 }
               } else {
-                // For machine access roles (printer, corrugator, etc.) - ONLY count steps that match their role
-                if (_userRoles.any((role) => role.toLowerCase() == 'printer') && stepName == 'PrintingDetails') {
-                  shouldIncludeStep = true;
-                } else if (_userRoles.any((role) => role.toLowerCase() == 'corrugator') && stepName == 'Corrugation') {
-                  shouldIncludeStep = true;
-                } else if (_userRoles.any((role) => role.toLowerCase() == 'flutelaminator') && stepName == 'FluteLaminateBoardConversion') {
-                  shouldIncludeStep = true;
-                } else if (_userRoles.any((role) => role.toLowerCase() == 'punching_operator') && stepName == 'Punching') {
-                  shouldIncludeStep = true;
-                } else if (_userRoles.any((role) => role.toLowerCase() == 'pasting_operator') && stepName == 'SideFlapPasting') {
-                  shouldIncludeStep = true;
-                }
-              }
-              
-              // If this step should be included, check if it has machines
-              if (shouldIncludeStep) {
-                final stepStatus = step['status']?.toString().toLowerCase();
-                final hasMachines = step['machineDetails'] is List && (step['machineDetails'] as List).isNotEmpty;
+                // For other non-machine steps, use general completion logic
+                final isCompleted = stepStatus == 'stop' || stepStatus == 'stopped' || stepStatus == 'completed' || stepStatus == 'accept';
                 
-                // Special handling for PaperStore step (check if it's completed)
-                if (stepName?.toLowerCase() == 'paperstore' || stepName?.toLowerCase() == 'paper store') {
-                  // For PaperStore, only hide if status is 'accept' (fully completed)
-                  if (stepStatus == 'accept') {
-                    print('🔍 [HomeScreen] PaperStore completed (accept) for job $nrcJobNo');
-                  } else {
+                if (!hasMachines) {
+                  if (!isCompleted) {
                     hasActiveNonMachineStep = true;
-                    print('🔍 [HomeScreen] Active PaperStore step for job $nrcJobNo');
+                    print('🔍 [HomeScreen] Active non-machine step ${stepName} for planning $planningId');
+                  } else {
+                    print('🔍 [HomeScreen] Completed non-machine step ${stepName} for planning $planningId');
                   }
-                } else {
-                  // For other non-machine steps, use general completion logic
-                  final isCompleted = stepStatus == 'stop' || stepStatus == 'stopped' || stepStatus == 'completed' || stepStatus == 'accept';
+                } else if (hasMachines) {
+                  // Machine-based step - apply same filtering as WorkScreen
+                  // Hide if step is completed
+                  if (isCompleted) {
+                    print('🔍 [HomeScreen] Completed step ${stepName} for planning $planningId, skipping');
+                    continue;
+                  }
                   
-                  if (!hasMachines) {
-                    if (!isCompleted) {
-                      hasActiveNonMachineStep = true;
-                      print('🔍 [HomeScreen] Active non-machine step ${stepName} for job $nrcJobNo');
-                    } else {
-                      print('🔍 [HomeScreen] Completed non-machine step ${stepName} for job $nrcJobNo');
+                  // Check if previous step is ready (for machine steps)
+                  bool previousStepReady = true;
+                  final stepIndex = steps.indexOf(step);
+                  if (stepIndex > 0) {
+                    final previousStep = steps[stepIndex - 1];
+                    if (previousStep is Map<String, dynamic>) {
+                      final prevStatus = previousStep['status']?.toString().toLowerCase() ?? '';
+                      final prevNameLower = previousStep['stepName']?.toString().toLowerCase() ?? '';
+                      
+                      // Check if previous step is completed
+                      if (prevNameLower.contains('paperstore')) {
+                        previousStepReady = prevStatus == 'accept';
+                      } else if (prevStatus == 'stop' || prevStatus == 'stopped' || prevStatus == 'completed' || prevStatus == 'accept') {
+                        previousStepReady = true;
+                      } else {
+                        previousStepReady = false;
+                      }
+                      
+                      // Also check if current step is active (start/in_progress) - if yes, allow even if previous not ready
+                      final currentStepActive = stepStatus == 'start' || stepStatus == 'in_progress';
+                      if (currentStepActive) {
+                        previousStepReady = true;
+                      }
                     }
-                  } else if (hasMachines) {
-                    // Machine-based step - handle as before
-                    if (isCompleted) {
-                      print('🔍 [HomeScreen] User completed step ${stepName} for job $nrcJobNo (planning ${planning['jobPlanId'] ?? planning['id']}), skipping');
-                      continue;
-                    }
-                    
+                  }
+                  
+                  // Only count machines if previous step is ready OR current step is active
+                  if (previousStepReady) {
                     final machineDetails = step['machineDetails'] as List;
                     for (final machineDetail in machineDetails) {
                       if (machineDetail is Map<String, dynamic>) {
                         final stepMachineId = machineDetail['id']?.toString();
                         if (stepMachineId != null) {
-                          machinesUsedInThisJob.add(stepMachineId);
-                          print('🔍 [HomeScreen] Added machine $stepMachineId for job $nrcJobNo (step $stepName)');
+                          machinesUsedInThisPlanning.add(stepMachineId);
+                          print('🔍 [HomeScreen] Added machine $stepMachineId for planning $planningId (step $stepName)');
                         }
                       }
                     }
+                  } else {
+                    print('🔍 [HomeScreen] Previous step not ready for planning $planningId (step $stepName), skipping machine count');
                   }
                 }
               }
@@ -428,14 +467,13 @@ class _HomeScreenState extends State<HomeScreen> {
         // For non-machine roles, count jobs with active steps
         if (hasNoMachineAccess && hasActiveNonMachineStep) {
           totalActiveJobs++;
-          print('🔍 [HomeScreen] Counting active job $nrcJobNo for non-machine role');
+          print('🔍 [HomeScreen] Counting active planning $planningId for non-machine role');
         }
         
-        // Apply the complete filtering logic:
-        // 1. Role-based step filtering (already applied above - only role-relevant steps included)
-        // 2. Machine access filtering (check if user has access to each machine)
-        // NOTE: Each unique job (by nrcJobNo) should add exactly 1 count to each machine it uses
-        for (final machineId in machinesUsedInThisJob) {
+        // Count each planning (card) separately for each machine it uses
+        // IMPORTANT: Count each planning card separately, even if same nrcJobNo
+        // Each card (jobPlanId) should be counted separately
+        for (final machineId in machinesUsedInThisPlanning) {
           bool shouldCountThisMachine = true;
           
           // For machine access roles (printer, corrugator, etc.), verify they have access to this machine
@@ -446,10 +484,11 @@ class _HomeScreenState extends State<HomeScreen> {
             shouldCountThisMachine = isAccessibleMachine;
           }
           
-          // Count this unique job for this specific machine
-          // This ensures: Each unique job (by nrcJobNo) is counted exactly once per machine
+          // Count this planning (card) for this specific machine
+          // Each planning card is counted separately - don't group by nrcJobNo
           if (shouldCountThisMachine) {
             machineJobCounts[machineId] = (machineJobCounts[machineId] ?? 0) + 1;
+            print('🔍 [HomeScreen Counter] Counting planning $planningId (job $nrcJobNo) for machine $machineId - count now: ${machineJobCounts[machineId]}');
           }
         }
       }
@@ -470,13 +509,91 @@ class _HomeScreenState extends State<HomeScreen> {
         _userMachines = accessibleMachines; // Use accessible machines as user machines for role-based display
         _allMachines = accessibleMachines;
         _machineJobCounts = machineJobCounts;
+        _jobPlannings = jobPlannings; // Store job plannings for counter calculations
         // For non-machine roles (PaperStore, QC, Dispatch), use totalActiveJobs
         // For machine roles, count jobs that have at least one machine assigned
         if (hasNoMachineAccess) {
           _totalJobPlanningsCount = totalActiveJobs;
           print('Set _totalJobPlanningsCount to $totalActiveJobs (active jobs for non-machine role)');
         } else {
-          _totalJobPlanningsCount = jobPlanningsByNrcJobNo.length; // Total number of unique jobs accessible to user (grouped by nrcJobNo)
+          // For machine roles, count unique plannings that have accessible machines
+          // Count each planning card separately (not grouped by nrcJobNo)
+          final uniquePlanningsWithMachines = <String>{};
+          for (final planning in jobPlannings) {
+            final planningId = planning['jobPlanId']?.toString() ?? planning['id']?.toString();
+            if (planningId == null) continue;
+            
+            final steps = planning['steps'];
+            if (steps is! List) continue;
+            
+            bool hasAccessibleMachine = false;
+            for (int i = 0; i < steps.length; i++) {
+              final step = steps[i];
+              if (step is! Map<String, dynamic>) continue;
+              
+              final machineDetails = step['machineDetails'];
+              if (machineDetails is! List || machineDetails.isEmpty) {
+                continue;
+              }
+
+              final stepStatus = step['status']?.toString().toLowerCase();
+              final isCompleted = stepStatus == 'stop' ||
+                  stepStatus == 'stopped' ||
+                  stepStatus == 'completed' ||
+                  stepStatus == 'accept';
+
+              if (isCompleted) {
+                continue;
+              }
+
+              // Check if previous step is ready
+              bool previousReady = true;
+              if (i > 0) {
+                final previousStep = steps[i - 1];
+                if (previousStep is Map<String, dynamic>) {
+                  final prevStatus = previousStep['status']?.toString().toLowerCase();
+                  final prevNameLower = previousStep['stepName']?.toString().toLowerCase() ?? '';
+                  if (prevNameLower.contains('paperstore')) {
+                    previousReady = prevStatus == 'accept';
+                  } else {
+                    previousReady = prevStatus == 'stop' ||
+                        prevStatus == 'stopped' ||
+                        prevStatus == 'completed' ||
+                        prevStatus == 'accept';
+                  }
+                }
+              }
+
+              if (!previousReady) {
+                continue;
+              }
+
+              // Check machine assignment matches accessible machines
+              for (final machineDetail in machineDetails) {
+                if (machineDetail is! Map<String, dynamic>) continue;
+                final machineIdInDetail = machineDetail['id']?.toString();
+                final matchesAccessibleMachine = accessibleMachines.any((machine) {
+                  final accessibleId = machine['id']?.toString();
+                  return accessibleId != null && accessibleId == machineIdInDetail;
+                });
+
+                if (matchesAccessibleMachine) {
+                  hasAccessibleMachine = true;
+                  break;
+                }
+              }
+              
+              if (hasAccessibleMachine) break;
+            }
+            
+            if (hasAccessibleMachine) {
+              uniquePlanningsWithMachines.add(planningId);
+            }
+          }
+
+          _totalJobPlanningsCount = uniquePlanningsWithMachines.length;
+          print(
+              'Set _totalJobPlanningsCount to ${_totalJobPlanningsCount} based on active machine steps after role filtering and machine access');
         }
       });
       
@@ -1364,10 +1481,78 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(children: rows);
   }
 
+  // Calculate machine job count using WorkScreen filtering logic (for counter only)
+  int _calculateMachineJobCount(String? machineId) {
+    if (machineId == null || _jobPlannings == null || _jobPlannings!.isEmpty) {
+      return _machineJobCounts[machineId] ?? 0; // Fallback to original count
+    }
+    
+    int count = 0;
+    for (final planning in _jobPlannings!) {
+      if (planning['steps'] is! List) continue;
+      final steps = planning['steps'] as List;
+      
+      for (int stepIndex = 0; stepIndex < steps.length; stepIndex++) {
+        final step = steps[stepIndex];
+        if (step is! Map<String, dynamic>) continue;
+        
+        final stepStatus = step['status']?.toString().toLowerCase();
+        final machineDetails = step['machineDetails'] as List<dynamic>?;
+        final hasMachines = _hasMachineAssignment(machineDetails);
+        
+        if (hasMachines) {
+          // Check if this step uses the specified machine
+          bool usesThisMachine = false;
+          if (machineDetails != null) {
+            for (final md in machineDetails) {
+              if (md is Map<String, dynamic>) {
+                final stepMachineId = md['id']?.toString();
+                if (stepMachineId == machineId) {
+                  usesThisMachine = true;
+                  break;
+                }
+              }
+            }
+          }
+          
+          if (usesThisMachine) {
+            // Check if step is completed (matching WorkScreen logic)
+            final isCompleted = stepStatus == 'stop' || stepStatus == 'stopped' || stepStatus == 'completed' || stepStatus == 'accept';
+            if (isCompleted) continue;
+            
+            // Check if previous step is ready (matching WorkScreen logic)
+            bool previousStepReady = true;
+            if (stepIndex > 0 && steps[stepIndex - 1] is Map<String, dynamic>) {
+              final previousStep = steps[stepIndex - 1] as Map<String, dynamic>;
+              final prevStatus = previousStep['status']?.toString().toLowerCase() ?? '';
+              if (prevStatus == 'planned') {
+                previousStepReady = false;
+              } else if (prevStatus == 'stop' || prevStatus == 'stopped' || prevStatus == 'completed' || prevStatus == 'accept') {
+                previousStepReady = true;
+              }
+            }
+            
+            // Also allow if current step is active
+            final isActive = stepStatus == 'start' || stepStatus == 'in_progress';
+            if (isActive) previousStepReady = true;
+            
+            if (previousStepReady) {
+              count++;
+              break; // Count this job only once per machine
+            }
+          }
+        }
+      }
+    }
+    
+    return count;
+  }
+
   Widget _buildMachineCard(Map<String, dynamic> machine) {
     final machineId = machine['id']?.toString();
     final machineName = machine['machineCode'] ?? machine['description'] ?? 'Unknown Machine';
     final machineType = machine['machineType'] ?? machine['type'] ?? '';
+    // Simply use the count from _machineJobCounts (already calculated in _fetchMachinesAndJobs)
     final jobCount = _machineJobCounts[machineId] ?? 0;
     
     // Determine card color based on job count
@@ -1477,8 +1662,64 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildPaperstoreCard() {
-    // Get total job count for paperstore (all jobs they can access)
-    final totalJobs = _totalJobPlanningsCount;
+    // Get total job count for paperstore - apply same filtering as WorkScreen
+    // Count only jobs where PaperStore is visible (not completed)
+    int paperStoreJobCount = 0;
+    final userRoles = UserRoleManager().userRoles;
+    final hasPaperStoreRole = userRoles.any((role) => role.toLowerCase().contains('paperstore'));
+    final isBypassRole = userRoles.any((role) => 
+      role.toLowerCase().contains('qc_manager') ||
+      role.toLowerCase().contains('dispatch_executive') ||
+      role.toLowerCase().contains('dispatch executive') ||
+      role.toLowerCase().contains('flyingsquad') ||
+      role.toLowerCase().contains('flying squad') ||
+      role.toLowerCase().contains('admin') ||
+      role.toLowerCase().contains('planner')
+    );
+    
+    if (_jobPlannings != null && _jobPlannings!.isNotEmpty) {
+      if (hasPaperStoreRole || isBypassRole) {
+        // Apply same filtering logic as WorkScreen
+        for (final planning in _jobPlannings!) {
+          if (planning['steps'] is! List) continue;
+          final steps = planning['steps'] as List;
+          bool shouldCount = false;
+          
+          for (final step in steps) {
+            if (step is! Map<String, dynamic>) continue;
+            
+            final stepName = step['stepName']?.toString().toLowerCase() ?? '';
+            final stepStatus = step['status']?.toString().toLowerCase();
+            
+            // Check for PaperStore step
+            if (stepName == 'paperstore' || stepName == 'paper store') {
+              final paperStoreRecord = step['paperStore'];
+              final paperStoreStatus = paperStoreRecord is Map 
+                ? paperStoreRecord['status']?.toString().toLowerCase() 
+                : null;
+              
+              final isPaperStoreCompleted = stepStatus == 'accept' || paperStoreStatus == 'accept';
+              
+              // Only hide for PaperStore operators if completed
+              if (isPaperStoreCompleted && !isBypassRole && hasPaperStoreRole) {
+                shouldCount = false;
+                break;
+              } else {
+                // PaperStore is visible (not completed or user has bypass role)
+                shouldCount = true;
+                break;
+              }
+            }
+          }
+          
+          if (shouldCount) {
+            paperStoreJobCount++;
+          }
+        }
+      }
+    }
+    
+    final totalJobs = (hasPaperStoreRole || isBypassRole) ? paperStoreJobCount : _totalJobPlanningsCount;
     
     return GestureDetector(
       onTap: () => _navigateToPaperstoreWork(),
@@ -1574,8 +1815,92 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildQualityCard() {
-    // Get total job count for quality control (all jobs they can access)
-    final totalJobs = _totalJobPlanningsCount;
+    // Get total job count for quality - apply same filtering as WorkScreen
+    // Count only jobs where Quality is visible (not completed, and previous step is ready)
+    int qualityJobCount = 0;
+    final userRoles = UserRoleManager().userRoles;
+    final isQualityRole = userRoles.any((role) => 
+      role.toLowerCase().contains('quality') || 
+      role.toLowerCase().contains('qc_manager') ||
+      role.toLowerCase() == 'qc_manager'
+    );
+    final isBypassRole = userRoles.any((role) => 
+      role.toLowerCase().contains('qc_manager') ||
+      role.toLowerCase().contains('dispatch_executive') ||
+      role.toLowerCase().contains('dispatch executive') ||
+      role.toLowerCase().contains('flyingsquad') ||
+      role.toLowerCase().contains('flying squad') ||
+      role.toLowerCase().contains('admin') ||
+      role.toLowerCase().contains('planner')
+    );
+    
+    if (_jobPlannings != null && _jobPlannings!.isNotEmpty) {
+      if (isQualityRole || isBypassRole) {
+        // Apply same filtering logic as WorkScreen
+        for (final planning in _jobPlannings!) {
+          if (planning['steps'] is! List) continue;
+          final steps = planning['steps'] as List;
+          bool shouldCount = false;
+          
+          for (int stepIndex = 0; stepIndex < steps.length; stepIndex++) {
+            final step = steps[stepIndex];
+            if (step is! Map<String, dynamic>) continue;
+            
+            final stepName = step['stepName']?.toString().toLowerCase() ?? '';
+            final stepStatus = step['status']?.toString().toLowerCase();
+            
+            // Check for Quality step
+            if (stepName == 'qualitydept' || stepName == 'quality') {
+              final machineDetails = step['machineDetails'] as List<dynamic>?;
+              bool hasMachines = false;
+              if (machineDetails != null && machineDetails.isNotEmpty) {
+                for (final md in machineDetails) {
+                  if (md is Map<String, dynamic>) {
+                    final machineId = md['id']?.toString();
+                    final machineCode = md['machineCode']?.toString();
+                    if ((machineId != null && machineId.trim().isNotEmpty && machineId.toLowerCase() != 'not assigned') ||
+                        (machineCode != null && machineCode.trim().isNotEmpty && machineCode.toLowerCase() != 'not assigned')) {
+                      hasMachines = true;
+                      break;
+                    }
+                  }
+                }
+              }
+              
+              // For non-machine steps (Quality has no machines)
+              if (!hasMachines) {
+                // Hide if Quality is completed
+                if (stepStatus == 'accept' || stepStatus == 'stop' || stepStatus == 'stopped' || stepStatus == 'completed') {
+                  shouldCount = false;
+                  break;
+                }
+                
+                // Only show if previous step is ready
+                if (stepIndex > 0 && steps[stepIndex - 1] is Map<String, dynamic>) {
+                  final previousStep = steps[stepIndex - 1] as Map<String, dynamic>;
+                  final prevStatus = previousStep['status']?.toString().toLowerCase() ?? '';
+                  // Previous step should be at least started (not 'planned')
+                  if (prevStatus == 'planned') {
+                    shouldCount = false;
+                    break;
+                  }
+                }
+                
+                // Quality is visible
+                shouldCount = true;
+                break;
+              }
+            }
+          }
+          
+          if (shouldCount) {
+            qualityJobCount++;
+          }
+        }
+      }
+    }
+    
+    final totalJobs = (isQualityRole || isBypassRole) ? qualityJobCount : _totalJobPlanningsCount;
     
     return GestureDetector(
       onTap: () => _navigateToQualityWork(),
@@ -1671,8 +1996,100 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildDispatchCard() {
-    // Get total job count for dispatch (all jobs they can access)
-    final totalJobs = _totalJobPlanningsCount;
+    // Get total job count for dispatch - apply same filtering as WorkScreen
+    // Count only jobs where Dispatch is visible (not completed, and previous step is ready)
+    int dispatchJobCount = 0;
+    final userRoles = UserRoleManager().userRoles;
+    final isDispatchRole = userRoles.any((role) => role.toLowerCase().contains('dispatch'));
+    final isBypassRole = userRoles.any((role) => 
+      role.toLowerCase().contains('qc_manager') ||
+      role.toLowerCase().contains('dispatch_executive') ||
+      role.toLowerCase().contains('dispatch executive') ||
+      role.toLowerCase().contains('flyingsquad') ||
+      role.toLowerCase().contains('flying squad') ||
+      role.toLowerCase().contains('admin') ||
+      role.toLowerCase().contains('planner')
+    );
+    
+    print('🔍 [Dispatch Counter] userRoles=$userRoles, isDispatchRole=$isDispatchRole, isBypassRole=$isBypassRole');
+    print('🔍 [Dispatch Counter] _jobPlannings count: ${_jobPlannings?.length ?? 0}');
+    
+    if (_jobPlannings != null && _jobPlannings!.isNotEmpty) {
+      if (isDispatchRole || isBypassRole) {
+        // Apply same filtering logic as WorkScreen
+        for (final planning in _jobPlannings!) {
+          if (planning['steps'] is! List) continue;
+          final steps = planning['steps'] as List;
+          bool shouldCount = false;
+          
+          for (int stepIndex = 0; stepIndex < steps.length; stepIndex++) {
+            final step = steps[stepIndex];
+            if (step is! Map<String, dynamic>) continue;
+            
+            final stepName = step['stepName']?.toString().toLowerCase() ?? '';
+            final stepStatus = step['status']?.toString().toLowerCase();
+            
+            // Check for Dispatch step
+            if (stepName == 'dispatchprocess' || stepName == 'dispatch') {
+              final machineDetails = step['machineDetails'] as List<dynamic>?;
+              bool hasMachines = false;
+              if (machineDetails != null && machineDetails.isNotEmpty) {
+                for (final md in machineDetails) {
+                  if (md is Map<String, dynamic>) {
+                    final machineId = md['id']?.toString();
+                    final machineCode = md['machineCode']?.toString();
+                    if ((machineId != null && machineId.trim().isNotEmpty && machineId.toLowerCase() != 'not assigned') ||
+                        (machineCode != null && machineCode.trim().isNotEmpty && machineCode.toLowerCase() != 'not assigned')) {
+                      hasMachines = true;
+                      break;
+                    }
+                  }
+                }
+              }
+              
+              // For non-machine steps (Dispatch has no machines)
+              if (!hasMachines) {
+                // Hide if Dispatch is completed
+                if (stepStatus == 'stop' || stepStatus == 'stopped' || stepStatus == 'completed' || stepStatus == 'accept') {
+                  shouldCount = false;
+                  break;
+                }
+                
+                // Only show if previous step (Quality) is ready
+                if (stepIndex > 0 && steps[stepIndex - 1] is Map<String, dynamic>) {
+                  final previousStep = steps[stepIndex - 1] as Map<String, dynamic>;
+                  final prevStatus = previousStep['status']?.toString().toLowerCase() ?? '';
+                  // Previous step should be at least started (not 'planned')
+                  if (prevStatus == 'planned') {
+                    shouldCount = false;
+                    break;
+                  }
+                }
+                
+                // Dispatch is visible
+                shouldCount = true;
+                print('🔍 [Dispatch Counter] Job ${planning['nrcJobNo']} (plan ${planning['jobPlanId']}) - Dispatch visible, counting');
+                break;
+              }
+            }
+          }
+          
+          if (shouldCount) {
+            dispatchJobCount++;
+          } else {
+            print('🔍 [Dispatch Counter] Job ${planning['nrcJobNo']} (plan ${planning['jobPlanId']}) - NOT counting (shouldCount=false)');
+          }
+        }
+        print('🔍 [Dispatch Counter] Total dispatch jobs counted: $dispatchJobCount');
+      } else {
+        print('🔍 [Dispatch Counter] User is not Dispatch role and not bypass role, skipping count');
+      }
+    } else {
+      print('🔍 [Dispatch Counter] No job plannings available');
+    }
+    
+    final totalJobs = (isDispatchRole || isBypassRole) ? dispatchJobCount : _totalJobPlanningsCount;
+    print('🔍 [Dispatch Counter] Final totalJobs: $totalJobs');
     
     return GestureDetector(
       onTap: () => _navigateToDispatchWork(),

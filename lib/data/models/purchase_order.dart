@@ -1,4 +1,5 @@
 class PurchaseOrder {
+  final int id;
   final DateTime poDate;
   final String? poNumber;
   final DateTime deliveryDate;
@@ -10,6 +11,7 @@ class PurchaseOrder {
   final int noOfSheets;
 
   PurchaseOrder({
+    required this.id,
     required this.poDate,
     required this.poNumber,
     required this.deliveryDate,
@@ -23,6 +25,7 @@ class PurchaseOrder {
 
   factory PurchaseOrder.fromJson(Map<String, dynamic> json) {
     return PurchaseOrder(
+      id: json['id'] is int ? json['id'] : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
       poDate: json['poDate'] != null ? DateTime.parse(json['poDate'].toString()) : DateTime.now(),
       poNumber: json['poNumber']?.toString(),
       deliveryDate: json['deliveryDate'] != null ? DateTime.parse(json['deliveryDate'].toString()) : DateTime.now(),
@@ -37,6 +40,7 @@ class PurchaseOrder {
 
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
       'poDate': poDate.toIso8601String(),
       'poNumber': poNumber,
       'deliveryDate': deliveryDate.toIso8601String(),

@@ -31,12 +31,131 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin, 
   List<Map<String, dynamic>> filteredJobPlannings = [];
   bool _isLoading = true;
   String? _error;
-  Map<String, String> jobStatuses = {}; // nrcJobNo -> status
+  Map<String, String> jobStatuses = {}; // key: "nrcJobNo|jobPlanId" -> status
   final TextEditingController _searchController = TextEditingController();
   late AnimationController _blinkController;
   late Animation<double> _blinkAnimation;
   final Set<String> _expandedJobNos = {};
   String? _userRole;
+
+  bool _doesRoleHandleMachineStep(List<String> userRoles, String stepNameLower) {
+    if (userRoles.isEmpty || stepNameLower.isEmpty) return false;
+    final normalizedRoles = userRoles.map((role) => role.toLowerCase()).toList();
+
+    bool matchesRole(List<String> keywords) =>
+        normalizedRoles.any((role) => keywords.any((keyword) => role.contains(keyword)));
+
+    if (stepNameLower.contains('printing')) {
+      return matchesRole(['print', 'printing']);
+    }
+    if (stepNameLower.contains('corrug')) {
+      return matchesRole(['corrug', 'corrugation']);
+    }
+    if (stepNameLower.contains('flute')) {
+      return matchesRole(['flute', 'lamination', 'laminator']);
+    }
+    if (stepNameLower.contains('punch')) {
+      return matchesRole(['punch', 'diecut', 'die-cut', 'die cutting']);
+    }
+    if (stepNameLower.contains('die cutting') || stepNameLower.contains('diecutting')) {
+      return matchesRole(['die', 'diecut', 'die-cut']);
+    }
+    if (stepNameLower.contains('flap') || stepNameLower.contains('pasting')) {
+      return matchesRole(['flap', 'pasting']);
+    }
+    return false;
+  }
+
+  bool _hasMachineAssignment(List<dynamic>? machineDetails) {
+    if (machineDetails == null) return false;
+    for (final detail in machineDetails) {
+      if (detail is Map<String, dynamic>) {
+        final machineId = detail['machineId']?.toString();
+        final machineCode = detail['machineCode']?.toString();
+        final nestedMachine = detail['machine'];
+        final nestedId = nestedMachine is Map<String, dynamic> ? nestedMachine['id']?.toString() : null;
+        final nestedCode = nestedMachine is Map<String, dynamic> ? nestedMachine['machineCode']?.toString() : null;
+        if ((machineId != null && machineId.trim().isNotEmpty) ||
+            (machineCode != null && machineCode.trim().isNotEmpty) ||
+            (nestedId != null && nestedId.trim().isNotEmpty) ||
+            (nestedCode != null && nestedCode.trim().isNotEmpty)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+
+  bool _isMachineStepActive(String? status) {
+    final normalized = status?.toLowerCase() ?? '';
+    return normalized == 'in_progress' ||
+        normalized == 'start' ||
+        normalized == 'started' ||
+        normalized == 'hold' ||
+        normalized == 'major_hold' ||
+        normalized == 'resume';
+  }
+
+  bool _isPreviousStepReady(
+    Map<String, dynamic>? step, {
+    Set<String>? allowedStatuses,
+  }) {
+    if (step == null) return false;
+    final status = step['status']?.toString().toLowerCase() ?? '';
+    final allowed = allowedStatuses ??
+        const {
+          'start',
+          'started',
+          'in_progress',
+          'stop',
+          'stopped',
+          'completed',
+          'accept'
+        };
+    return allowed.contains(status);
+  }
+
+  bool _isStepCompletedForFiltering(Map<String, dynamic> step) {
+    final status = step['status']?.toString().toLowerCase() ?? '';
+    final nameLower = step['stepName']?.toString().toLowerCase() ?? '';
+
+    if (nameLower.contains('paperstore')) {
+      return status == 'accept';
+    }
+    if (nameLower.contains('dispatch')) {
+      return status == 'stop' || status == 'stopped' || status == 'completed';
+    }
+
+    return status == 'stop' ||
+        status == 'stopped' ||
+        status == 'completed' ||
+        status == 'accept';
+  }
+
+  bool _isPreviousStepReadyForMachine(List<dynamic> steps, int currentStepNo) {
+    if (currentStepNo <= 1) {
+      return true; // First step has no dependency
+    }
+
+    Map<String, dynamic>? previousStep;
+    for (final step in steps) {
+      if (step is Map<String, dynamic>) {
+        final stepNoRaw = step['stepNo'];
+        final stepNo = stepNoRaw is int ? stepNoRaw : int.tryParse(stepNoRaw?.toString() ?? '');
+        if (stepNo != null && stepNo == currentStepNo - 1) {
+          previousStep = step;
+          break;
+        }
+      }
+    }
+
+    if (previousStep == null) {
+      return true;
+    }
+
+    return _isStepCompletedForFiltering(previousStep);
+  }
 
   bool get _isAdminOrPlanner {
     final role = _userRole?.toLowerCase() ?? UserRoleManager().userRole?.toLowerCase();
@@ -108,6 +227,11 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin, 
     _searchController.dispose();
     _blinkController.dispose();
     super.dispose();
+  }
+
+  String _statusKey(String nrcJobNo, dynamic jobPlanId) {
+    final planId = jobPlanId != null ? jobPlanId.toString() : 'null';
+    return '$nrcJobNo|$planId';
   }
 
   void _filterJobs() {
@@ -235,6 +359,9 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin, 
       // Show debug info
       print('🔍 [Frontend] Data cache cleared, proceeding with fresh data fetch...');
       final plannings = await jobApi.getAllJobPlanningsFresh();
+      if (plannings.isEmpty) {
+        print('❌ [Frontend] No job plannings returned from API');
+      }
 
       // Fetch statuses in small batches to avoid server overload
       Future<Map<String, String>> fetchStatusesInChunks(
@@ -243,22 +370,30 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin, 
         for (int i = 0; i < items.length; i += chunkSize) {
           final chunk = items.sublist(i, i + chunkSize > items.length ? items.length : i + chunkSize);
           final results = await Future.wait(chunk.map((planning) async {
-            final nrcJobNo = planning['nrcJobNo'];
+            final nrcJobNo = planning['nrcJobNo']?.toString() ?? '';
+            final jobPlanId = planning['jobPlanId'];
+            final key = _statusKey(nrcJobNo, jobPlanId);
+            String status = 'UNKNOWN';
             try {
               final jobs = await jobApi.getJobsByNo(nrcJobNo);
               if (jobs.isNotEmpty) {
-                return MapEntry(nrcJobNo, jobs[0].status.toString().toUpperCase());
+                status = jobs[0].status.toString().toUpperCase();
               }
-            } catch (_) {}
-            return null;
+            } catch (_) {
+              // Ignore errors, default to UNKNOWN
+            }
+            return MapEntry(key, status);
           }));
           for (final entry in results) {
-            if (entry != null) {
-              statuses[entry.key] = entry.value;
-            }
+            statuses[entry.key] = entry.value;
           }
         }
         return statuses;
+      }
+
+      print('🔍 [Frontend] Raw plannings count: ${plannings.length}');
+      for (final planning in plannings) {
+        print('   • Raw planning -> Job: ${planning['nrcJobNo']} | Plan: ${planning['jobPlanId']} | StepCount: ${(planning['steps'] as List?)?.length ?? 0}');
       }
 
       final statuses = await fetchStatusesInChunks(plannings, 5);
@@ -283,11 +418,13 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin, 
           final jobPlanId = planning['jobPlanId']?.toString();
           bool usesMachine = false;
           bool hasCompletedStep = false;
+          bool previousStepReadyForMachine = false;
           
           // Check if this planning uses the specified machine in any step
           if (planning['steps'] is List) {
             final steps = planning['steps'] as List;
-            for (final step in steps) {
+            for (int stepIndex = 0; stepIndex < steps.length; stepIndex++) {
+              final step = steps[stepIndex];
               if (step['machineDetails'] is List) {
                 final machineDetails = step['machineDetails'] as List;
                 for (final machineDetail in machineDetails) {
@@ -318,6 +455,20 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin, 
                       // Check if this specific step is completed
                       final stepStatus = step['status']?.toString().toLowerCase();
                       final isCompleted = stepStatus == 'stop' || stepStatus == 'stopped' || stepStatus == 'completed';
+                      Map<String, dynamic>? previousStep;
+                      if (stepIndex > 0) {
+                        final candidate = steps[stepIndex - 1];
+                        if (candidate is Map<String, dynamic>) {
+                          previousStep = candidate;
+                        }
+                      }
+                      final previousReady = previousStep == null ? true : _isStepCompletedForFiltering(previousStep);
+                      final isActive = _isMachineStepActive(stepStatus);
+                      if (previousReady || isActive) {
+                        previousStepReadyForMachine = true;
+                      } else {
+                        print('   - ⚠️ Previous step not ready for job $nrcJobNo (plan $jobPlanId); keeping hidden for machine ${step['stepName']}');
+                      }
                       
                       // If this specific step using the machine is completed, mark it
                       if (isCompleted) {
@@ -334,7 +485,11 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin, 
           // Show the job if it uses the machine, regardless of completion status
           // (Completion filtering happens later)
           if (usesMachine) {
-            print('🔍 [Frontend] Job $nrcJobNo (plan $jobPlanId) MATCHES machine filter, hasCompletedStep: $hasCompletedStep');
+            if (!previousStepReadyForMachine) {
+              print('🔍 [Frontend] Job $nrcJobNo (plan $jobPlanId) uses machine but previous step not ready; hiding for now');
+              return false;
+            }
+            print('🔍 [Frontend] Job $nrcJobNo (plan $jobPlanId) MATCHES machine filter, hasCompletedStep: $hasCompletedStep, prevReady: $previousStepReadyForMachine');
             return true;
           } else {
             print('🔍 [Frontend] Job $nrcJobNo (plan $jobPlanId) does NOT use machine ${widget.filterByMachineId}');
@@ -385,6 +540,12 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin, 
         // For non-machine filtering, check if user should bypass completion filtering
         // QC Manager, Dispatch Executive, Flying Squad, Admin, Planner should see all jobs
         final userRoles = UserRoleManager().userRoles;
+        final bool isQualityRole = userRoles.any((role) => 
+          role.toLowerCase().contains('quality') || 
+          role.toLowerCase().contains('qc_manager') ||
+          role.toLowerCase() == 'qc_manager'
+        );
+        final bool isDispatchRole = userRoles.any((role) => role.toLowerCase().contains('dispatch'));
         final isBypassRole = userRoles.any((role) => 
           role.toLowerCase().contains('qc_manager') ||
           role.toLowerCase().contains('dispatch_executive') ||
@@ -395,53 +556,15 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin, 
           role.toLowerCase().contains('planner')
         );
         
+        print('🔍 [Frontend] Role check for job ${planning['nrcJobNo']}: userRoles=$userRoles, isQualityRole=$isQualityRole, isDispatchRole=$isDispatchRole, isBypassRole=$isBypassRole');
+        
         // For other users, apply the original logic (check PaperStore completion)
         if (planning['steps'] is List) {
           final steps = planning['steps'] as List;
           
-          // ✅ Check if ALL steps are completed (job is fully done)
-          // If all steps have status 'stop' and Dispatch (if exists) has status 'accept', hide the job
-          bool allStepsCompleted = true;
-          bool hasDispatchStep = false;
-          bool dispatchAccepted = false;
-          
-          for (final step in steps) {
-            final stepName = step['stepName']?.toString();
-            final stepStatus = step['status']?.toString().toLowerCase();
-            final stepNameLower = stepName?.toLowerCase() ?? '';
-            
-            // Check if this step is completed
-            // PaperStore uses 'accept' status when completed, other steps use 'stop'
-            final isStepCompleted = stepStatus == 'stop' || stepStatus == 'stopped' || stepStatus == 'completed' || stepStatus == 'accept';
-            
-            // For Dispatch, also check if DispatchProcess status is 'accept'
-            if (stepNameLower == 'dispatchprocess' || stepNameLower == 'dispatch') {
-              hasDispatchStep = true;
-              // Check DispatchProcess record status
-              final dispatchProcess = step['dispatchProcess'];
-              if (dispatchProcess is Map && dispatchProcess['status']?.toString().toLowerCase() == 'accept') {
-                dispatchAccepted = true;
-              }
-              // Dispatch step must also have status 'stop' to be considered completed
-              if (!isStepCompleted) {
-                allStepsCompleted = false;
-              }
-            } else {
-              // For other steps (including PaperStore), check if status is 'stop' or 'accept'
-              if (!isStepCompleted) {
-                allStepsCompleted = false;
-              }
-            }
-          }
-          
-          // If all steps are completed AND (no dispatch step OR dispatch is accepted), hide the job (it's fully completed)
-          if (allStepsCompleted && (!hasDispatchStep || dispatchAccepted)) {
-            print('🔍 [Frontend] ALL steps completed${hasDispatchStep ? ' and Dispatch accepted' : ''} for job ${planning['nrcJobNo']}, hiding from UI');
-            return false; // Hide this job - it's fully completed
-          }
-          
           // Individual step filtering logic (for partially completed jobs)
-          for (final step in steps) {
+          for (int stepIndex = 0; stepIndex < steps.length; stepIndex++) {
+            final step = steps[stepIndex];
             final stepName = step['stepName']?.toString();
             final stepStatus = step['status']?.toString().toLowerCase();
             
@@ -458,39 +581,120 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin, 
               final isPaperStoreCompleted = stepStatus == 'accept' || paperStoreStatus == 'accept';
               
               if (isPaperStoreCompleted) {
-                // Bypass roles should NOT hide jobs due to PaperStore completion
-                if (isBypassRole) {
-                  print('🔍 [Frontend] Bypass role - keeping job ${planning['nrcJobNo']} despite PaperStore completion');
-                } else {
+                final hasPaperStoreRole = userRoles.any((role) => role.toLowerCase().contains('paperstore'));
+                // Only hide for PaperStore operators (or when not bypassing)
+                if (!isBypassRole && hasPaperStoreRole) {
                   print('🔍 [Frontend] PaperStore completed (accept) for job ${planning['nrcJobNo']}, stepStatus=$stepStatus, paperStoreStatus=$paperStoreStatus, hiding from UI');
                   return false; // Hide this job
+                } else {
+                  print('🔍 [Frontend] PaperStore completed for job ${planning['nrcJobNo']} but role allows viewing; keeping in UI');
                 }
               } else {
                 print('🔍 [Frontend] PaperStore status is $stepStatus (paperStore: $paperStoreStatus) for job ${planning['nrcJobNo']}, NOT hiding (keep in UI)');
               }
+
+              // Skip further checks for PaperStore after handling its logic
+              continue;
             }
             
             // For other non-machine steps, check if they're completed
             // If step has no machines but status is stop/accept/completed, hide it
-            final hasMachines = step['machineDetails'] is List && (step['machineDetails'] as List).isNotEmpty;
+            final hasMachines = _hasMachineAssignment(step['machineDetails'] as List<dynamic>?);
             if (!hasMachines) {
               final stepNameLower = stepName?.toLowerCase() ?? '';
               
-              // Special handling for Dispatch - only hide if JobStep status is 'stop' (fully dispatched)
+              // Special handling for Dispatch - only hide if dispatchProcess.status is 'accept' (fully dispatched)
               if (stepNameLower == 'dispatchprocess' || stepNameLower == 'dispatch') {
-                // For Dispatch, only hide if status is 'stop' (fully dispatched)
-                // Don't check 'accept' as that's the DispatchProcess record status (for partial dispatch tracking)
-                if (stepStatus == 'stop' || stepStatus == 'stopped' || stepStatus == 'completed') {
-                  print('🔍 [Frontend] Completed Dispatch step ${stepName} for job ${planning['nrcJobNo']}, hiding from UI');
-                  return false; // Hide this job
+                if (!isDispatchRole && !isBypassRole) {
+                  continue;
                 }
+                // If user is Quality role but not Dispatch role, skip Dispatch checks (let Quality view work)
+                if (isQualityRole && !isDispatchRole) {
+                  print('   - ℹ️ User is Quality role, skipping Dispatch checks for Quality view');
+                  continue;
+                }
+                
+                // Check dispatchProcess.status instead of stepStatus for Dispatch
+                // DispatchProcess.status = 'accept' means fully dispatched, 'in_progress' means partial dispatch
+                final dispatchProcess = step['dispatchProcess'];
+                final dispatchProcessStatus = dispatchProcess is Map<String, dynamic>
+                    ? dispatchProcess['status']?.toString().toLowerCase()
+                    : null;
+                
+                print('🔍 [Frontend] Dispatch step for job ${planning['nrcJobNo']} (plan ${planning['jobPlanId']}): stepStatus=$stepStatus, dispatchProcessStatus=$dispatchProcessStatus');
+                print('   - dispatchProcess data: $dispatchProcess');
+                
+                // For Dispatch, hide ONLY if dispatchProcess.status is EXACTLY 'accept' (fully dispatched)
+                // Keep visible if status is 'in_progress' or null (partial dispatch or not started)
+                // NEVER use stepStatus as fallback for dispatch - it's not reliable
+                if (dispatchProcessStatus == 'accept') {
+                  print('🔍 [Frontend] Dispatch fully completed (accept) for job ${planning['nrcJobNo']}, hiding from UI');
+                  return false; // Hide this job - fully dispatched
+                }
+                
+                // If dispatchProcessStatus is 'in_progress' or null, keep it visible (don't hide)
+                print('🔍 [Frontend] Dispatch in progress or not started (status=$dispatchProcessStatus) for job ${planning['nrcJobNo']}, keeping visible');
+
+                final previousStep = stepIndex > 0 && steps[stepIndex - 1] is Map<String, dynamic>
+                    ? steps[stepIndex - 1] as Map<String, dynamic>
+                    : null;
+                if (!_isPreviousStepReady(previousStep)) {
+                  print('🔍 [Frontend] Dispatch previous step not ready for job ${planning['nrcJobNo']} (plan ${planning['jobPlanId']}) - previous status: ${previousStep?['status']}, hiding from UI');
+                  return false;
+                }
+
+                // Previous step ready and Dispatch not fully completed (in_progress) - keep visible
+                continue;
+              } else if (stepNameLower == 'qualitydept' || stepNameLower == 'quality') {
+                print('🔍 [Frontend] Found Quality step for job ${planning['nrcJobNo']} (plan ${planning['jobPlanId']}): stepStatus=$stepStatus, stepIndex=$stepIndex');
+                print('   - isQualityRole=$isQualityRole, isDispatchRole=$isDispatchRole, isBypassRole=$isBypassRole');
+                
+                if (!isQualityRole && !isBypassRole) {
+                  print('   - ⚠️ Skipping Quality check: user does not have Quality role and is not bypass role');
+                  continue;
+                }
+                if (isDispatchRole && !isQualityRole) {
+                  // Dispatch view should ignore Quality completion gates
+                  print('   - ⚠️ Skipping Quality check: user has Dispatch role but not Quality role');
+                  continue;
+                }
+                
+                print('   - ✅ Proceeding with Quality checks');
+                final isQualityCompleted = stepStatus == 'accept' || stepStatus == 'stop' || stepStatus == 'stopped' || stepStatus == 'completed';
+                if (isQualityCompleted) {
+                  print('🔍 [Frontend] Quality completed ($stepStatus) for job ${planning['nrcJobNo']}, hiding from UI');
+                  return false;
+                }
+
+                final previousStep = stepIndex > 0 && steps[stepIndex - 1] is Map<String, dynamic>
+                    ? steps[stepIndex - 1] as Map<String, dynamic>
+                    : null;
+                print('   - Previous step: ${previousStep?['stepName']}, status: ${previousStep?['status']}');
+                if (!_isPreviousStepReady(previousStep)) {
+                  print('🔍 [Frontend] Quality previous step not ready for job ${planning['nrcJobNo']} (plan ${planning['jobPlanId']}) - previous status: ${previousStep?['status']}, hiding from UI');
+                  return false;
+                }
+
+                // Previous step ready but Quality still pending - keep visible
+                print('   - ✅ Quality checks passed: previous step ready and Quality not completed - keeping visible');
+                continue;
               } else {
-                // For QC and other non-machine steps
+                // For other non-machine steps
                 final isCompleted = stepStatus == 'stop' || stepStatus == 'stopped' || stepStatus == 'completed' || stepStatus == 'accept';
                 if (isCompleted) {
                   print('🔍 [Frontend] Completed non-machine step ${stepName} for job ${planning['nrcJobNo']}, hiding from UI');
                   return false; // Hide this job
                 }
+              }
+            } else {
+              final stepNameLower = step['stepName']?.toString().toLowerCase() ?? '';
+              final isMachineStepCompleted = stepStatus == 'stop' || stepStatus == 'stopped' || stepStatus == 'completed' || stepStatus == 'accept';
+              final bool userHandlesThisMachineStep = _doesRoleHandleMachineStep(userRoles, stepNameLower);
+              final bool machineFilterActive = widget.filterByMachineId != null;
+
+              if (isMachineStepCompleted && (userHandlesThisMachineStep || machineFilterActive) && !isBypassRole) {
+                print('🔍 [Frontend] Completed machine step ${step['stepName']} for job ${planning['nrcJobNo']}, hiding from UI');
+                return false;
               }
             }
           }
@@ -498,38 +702,9 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin, 
         return true; // Keep this job
       }).toList();
       
-      // For machine filtering, deduplicate by nrcJobNo to match HomeScreen counting logic
-      // HomeScreen counts unique jobs (by nrcJobNo) that use the machine, so we should show the same
-      List<Map<String, dynamic>> deduplicatedPlannings;
-      if (widget.filterByMachineId != null) {
-        // When filtering by machine, deduplicate by nrcJobNo to show unique jobs (matching HomeScreen count)
-        final Map<String, Map<String, dynamic>> uniqueJobs = {};
-        for (final planning in completedNonMachineFilteredPlannings) {
-          final nrcJobNo = planning['nrcJobNo']?.toString();
-          // Keep the first planning for each unique job (same as HomeScreen logic)
-          if (nrcJobNo != null && !uniqueJobs.containsKey(nrcJobNo)) {
-            uniqueJobs[nrcJobNo] = planning;
-            print('🔍 [Frontend] Adding unique job $nrcJobNo (plan ${planning['jobPlanId']}) for machine filter');
-          }
-        }
-        deduplicatedPlannings = uniqueJobs.values.toList();
-        print('🔍 [Frontend] Machine filter active - showing ${deduplicatedPlannings.length} unique jobs (deduplicated by nrcJobNo)');
-      } else {
-        // For non-machine views, deduplicate by nrcJobNo to show each unique job only once
-        final Map<String, Map<String, dynamic>> uniqueJobs = {};
-        for (final planning in completedNonMachineFilteredPlannings) {
-          final nrcJobNo = planning['nrcJobNo']?.toString();
-          if (nrcJobNo != null && !uniqueJobs.containsKey(nrcJobNo)) {
-            uniqueJobs[nrcJobNo] = planning;
-          }
-        }
-        deduplicatedPlannings = uniqueJobs.values.toList();
-        print('🔍 [Frontend] After deduplication: ${deduplicatedPlannings.length} unique jobs');
-      }
-
-      // Use only job plannings data (backend already filters by role)
-      // Don't fetch additional jobs as it returns unfiltered data (5921 jobs)
-      print('🔍 [Frontend] Using job plannings data: ${deduplicatedPlannings.length} jobs');
+      // Keep every planning (including multiple jobPlanIds) for consistency across all roles
+      final List<Map<String, dynamic>> deduplicatedPlannings = List<Map<String, dynamic>>.from(completedNonMachineFilteredPlannings);
+      print('🔍 [Frontend] Keeping ${deduplicatedPlannings.length} plannings after filtering (no deduplication)');
       
       // Job plannings are already filtered by backend based on user role
       
@@ -541,10 +716,13 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin, 
       for (var planning in deduplicatedPlannings) {
         final nrcJobNo = planning['nrcJobNo'] as String;
         final jobDemand = planning['jobDemand'] as String?;
+        final jobPlanId = planning['jobPlanId'];
+        print('🔍 [Frontend] Final list candidate -> Job: $nrcJobNo | Plan: $jobPlanId | Status: ${planning['status']}');
         print('🔍 [Frontend] Processing planning: $nrcJobNo, demand: $jobDemand');
         
+        final statusKey = _statusKey(nrcJobNo, planning['jobPlanId']);
         // Add job status
-        planning['status'] = statuses[nrcJobNo] ?? 'UNKNOWN';
+        planning['status'] = statuses[statusKey] ?? 'UNKNOWN';
         
         // Separate high-demand jobs from regular jobs
         if (jobDemand?.toLowerCase() == 'high') {
@@ -702,7 +880,7 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin, 
 
   Widget _buildSummaryCard(BuildContext context, Map<String, dynamic> jobPlanning) {
     final nrcJobNo = jobPlanning['nrcJobNo']?.toString() ?? '';
-    final status = jobStatuses[nrcJobNo] ?? '';
+    final status = jobStatuses[_statusKey(nrcJobNo, jobPlanning['jobPlanId'])] ?? '';
     final isHold = status == 'HOLD';
     final jobDemand = jobPlanning['jobDemand']?.toString() ?? '';
     
@@ -762,7 +940,14 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin, 
                   );
                   final dio = Dio();
                   final jobApi = JobApi(dio);
-                  final planning = await jobApi.getJobPlanningStepsByNrcJobNo(nrcJobNo);
+                  final dynamic rawJobPlanId = jobPlanning['jobPlanId'];
+                  final int? jobPlanId = rawJobPlanId is int
+                      ? rawJobPlanId
+                      : int.tryParse(rawJobPlanId?.toString() ?? '');
+                  final planning = await jobApi.getJobPlanningStepsByNrcJobNo(
+                    nrcJobNo,
+                    jobPlanId: jobPlanId,
+                  );
                   if (mounted) Navigator.of(context).pop();
                   final steps = planning?['steps'] ?? [];
                   if (!mounted) return;
@@ -772,6 +957,7 @@ class _WorkScreenState extends State<WorkScreen> with TickerProviderStateMixin, 
                       builder: (context) => JobTimelinePage(
                         jobNumber: nrcJobNo,
                         assignedSteps: steps,
+                        jobPlanId: jobPlanId,
                       ),
                     ),
                   );

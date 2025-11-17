@@ -309,13 +309,18 @@ class JobApi {
     return [];
   }
 
-  Future<Map<String, dynamic>?> getJobPlanningStepsByNrcJobNo(String nrcJobNo) async {
+  Future<Map<String, dynamic>?> getJobPlanningStepsByNrcJobNo(String nrcJobNo, {int? jobPlanId}) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     print('[getJobPlanningStepsByNrcJobNo] Token: $token');
     print('[getJobPlanningStepsByNrcJobNo] nrcJobNo: $nrcJobNo');
+    final queryParameters = <String, dynamic>{};
+    if (jobPlanId != null) {
+      queryParameters['jobPlanId'] = jobPlanId;
+    }
     final response = await dio.get(
       '${AppStrings.baseUrl}/job-planning/$nrcJobNo',
+      queryParameters: queryParameters.isNotEmpty ? queryParameters : null,
       options: Options(
         headers: {
           if (token != null) 'Authorization': 'Bearer $token',
@@ -442,13 +447,19 @@ class JobApi {
     return response;
   }
 
-  Future<Map<String, dynamic>?> getPaperStoreStepByJob(String jobNrcJobNo) async {
+  Future<Map<String, dynamic>?> getPaperStoreStepByJob(String jobNrcJobNo, {int? jobPlanId}) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     print('[getPaperStoreStepByJob] Token: $token');
     print('[getPaperStoreStepByJob] jobNrcJobNo: $jobNrcJobNo');
+    final queryParameters = <String, dynamic>{};
+    if (jobPlanId != null) {
+      queryParameters['jobPlanId'] = jobPlanId;
+    }
+    print('[getPaperStoreStepByJob] query: $queryParameters');
     final response = await dio.get(
       '${AppStrings.baseUrl}/paper-store/by-job/$jobNrcJobNo',
+      queryParameters: queryParameters.isNotEmpty ? queryParameters : null,
       options: Options(
         headers: {
           'Content-Type': 'application/json',
@@ -458,19 +469,42 @@ class JobApi {
     );
     print('[getPaperStoreStepByJob] Response: ${response.statusCode} ${response.data}');
     if (response.data != null && response.data['success'] == true && response.data['data'] is List && response.data['data'].isNotEmpty) {
-      return response.data['data'][0];
+      if (jobPlanId != null) {
+        final matching = (response.data['data'] as List).firstWhere(
+          (item) =>
+              item is Map &&
+              item['data'] is Map &&
+              (item['data']['jobPlanningId']?.toString() == jobPlanId.toString()),
+          orElse: () => null,
+        );
+        if (matching is Map) {
+          return Map<String, dynamic>.from(matching as Map);
+        }
+      }
+      final first = response.data['data'][0];
+      if (first is Map) {
+        return Map<String, dynamic>.from(first);
+      }
+      return {
+        'data': first,
+      };
     }
     return null;
   }
 
   /// Get Paper Store step by job with editability information
-  Future<List<Map<String, dynamic>>> getPaperStoreStepByJobWithEditability(String jobNrcJobNo) async {
+  Future<List<Map<String, dynamic>>> getPaperStoreStepByJobWithEditability(String jobNrcJobNo, {int? jobPlanId}) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     print('[getPaperStoreStepByJobWithEditability] Token: $token');
     print('[getPaperStoreStepByJobWithEditability] jobNrcJobNo: $jobNrcJobNo');
+    final queryParameters = <String, dynamic>{};
+    if (jobPlanId != null) {
+      queryParameters['jobPlanId'] = jobPlanId;
+    }
     final response = await dio.get(
       '${AppStrings.baseUrl}/paper-store/by-job/$jobNrcJobNo',
+      queryParameters: queryParameters.isNotEmpty ? queryParameters : null,
       options: Options(
         headers: {
           'Content-Type': 'application/json',
@@ -480,13 +514,69 @@ class JobApi {
     );
     print('[getPaperStoreStepByJobWithEditability] Response: ${response.statusCode} ${response.data}');
     if (response.data != null && response.data['success'] == true && response.data['data'] is List) {
-      return List<Map<String, dynamic>>.from(response.data['data']);
+      final dataList = List<Map<String, dynamic>>.from(response.data['data']);
+      if (jobPlanId != null) {
+        return dataList
+            .where((item) {
+              final data = item['data'];
+              if (data is Map<String, dynamic>) {
+                final planningId = data['jobPlanningId'] ?? item['jobPlanningId'];
+                return planningId?.toString() == jobPlanId.toString();
+              }
+              return false;
+            })
+            .toList();
+      }
+      return dataList;
     }
     return [];
   }
 
+  List<Map<String, dynamic>> _filterJobPlanningRecords(List<Map<String, dynamic>> records, int jobPlanId) {
+    final filtered = records.where((item) {
+      final data = item['data'];
+      if (data is Map<String, dynamic>) {
+        final directPlanningId = data['jobPlanningId'] ??
+            data['jobPlanId'] ??
+            item['jobPlanningId'] ??
+            item['jobPlanId'];
+        if (directPlanningId != null && directPlanningId.toString() == jobPlanId.toString()) {
+          return true;
+        }
+
+        // Check nested jobStep structure if present
+        final jobStep = data['jobStep'];
+        if (jobStep is Map<String, dynamic>) {
+          final nestedPlanningId = jobStep['jobPlanningId'] ?? jobStep['jobPlanId'];
+          if (nestedPlanningId != null && nestedPlanningId.toString() == jobPlanId.toString()) {
+            return true;
+          }
+        }
+
+        final jobStepFallback = item['jobStep'];
+        if (jobStepFallback is Map<String, dynamic>) {
+          final planningIdFallback = jobStepFallback['jobPlanningId'] ?? jobStepFallback['jobPlanId'];
+          if (planningIdFallback != null && planningIdFallback.toString() == jobPlanId.toString()) {
+            return true;
+          }
+        }
+
+        final topLevelPlanning = item['jobPlanningId'] ?? item['jobPlanId'];
+        if (topLevelPlanning != null && topLevelPlanning.toString() == jobPlanId.toString()) {
+          return true;
+        }
+      }
+      return false;
+    }).toList();
+
+    if (filtered.isEmpty) {
+      return records;
+    }
+    return filtered;
+  }
+
   /// Get Printing Details by job with editability information
-  Future<List<Map<String, dynamic>>> getPrintingDetailsByJobWithEditability(String jobNrcJobNo) async {
+  Future<List<Map<String, dynamic>>> getPrintingDetailsByJobWithEditability(String jobNrcJobNo, {int? jobPlanId}) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     final response = await dio.get(
@@ -499,13 +589,17 @@ class JobApi {
       ),
     );
     if (response.data != null && response.data['success'] == true && response.data['data'] is List) {
-      return List<Map<String, dynamic>>.from(response.data['data']);
+      final dataList = List<Map<String, dynamic>>.from(response.data['data']);
+      if (jobPlanId != null) {
+        return _filterJobPlanningRecords(dataList, jobPlanId);
+      }
+      return dataList;
     }
     return [];
   }
 
   /// Get Corrugation by job with editability information
-  Future<List<Map<String, dynamic>>> getCorrugationByJobWithEditability(String jobNrcJobNo) async {
+  Future<List<Map<String, dynamic>>> getCorrugationByJobWithEditability(String jobNrcJobNo, {int? jobPlanId}) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     final response = await dio.get(
@@ -518,13 +612,17 @@ class JobApi {
       ),
     );
     if (response.data != null && response.data['success'] == true && response.data['data'] is List) {
-      return List<Map<String, dynamic>>.from(response.data['data']);
+      final dataList = List<Map<String, dynamic>>.from(response.data['data']);
+      if (jobPlanId != null) {
+        return _filterJobPlanningRecords(dataList, jobPlanId);
+      }
+      return dataList;
     }
     return [];
   }
 
   /// Get Flute Lamination by job with editability information
-  Future<List<Map<String, dynamic>>> getFluteLaminationByJobWithEditability(String jobNrcJobNo) async {
+  Future<List<Map<String, dynamic>>> getFluteLaminationByJobWithEditability(String jobNrcJobNo, {int? jobPlanId}) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     final response = await dio.get(
@@ -537,13 +635,17 @@ class JobApi {
       ),
     );
     if (response.data != null && response.data['success'] == true && response.data['data'] is List) {
-      return List<Map<String, dynamic>>.from(response.data['data']);
+      final dataList = List<Map<String, dynamic>>.from(response.data['data']);
+      if (jobPlanId != null) {
+        return _filterJobPlanningRecords(dataList, jobPlanId);
+      }
+      return dataList;
     }
     return [];
   }
 
   /// Get Punching by job with editability information
-  Future<List<Map<String, dynamic>>> getPunchingByJobWithEditability(String jobNrcJobNo) async {
+  Future<List<Map<String, dynamic>>> getPunchingByJobWithEditability(String jobNrcJobNo, {int? jobPlanId}) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     final response = await dio.get(
@@ -556,13 +658,17 @@ class JobApi {
       ),
     );
     if (response.data != null && response.data['success'] == true && response.data['data'] is List) {
-      return List<Map<String, dynamic>>.from(response.data['data']);
+      final dataList = List<Map<String, dynamic>>.from(response.data['data']);
+      if (jobPlanId != null) {
+        return _filterJobPlanningRecords(dataList, jobPlanId);
+      }
+      return dataList;
     }
     return [];
   }
 
   /// Get Side Flap Pasting by job with editability information
-  Future<List<Map<String, dynamic>>> getSideFlapPastingByJobWithEditability(String jobNrcJobNo) async {
+  Future<List<Map<String, dynamic>>> getSideFlapPastingByJobWithEditability(String jobNrcJobNo, {int? jobPlanId}) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     final response = await dio.get(
@@ -575,17 +681,29 @@ class JobApi {
       ),
     );
     if (response.data != null && response.data['success'] == true && response.data['data'] is List) {
-      return List<Map<String, dynamic>>.from(response.data['data']);
+      final dataList = List<Map<String, dynamic>>.from(response.data['data']);
+      if (jobPlanId != null) {
+        return _filterJobPlanningRecords(dataList, jobPlanId);
+      }
+      return dataList;
     }
     return [];
   }
 
   /// Get Quality Dept by job with editability information
-  Future<List<Map<String, dynamic>>> getQualityDeptByJobWithEditability(String jobNrcJobNo) async {
+  Future<List<Map<String, dynamic>>> getQualityDeptByJobWithEditability(
+    String jobNrcJobNo, {
+    int? jobPlanId,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
+    final queryParameters = <String, dynamic>{};
+    if (jobPlanId != null) {
+      queryParameters['jobPlanId'] = jobPlanId;
+    }
     final response = await dio.get(
       '${AppStrings.baseUrl}/quality-dept/by-job/$jobNrcJobNo',
+      queryParameters: queryParameters.isNotEmpty ? queryParameters : null,
       options: Options(
         headers: {
           'Content-Type': 'application/json',
@@ -600,11 +718,19 @@ class JobApi {
   }
 
   /// Get Dispatch Process by job with editability information
-  Future<List<Map<String, dynamic>>> getDispatchProcessByJobWithEditability(String jobNrcJobNo) async {
+  Future<List<Map<String, dynamic>>> getDispatchProcessByJobWithEditability(
+    String jobNrcJobNo, {
+    int? jobPlanId,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
+    final queryParameters = <String, dynamic>{};
+    if (jobPlanId != null) {
+      queryParameters['jobPlanId'] = jobPlanId;
+    }
     final response = await dio.get(
       '${AppStrings.baseUrl}/dispatch-process/by-job/$jobNrcJobNo',
+      queryParameters: queryParameters.isNotEmpty ? queryParameters : null,
       options: Options(
         headers: {
           'Content-Type': 'application/json',
@@ -637,13 +763,21 @@ class JobApi {
     return response;
   }
 
-  Future<Map<String, dynamic>?> getJobPlanningStepDetails(String jobNumber, int stepId) async {
+  Future<Map<String, dynamic>?> getJobPlanningStepDetails(String jobNumber, int stepId, {int? jobPlanId, int? jobStepId}) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     print('[getJobPlanningStepDetails] Token: $token');
     print('[getJobPlanningStepDetails] jobNumber: $jobNumber, stepId: $stepId');
+    final queryParameters = <String, dynamic>{};
+    if (jobPlanId != null) {
+      queryParameters['jobPlanId'] = jobPlanId;
+    }
+    if (jobStepId != null) {
+      queryParameters['jobStepId'] = jobStepId;
+    }
     final response = await dio.get(
       '${AppStrings.baseUrl}/job-planning/$jobNumber/steps/$stepId',
+      queryParameters: queryParameters.isNotEmpty ? queryParameters : null,
       options: Options(
         headers: {
           'Content-Type': 'application/json',
@@ -693,16 +827,30 @@ class JobApi {
     }
   }
 
-  Future<Response> updateJobPlanningStepFields(String jobNumber, int stepNo, Map<String, dynamic> body) async {
+  Future<Response> updateJobPlanningStepFields(
+    String jobNumber,
+    int stepNo,
+    Map<String, dynamic> body, {
+    int? jobPlanId,
+    int? jobStepId,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('accessToken');
       print('[updateJobPlanningStepFields] Token: $token');
       print('[updateJobPlanningStepFields] jobNumber: $jobNumber, stepNo: $stepNo, body: $body');
-      final url = '${AppStrings.baseUrl}/job-planning/${jobNumber}/steps/$stepNo';
-      print('[updateJobPlanningStepFields] URL: $url');
+      final queryParameters = <String, dynamic>{};
+      if (jobPlanId != null) {
+        queryParameters['jobPlanId'] = jobPlanId;
+      }
+      if (jobStepId != null) {
+        queryParameters['jobStepId'] = jobStepId;
+      }
+      final uri = Uri.parse('${AppStrings.baseUrl}/job-planning/$jobNumber/steps/$stepNo')
+          .replace(queryParameters: queryParameters.isEmpty ? null : queryParameters.map((key, value) => MapEntry(key, value.toString())));
+      print('[updateJobPlanningStepFields] URL: $uri');
       print('[updateJobPlanningStepFields] Body: $body');
-      final response = await dio.put(url, data: body, options: Options(
+      final response = await dio.putUri(uri, data: body, options: Options(
         headers: {
           'Content-Type': 'application/json',
           if (token != null) 'Authorization': 'Bearer $token',
@@ -1009,13 +1157,28 @@ class JobApi {
     return _postWithAuth('/dispatch-process/', body);
   }
 
-  Future<void> updateJobPlanningStepComplete(String jobNumber,int stepNo, String status, {Map<String, dynamic>? additionalFields}) async {
+  Future<void> updateJobPlanningStepComplete(
+    String jobNumber,
+    int stepNo,
+    String status, {
+    Map<String, dynamic>? additionalFields,
+    int? jobPlanId,
+    int? jobStepId,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('accessToken');
       print('[updateJobPlanningStepComplete] Token: $token');
       print('[updateJobPlanningStepComplete] jobNumber: $jobNumber, stepNo: $stepNo, status: $status');
-      final url = '${AppStrings.baseUrl}/job-planning/${jobNumber}/steps/$stepNo';
+      final queryParameters = <String, dynamic>{};
+      if (jobPlanId != null) {
+        queryParameters['jobPlanId'] = jobPlanId;
+      }
+      if (jobStepId != null) {
+        queryParameters['jobStepId'] = jobStepId;
+      }
+      final uri = Uri.parse('${AppStrings.baseUrl}/job-planning/$jobNumber/steps/$stepNo')
+          .replace(queryParameters: queryParameters.isEmpty ? null : queryParameters.map((key, value) => MapEntry(key, value.toString())));
       
       Map<String, dynamic> body;
       if (status == 'start') {
@@ -1039,9 +1202,9 @@ class JobApi {
         }
       }
       
-      print('[updateJobPlanningStepComplete] URL: $url');
+      print('[updateJobPlanningStepComplete] URL: $uri');
       print('[updateJobPlanningStepComplete] Body: $body');
-      final response = await dio.put(url, data: body, options: Options(
+      final response = await dio.putUri(uri, data: body, options: Options(
         headers: {
           'Content-Type': 'application/json',
           if (token != null) 'Authorization': 'Bearer $token',
@@ -1341,18 +1504,33 @@ class JobApi {
   // ==================== ALL STEP HOLD/RESUME ====================
   
   /// Major hold work on machine
-  Future<Map<String, dynamic>> majorHoldWorkOnMachine(String jobNrcJobNo, int stepNo, String machineId, {Map<String, dynamic>? formData, String? majorHoldReason}) async {
+  Future<Map<String, dynamic>> majorHoldWorkOnMachine(
+    String jobNrcJobNo,
+    int stepNo,
+    String machineId, {
+    Map<String, dynamic>? formData,
+    String? majorHoldReason,
+    int? jobPlanId,
+    int? jobStepId,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
     print('[majorHoldWorkOnMachine] Token: $token');
-    print('[majorHoldWorkOnMachine] jobNrcJobNo: $jobNrcJobNo, stepNo: $stepNo, machineId: $machineId, majorHoldReason: $majorHoldReason');
+    print('[majorHoldWorkOnMachine] jobNrcJobNo: $jobNrcJobNo, stepNo: $stepNo, machineId: $machineId, majorHoldReason: $majorHoldReason, jobPlanId=$jobPlanId, jobStepId=$jobStepId');
+    
+    final queryParameters = <String, dynamic>{};
+    if (jobPlanId != null) queryParameters['jobPlanId'] = jobPlanId;
+    if (jobStepId != null) queryParameters['jobStepId'] = jobStepId;
     
     final response = await dio.post(
       '/job-step-machines/$jobNrcJobNo/steps/$stepNo/machines/$machineId/major-hold',
       data: {
         'formData': formData,
         'majorHoldRemark': majorHoldReason,
+        if (jobPlanId != null) 'jobPlanId': jobPlanId,
+        if (jobStepId != null) 'jobStepId': jobStepId,
       },
+      queryParameters: queryParameters.isNotEmpty ? queryParameters : null,
       options: Options(
         headers: {
           'Authorization': 'Bearer $token',
@@ -1542,16 +1720,20 @@ class JobApi {
   // ===== MACHINE-SPECIFIC WORK API METHODS =====
 
   /// Get available machines for a job step
-  Future<Map<String, dynamic>?> getAvailableMachines(String nrcJobNo, int stepNo) async {
+  Future<Map<String, dynamic>?> getAvailableMachines(String nrcJobNo, int stepNo, {int? jobPlanId, int? jobStepId}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('accessToken');
-      print('[getAvailableMachines] Making request to: /job-step-machines/$nrcJobNo/steps/$stepNo/machines');
+      print('[getAvailableMachines] Making request to: /job-step-machines/$nrcJobNo/steps/$stepNo/machines (jobPlanId=$jobPlanId, jobStepId=$jobStepId)');
       print('[getAvailableMachines] Token available: ${token != null}');
       print('[getAvailableMachines] Token: ${token?.substring(0, 20)}...');
+      final queryParameters = <String, dynamic>{};
+      if (jobPlanId != null) queryParameters['jobPlanId'] = jobPlanId;
+      if (jobStepId != null) queryParameters['jobStepId'] = jobStepId;
       
       final response = await dio.get(
         '/job-step-machines/$nrcJobNo/steps/$stepNo/machines',
+        queryParameters: queryParameters.isNotEmpty ? queryParameters : null,
         options: Options(
           headers: {
             'Content-Type': 'application/json',
@@ -1580,15 +1762,29 @@ class JobApi {
   }
 
   /// Start work on a specific machine
-  Future<Map<String, dynamic>?> startWorkOnMachine(String nrcJobNo, int stepNo, String machineId, {Map<String, dynamic>? formData}) async {
+  Future<Map<String, dynamic>?> startWorkOnMachine(
+    String nrcJobNo,
+    int stepNo,
+    String machineId, {
+    Map<String, dynamic>? formData,
+    int? jobPlanId,
+    int? jobStepId,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('accessToken');
+      final queryParameters = <String, dynamic>{};
+      if (jobPlanId != null) queryParameters['jobPlanId'] = jobPlanId;
+      if (jobStepId != null) queryParameters['jobStepId'] = jobStepId;
+      final payload = <String, dynamic>{
+        'formData': formData,
+        if (jobPlanId != null) 'jobPlanId': jobPlanId,
+        if (jobStepId != null) 'jobStepId': jobStepId,
+      };
       final response = await dio.post(
         '/job-step-machines/$nrcJobNo/steps/$stepNo/machines/$machineId/start',
-        data: {
-          'formData': formData,
-        },
+        data: payload,
+        queryParameters: queryParameters.isNotEmpty ? queryParameters : null,
         options: Options(
           headers: {
             'Content-Type': 'application/json',
@@ -1609,15 +1805,27 @@ class JobApi {
   }
 
   /// Start urgent job work (auto-assigns user's machine)
-  Future<Map<String, dynamic>?> startUrgentJobWork(String nrcJobNo, int stepNo, {Map<String, dynamic>? formData}) async {
+  Future<Map<String, dynamic>?> startUrgentJobWork(
+    String nrcJobNo,
+    int stepNo, {
+    Map<String, dynamic>? formData,
+    int? jobPlanId,
+    int? jobStepId,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('accessToken');
+      final queryParameters = <String, dynamic>{};
+      if (jobPlanId != null) queryParameters['jobPlanId'] = jobPlanId;
+      if (jobStepId != null) queryParameters['jobStepId'] = jobStepId;
       final response = await dio.post(
         '/job-step-machines/$nrcJobNo/steps/$stepNo/urgent/start',
         data: {
           'formData': formData,
+          if (jobPlanId != null) 'jobPlanId': jobPlanId,
+          if (jobStepId != null) 'jobStepId': jobStepId,
         },
+        queryParameters: queryParameters.isNotEmpty ? queryParameters : null,
         options: Options(
           headers: {
             'Content-Type': 'application/json',
@@ -1638,15 +1846,29 @@ class JobApi {
   }
 
   /// Complete work on a specific machine
-  Future<Map<String, dynamic>?> completeWorkOnMachine(String nrcJobNo, int stepNo, String machineId, {Map<String, dynamic>? formData}) async {
+  Future<Map<String, dynamic>?> completeWorkOnMachine(
+    String nrcJobNo,
+    int stepNo,
+    String machineId, {
+    Map<String, dynamic>? formData,
+    int? jobPlanId,
+    int? jobStepId,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('accessToken');
+      final queryParameters = <String, dynamic>{};
+      if (jobPlanId != null) queryParameters['jobPlanId'] = jobPlanId;
+      if (jobStepId != null) queryParameters['jobStepId'] = jobStepId;
+      final payload = <String, dynamic>{
+        'formData': formData,
+        if (jobPlanId != null) 'jobPlanId': jobPlanId,
+        if (jobStepId != null) 'jobStepId': jobStepId,
+      };
       final response = await dio.post(
         '/job-step-machines/$nrcJobNo/steps/$stepNo/machines/$machineId/complete',
-        data: {
-          'formData': formData,
-        },
+        data: payload,
+        queryParameters: queryParameters.isNotEmpty ? queryParameters : null,
         options: Options(
           headers: {
             'Content-Type': 'application/json',
@@ -1667,16 +1889,30 @@ class JobApi {
   }
 
   /// Hold work on a specific machine
-  Future<Map<String, dynamic>?> holdWorkOnMachine(String nrcJobNo, int stepNo, String machineId, {Map<String, dynamic>? formData, String? holdReason}) async {
+  Future<Map<String, dynamic>?> holdWorkOnMachine(
+    String nrcJobNo,
+    int stepNo,
+    String machineId, {
+    Map<String, dynamic>? formData,
+    String? holdReason,
+    int? jobPlanId,
+    int? jobStepId,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('accessToken');
+      final queryParameters = <String, dynamic>{};
+      if (jobPlanId != null) queryParameters['jobPlanId'] = jobPlanId;
+      if (jobStepId != null) queryParameters['jobStepId'] = jobStepId;
       final response = await dio.post(
         '/job-step-machines/$nrcJobNo/steps/$stepNo/machines/$machineId/hold',
         data: {
           'formData': formData,
           'holdReason': holdReason,
+          if (jobPlanId != null) 'jobPlanId': jobPlanId,
+          if (jobStepId != null) 'jobStepId': jobStepId,
         },
+        queryParameters: queryParameters.isNotEmpty ? queryParameters : null,
         options: Options(
           headers: {
             'Content-Type': 'application/json',
@@ -1697,15 +1933,28 @@ class JobApi {
   }
 
   /// Resume work on a specific machine
-  Future<Map<String, dynamic>?> resumeWorkOnMachine(String nrcJobNo, int stepNo, String machineId, {Map<String, dynamic>? formData}) async {
+  Future<Map<String, dynamic>?> resumeWorkOnMachine(
+    String nrcJobNo,
+    int stepNo,
+    String machineId, {
+    Map<String, dynamic>? formData,
+    int? jobPlanId,
+    int? jobStepId,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('accessToken');
+      final queryParameters = <String, dynamic>{};
+      if (jobPlanId != null) queryParameters['jobPlanId'] = jobPlanId;
+      if (jobStepId != null) queryParameters['jobStepId'] = jobStepId;
       final response = await dio.post(
         '/job-step-machines/$nrcJobNo/steps/$stepNo/machines/$machineId/resume',
         data: {
           'formData': formData,
+          if (jobPlanId != null) 'jobPlanId': jobPlanId,
+          if (jobStepId != null) 'jobStepId': jobStepId,
         },
+        queryParameters: queryParameters.isNotEmpty ? queryParameters : null,
         options: Options(
           headers: {
             'Content-Type': 'application/json',
@@ -1727,14 +1976,27 @@ class JobApi {
 
   /// Stop work on a specific machine
   /// Stop work on a specific machine - ONLY changes status, does NOT save formData
-  Future<Map<String, dynamic>?> stopWorkOnMachine(String nrcJobNo, int stepNo, String machineId) async {
+  Future<Map<String, dynamic>?> stopWorkOnMachine(
+    String nrcJobNo,
+    int stepNo,
+    String machineId, {
+    int? jobPlanId,
+    int? jobStepId,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('accessToken');
       // ✅ UPDATED: Stop does NOT send formData anymore
+      final queryParameters = <String, dynamic>{};
+      if (jobPlanId != null) queryParameters['jobPlanId'] = jobPlanId;
+      if (jobStepId != null) queryParameters['jobStepId'] = jobStepId;
       final response = await dio.post(
         '/job-step-machines/$nrcJobNo/steps/$stepNo/machines/$machineId/stop',
-        // NO data body - backend only changes status
+        data: {
+          if (jobPlanId != null) 'jobPlanId': jobPlanId,
+          if (jobStepId != null) 'jobStepId': jobStepId,
+        },
+        queryParameters: queryParameters.isNotEmpty ? queryParameters : null,
         options: Options(
           headers: {
             'Content-Type': 'application/json',
@@ -1755,12 +2017,16 @@ class JobApi {
   }
 
   /// Get machine work status for a job step
-  Future<Map<String, dynamic>?> getMachineWorkStatus(String nrcJobNo, int stepNo) async {
+  Future<Map<String, dynamic>?> getMachineWorkStatus(String nrcJobNo, int stepNo, {int? jobPlanId, int? jobStepId}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('accessToken');
+      final queryParameters = <String, dynamic>{};
+      if (jobPlanId != null) queryParameters['jobPlanId'] = jobPlanId;
+      if (jobStepId != null) queryParameters['jobStepId'] = jobStepId;
       final response = await dio.get(
         '/job-step-machine/$nrcJobNo/steps/$stepNo/machines/status',
+        queryParameters: queryParameters.isNotEmpty ? queryParameters : null,
         options: Options(
           headers: {
             'Content-Type': 'application/json',

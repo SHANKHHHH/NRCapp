@@ -28,8 +28,14 @@ import 'ArtworkDisplayWidget.dart';
 class JobTimelinePage extends StatefulWidget {
   final String? jobNumber;
   final List<dynamic>? assignedSteps;
+  final int? jobPlanId;
 
-  const JobTimelinePage({super.key, this.jobNumber, this.assignedSteps});
+  const JobTimelinePage({
+    super.key,
+    this.jobNumber,
+    this.assignedSteps,
+    this.jobPlanId,
+  });
 
   @override
   State<JobTimelinePage> createState() => _JobTimelinePageState();
@@ -60,6 +66,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   
   // User machine access for smart filtering
   List<String> _userMachineIds = [];
+
+  int? _jobPlanId;
   
   // State synchronization tracking
   bool _isValidatingState = false;
@@ -71,6 +79,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   void initState() {
     super.initState();
     _apiService = JobApiService(JobApi(DioService.instance));
+    _jobPlanId = widget.jobPlanId;
     _loadUserRoleAndInitializeSteps();
     
     // Removed auto-refresh to prevent constant UI updates
@@ -169,7 +178,11 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       // Fetch machine statuses from the backend's getAvailableMachines API
       // This returns the JobStepMachine statuses for this specific job and step
       try {
-        final response = await _apiService.getAvailableMachines(widget.jobNumber!, stepNo);
+      final response = await _apiService.getAvailableMachines(
+        widget.jobNumber!,
+        stepNo,
+        jobPlanId: _jobPlanId,
+      );
         
         if (response != null && response['machines'] is List) {
           final machines = response['machines'] as List;
@@ -269,10 +282,18 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     try {
       // Fetch step details to check current status
       final stepNo = StepDataManager.getStepNumber(step.type);
-      final stepDetails = await _apiService.getStepDetailsWithEditability(widget.jobNumber!, step.type);
+      final stepDetails = await _apiService.getStepDetailsWithEditability(
+        widget.jobNumber!,
+        step.type,
+        jobPlanId: _jobPlanId,
+      );
       
       // Also fetch JobStep to check the actual step status
-      final jobStepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
+      final jobStepDetails = await _apiService.getJobPlanningStepDetails(
+        widget.jobNumber!,
+        stepNo,
+        jobPlanId: _jobPlanId,
+      );
       
       String currentStatus = 'pending';
       Map<String, dynamic>? stepData;
@@ -955,7 +976,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     print('🚀 REVOLUTIONARY: Refreshing with bulletproof status management');
     
     // 🎯 Clear ALL caches to force fresh data from backend
-    RevolutionaryStepStatusManager.clearCache(widget.jobNumber!);
+    RevolutionaryStepStatusManager.clearCache(
+      widget.jobNumber!,
+      jobPlanId: _jobPlanId,
+    );
     _stepDetailsCache.clear();
     _individualStepDetailsCache.clear();
     _paperStoreCache = null;
@@ -994,13 +1018,24 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           List<StepDataWithEditability> stepDetailsList;
           switch (step.type) {
             case StepType.paperStore:
-              stepDetailsList = await _apiService.getPaperStoreStepByJobWithEditability(widget.jobNumber!);
+              stepDetailsList = await _apiService.getPaperStoreStepByJobWithEditability(
+                widget.jobNumber!,
+                jobPlanId: _jobPlanId,
+              );
               break;
             case StepType.qc:
-              stepDetailsList = await _apiService.getStepDetailsWithEditability(widget.jobNumber!, StepType.qc);
+              stepDetailsList = await _apiService.getStepDetailsWithEditability(
+                widget.jobNumber!,
+                StepType.qc,
+                jobPlanId: _jobPlanId,
+              );
               break;
             case StepType.dispatch:
-              stepDetailsList = await _apiService.getStepDetailsWithEditability(widget.jobNumber!, StepType.dispatch);
+              stepDetailsList = await _apiService.getStepDetailsWithEditability(
+                widget.jobNumber!,
+                StepType.dispatch,
+                jobPlanId: _jobPlanId,
+              );
               break;
             default:
               continue;
@@ -1055,6 +1090,12 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
             }
           } else {
             print('❌ No data found for ${step.title}');
+            if (mounted) {
+              setState(() {
+                step.status = StepStatus.pending;
+                step.formData = {};
+              });
+            }
           }
         } catch (e) {
           print('❌ Error updating status for ${step.title}: $e');
@@ -1090,7 +1131,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     if (widget.assignedSteps == null || widget.assignedSteps!.isEmpty) {
       print('No assigned steps provided, fetching from API...');
       try {
-        final jobPlanningData = await _apiService.getJobPlanningStepsByNrcJobNo(widget.jobNumber!);
+        final jobPlanningData = await _apiService.getJobPlanningStepsByNrcJobNo(
+          widget.jobNumber!,
+          jobPlanId: _jobPlanId,
+        );
         if (jobPlanningData != null && jobPlanningData['steps'] != null) {
           final fetchedSteps = jobPlanningData['steps'] as List;
           print('Fetched ${fetchedSteps.length} steps from API');
@@ -1212,7 +1256,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
     // Try batch fetch of all planning steps first
     try {
-      final planning = await _apiService.getJobPlanningStepsByNrcJobNo(widget.jobNumber!);
+      final planning = await _apiService.getJobPlanningStepsByNrcJobNo(
+        widget.jobNumber!,
+        jobPlanId: _jobPlanId,
+      );
       if (planning != null && planning is Map && planning['steps'] is List) {
         final List stepsList = planning['steps'];
         for (final s in stepsList) {
@@ -1308,7 +1355,11 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       }
 
       // Load from API
-      final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
+      final stepDetails = await _apiService.getJobPlanningStepDetails(
+        widget.jobNumber!,
+        stepNo,
+        jobPlanId: _jobPlanId,
+      );
       _stepDetailsCache[stepNo] = stepDetails;
       
       print('Loaded and cached step details for step $stepNo');
@@ -1321,7 +1372,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   /// Load individual step details with caching (for hold/resume functionality)
   Future<void> _loadIndividualStepDetailsWithCache(int stepNo, StepType stepType) async {
     try {
-      final cacheKey = '${widget.jobNumber}_${stepType.name}_individual';
+      final cacheKey = '${widget.jobNumber}_${_jobPlanId ?? 'noPlan'}_${stepType.name}_individual';
       
       // Check cache first
       if (_individualStepDetailsCache.containsKey(cacheKey)) {
@@ -1335,28 +1386,59 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       List<StepDataWithEditability> stepDetailsList;
       switch (stepType) {
         case StepType.paperStore:
-          stepDetailsList = await _apiService.getPaperStoreStepByJobWithEditability(widget.jobNumber!);
+          stepDetailsList = await _apiService.getPaperStoreStepByJobWithEditability(
+            widget.jobNumber!,
+            jobPlanId: _jobPlanId,
+          );
           break;
         case StepType.printing:
-          stepDetailsList = await _apiService.getStepDetailsWithEditability(widget.jobNumber!, StepType.printing);
+          stepDetailsList = await _apiService.getStepDetailsWithEditability(
+            widget.jobNumber!,
+            StepType.printing,
+            jobPlanId: _jobPlanId,
+          );
           break;
         case StepType.corrugation:
-          stepDetailsList = await _apiService.getStepDetailsWithEditability(widget.jobNumber!, StepType.corrugation);
+          stepDetailsList = await _apiService.getStepDetailsWithEditability(
+            widget.jobNumber!,
+            StepType.corrugation,
+            jobPlanId: _jobPlanId,
+          );
           break;
         case StepType.fluteLamination:
-          stepDetailsList = await _apiService.getStepDetailsWithEditability(widget.jobNumber!, StepType.fluteLamination);
+          stepDetailsList = await _apiService.getStepDetailsWithEditability(
+            widget.jobNumber!,
+            StepType.fluteLamination,
+            jobPlanId: _jobPlanId,
+          );
           break;
         case StepType.punching:
-          stepDetailsList = await _apiService.getStepDetailsWithEditability(widget.jobNumber!, StepType.punching);
+          stepDetailsList = await _apiService.getStepDetailsWithEditability(
+            widget.jobNumber!,
+            StepType.punching,
+            jobPlanId: _jobPlanId,
+          );
           break;
         case StepType.flapPasting:
-          stepDetailsList = await _apiService.getStepDetailsWithEditability(widget.jobNumber!, StepType.flapPasting);
+          stepDetailsList = await _apiService.getStepDetailsWithEditability(
+            widget.jobNumber!,
+            StepType.flapPasting,
+            jobPlanId: _jobPlanId,
+          );
           break;
         case StepType.qc:
-          stepDetailsList = await _apiService.getStepDetailsWithEditability(widget.jobNumber!, StepType.qc);
+          stepDetailsList = await _apiService.getStepDetailsWithEditability(
+            widget.jobNumber!,
+            StepType.qc,
+            jobPlanId: _jobPlanId,
+          );
           break;
         case StepType.dispatch:
-          stepDetailsList = await _apiService.getStepDetailsWithEditability(widget.jobNumber!, StepType.dispatch);
+          stepDetailsList = await _apiService.getStepDetailsWithEditability(
+            widget.jobNumber!,
+            StepType.dispatch,
+            jobPlanId: _jobPlanId,
+          );
           break;
         default:
           print('Unknown step type for individual details: $stepType');
@@ -1368,8 +1450,32 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       // Get the first step details if available
       Map<String, dynamic>? stepDetails;
       if (stepDetailsList.isNotEmpty) {
-        stepDetails = stepDetailsList.first.data;
-        print('Individual step details data: $stepDetails');
+        Map<String, dynamic>? matchedData;
+        final targetJobStepId = _stepDetailsCache[stepNo]?['id'];
+        matchedData = stepDetailsList
+            .map((item) => item.data)
+            .where((data) {
+              final dataJobStepId = data['jobStepId'] ?? data['jobStepID'];
+              if (dataJobStepId != null && targetJobStepId != null) {
+                return dataJobStepId.toString() == targetJobStepId.toString();
+              }
+              final dataJobPlanningId = data['jobPlanningId'] ?? data['jobPlanId'];
+              if (_jobPlanId != null && dataJobPlanningId != null) {
+                return dataJobPlanningId.toString() == _jobPlanId.toString();
+              }
+              return false;
+            })
+            .cast<Map<String, dynamic>>()
+            .firstWhere(
+              (_) => true,
+              orElse: () => {},
+            );
+        if (matchedData?.isEmpty ?? true) {
+          matchedData = null;
+        }
+
+        stepDetails = matchedData ?? stepDetailsList.first.data;
+        print('Individual step details data (matched=${matchedData != null}): $stepDetails');
       } else {
         print('No individual step details found for $stepType');
       }
@@ -1383,7 +1489,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       }
     } catch (e) {
       print('Error loading individual step details for $stepType: $e');
-      _individualStepDetailsCache['${widget.jobNumber}_${stepType.name}_individual'] = null;
+      final cacheKey = '${widget.jobNumber}_${_jobPlanId ?? 'noPlan'}_${stepType.name}_individual';
+      _individualStepDetailsCache[cacheKey] = null;
     }
   }
 
@@ -1395,7 +1502,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         return;
       }
 
-      _paperStoreCache = await _apiService.getPaperStoreStepByJob(widget.jobNumber!);
+      _paperStoreCache = await _apiService.getPaperStoreStepByJob(
+        widget.jobNumber!,
+        jobPlanId: _jobPlanId,
+      );
       print('Loaded and cached paper store data');
     } catch (e) {
       print('Error loading paper store data: $e');
@@ -1452,7 +1562,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   /// Process individual step status from step details (for hold/resume functionality)
   void _processIndividualStepStatus(StepData step, int stepIndex, Map<String, dynamic>? stepDetails) {
     // Get individual step details from cache
-    final cacheKey = '${widget.jobNumber}_${step.type.name}_individual';
+    final cacheKey = '${widget.jobNumber}_${_jobPlanId ?? 'noPlan'}_${step.type.name}_individual';
     final individualStepDetails = _individualStepDetailsCache[cacheKey];
     
     if (individualStepDetails == null || !individualStepDetails.containsKey('status')) {
@@ -1742,7 +1852,11 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       }
 
       final stepNo = StepDataManager.getStepNumber(step.type);
-      final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
+      final stepDetails = await _apiService.getJobPlanningStepDetails(
+        widget.jobNumber!,
+        stepNo,
+        jobPlanId: _jobPlanId,
+      );
 
       // If planning doesn't include this step, do not query step-specific endpoints
       if (stepDetails == null) {
@@ -1875,7 +1989,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     if (widget.jobNumber == null) return;
 
     try {
-      final paperStore = await _apiService.getPaperStoreStepByJob(widget.jobNumber!);
+      final paperStore = await _apiService.getPaperStoreStepByJob(
+        widget.jobNumber!,
+        jobPlanId: _jobPlanId,
+      );
       if (paperStore != null) {
         final status = paperStore['status'];
         final paperStoreStepIndex = steps.indexWhere((step) => step.type == StepType.paperStore);
@@ -1990,7 +2107,11 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
     try {
       print('DEBUG: Fetching step details for step $stepNo');
-      final stepDetails = await _apiService.getStepDetailsWithEditability(widget.jobNumber!, stepType);
+      final stepDetails = await _apiService.getStepDetailsWithEditability(
+        widget.jobNumber!,
+        stepType,
+        jobPlanId: _jobPlanId,
+      );
       if (stepDetails != null && stepDetails.isNotEmpty) {
         // Extract data from StepDataWithEditability
         final stepData = stepDetails[0];
@@ -2802,7 +2923,11 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       );
 
       // Call the urgent job auto-assignment API
-      final result = await _apiService.startUrgentJobWork(widget.jobNumber!, stepNo);
+      final result = await _apiService.startUrgentJobWork(
+        widget.jobNumber!,
+        stepNo,
+        jobPlanId: _jobPlanId,
+      );
       
       if (mounted) Navigator.pop(context); // Close loading dialog
 
@@ -2875,16 +3000,45 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       if (jobData != null && jobData.purchaseOrders != null) {
         final purchaseOrders = jobData.purchaseOrders as List;
         if (purchaseOrders.isNotEmpty) {
-          final po = purchaseOrders[0];
-          poQuantity = '${po.totalPOQuantity ?? 'N/A'}';
-          customerName =  jobData.customerName ?? 'N/A';
-          // Get delivery date from PO
-          if (po.nrcDeliveryDate != null) {
+          // Find the PO linked to current job planning
+          dynamic selectedPO = purchaseOrders[0]; // Default to first
+          
+          if (_jobPlanId != null) {
             try {
-              final date = po.nrcDeliveryDate is String ? DateTime.parse(po.nrcDeliveryDate) : po.nrcDeliveryDate;
+              final jobPlanningData = await _apiService.getJobPlanningStepsByNrcJobNo(
+                widget.jobNumber!,
+                jobPlanId: _jobPlanId,
+              );
+              
+              if (jobPlanningData != null && jobPlanningData is Map) {
+                final purchaseOrderId = jobPlanningData['purchaseOrderId'];
+                
+                if (purchaseOrderId != null) {
+                  // Find matching PO
+                  for (var po in purchaseOrders) {
+                    final poId = po.id.toString();
+                    if (poId == purchaseOrderId.toString()) {
+                      selectedPO = po;
+                      break;
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              // If error, just use first PO
+            }
+          }
+          
+          final po = selectedPO;
+          poQuantity = '${po.totalPOQuantity ?? 'N/A'}';
+          customerName = jobData.customerName ?? 'N/A';
+          final nrcDeliveryDate = po.nrcDeliveryDate;
+          if (nrcDeliveryDate != null) {
+            try {
+              final date = nrcDeliveryDate is String ? DateTime.parse(nrcDeliveryDate) : nrcDeliveryDate;
               deliveryDate = '${date.day}/${date.month}/${date.year}';
             } catch (e) {
-              deliveryDate = po.nrcDeliveryDate.toString();
+              deliveryDate = nrcDeliveryDate.toString();
             }
           }
         }
@@ -2908,7 +3062,11 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         if (currentStepIndex > 0 && currentStepIndex < steps.length) {
           final currentStep = steps[currentStepIndex];
           final stepNo = StepDataManager.getStepNumber(currentStep.type);
-          final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
+          final stepDetails = await _apiService.getJobPlanningStepDetails(
+            widget.jobNumber!,
+            stepNo,
+            jobPlanId: _jobPlanId,
+          );
 
           if (stepDetails != null && stepDetails is Map) {
             final machineDetails = stepDetails['machineDetails'];
@@ -2975,7 +3133,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                     const SizedBox(height: 8),
                     Text('Job Number: ${widget.jobNumber}'),
                     Text('Customer: $customerName'),
-                    Text('Quantity: $poQuantity'),
                     Text('Delivery Date: $deliveryDate'),
                     if (jobDetails != null) ...[
                       Builder(
@@ -3491,7 +3648,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       widget.jobNumber!, 
       stepNo, 
       machineId,
-      formData: null
+      formData: null,
+      jobPlanId: _jobPlanId,
     );
 
     if (result == null) {
@@ -3500,7 +3658,11 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
     // Also start paper store work if needed
     if (step.type == StepType.paperStore) {
-      await _apiService.startPaperStoreWork(widget.jobNumber!, _convertJobDetailsToMap());
+      await _apiService.startPaperStoreWork(
+        widget.jobNumber!,
+        _convertJobDetailsToMap(),
+        jobPlanId: _jobPlanId,
+      );
     }
   }
 
@@ -3557,6 +3719,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     }
 
     // Show work form with machine info - using the same dialog approach as original
+    final stepDetails = _stepDetailsCache[stepNo];
+    final dynamic rawJobStepId = stepDetails?['id'];
+    final int? currentJobStepId = rawJobStepId is int ? rawJobStepId : int.tryParse(rawJobStepId?.toString() ?? '');
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -3572,8 +3738,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         expectedQuantity: expectedQuantity,
         stepType: step.type,
         jobData: _jobData,
+        jobPlanId: _jobPlanId,
         machineId: machineId, // Pass machine ID to form
         nrcJobNo: widget.jobNumber!,
+        jobStepId: currentJobStepId,
         parentContext: context, // Pass parent context for nested dialogs
         onComplete: (formData) async {
           String formatUtcDateToFixedIso(dynamic value) {
@@ -3626,7 +3794,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           print('Work started for ${step.title} on machine $machineId');
           
           // Clear all caches immediately and refresh
-          _apiService.clearAllJobCaches(widget.jobNumber!);
+          _apiService.clearAllJobCaches(widget.jobNumber!, jobPlanId: _jobPlanId);
           _clearAllCaches();
           await _refreshAllStepData();
         },
@@ -3648,7 +3816,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           }
           
           // Clear all caches immediately and refresh
-          _apiService.clearAllJobCaches(widget.jobNumber!);
+          _apiService.clearAllJobCaches(widget.jobNumber!, jobPlanId: _jobPlanId);
           _clearAllCaches();
           await _refreshAllStepData();
         },
@@ -3664,7 +3832,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           });
           
           // Clear all caches immediately and refresh
-          _apiService.clearAllJobCaches(widget.jobNumber!);
+          _apiService.clearAllJobCaches(widget.jobNumber!, jobPlanId: _jobPlanId);
           _clearAllCaches();
           await _refreshAllStepData();
         },
@@ -3680,7 +3848,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           });
           
           // Clear all caches immediately and refresh
-          _apiService.clearAllJobCaches(widget.jobNumber!);
+          _apiService.clearAllJobCaches(widget.jobNumber!, jobPlanId: _jobPlanId);
           _clearAllCaches();
           await _refreshAllStepData();
         },
@@ -3702,16 +3870,31 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     }
 
     // Defensive check for jobStepId
-    final stepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
+    final stepDetails = await _apiService.getJobPlanningStepDetails(
+      widget.jobNumber!,
+      stepNo,
+      jobPlanId: _jobPlanId,
+    );
     if (stepDetails == null || !(stepDetails is Map) || !stepDetails.containsKey('id')) {
       DialogManager.showErrorMessage(context, 'Job step ID not found in planning details. Please contact admin.');
       throw Exception('Job step ID not found in planning details.');
     }
 
-    await _apiService.updateJobPlanningStepComplete(widget.jobNumber!, stepNo, "start");
+    await _apiService.updateJobPlanningStepComplete(
+      widget.jobNumber!,
+      stepNo,
+      "start",
+      jobPlanId: _jobPlanId,
+      jobStepId: stepDetails['id'] as int?,
+    );
 
     if (step.type == StepType.paperStore) {
-      await _apiService.startPaperStoreWork(widget.jobNumber!, _convertJobDetailsToMap());
+      await _apiService.startPaperStoreWork(
+        widget.jobNumber!,
+        _convertJobDetailsToMap(),
+        jobPlanId: _jobPlanId,
+        jobStepId: stepDetails['id'] as int?,
+      );
     }
   }
 
@@ -3742,6 +3925,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     
     // Get machine details from step details cache
     final stepDetails = _stepDetailsCache[stepNo];
+    final dynamic rawJobStepId = stepDetails?['id'];
+    final int? currentJobStepId = rawJobStepId is int ? rawJobStepId : int.tryParse(rawJobStepId?.toString() ?? '');
     if (stepDetails != null && stepDetails['machineDetails'] != null) {
       final machineDetails = stepDetails['machineDetails'];
       if (machineDetails is List && machineDetails.isNotEmpty) {
@@ -3757,7 +3942,11 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     if (step.type == StepType.qc || step.type == StepType.dispatch) {
       try {
         print('🚀 Fetching real ${step.title} status from backend...');
-        final stepDetailsList = await _apiService.getStepDetailsWithEditability(widget.jobNumber!, step.type);
+        final stepDetailsList = await _apiService.getStepDetailsWithEditability(
+          widget.jobNumber!,
+          step.type,
+          jobPlanId: _jobPlanId,
+        );
         if (stepDetailsList.isNotEmpty) {
           final stepData = stepDetailsList.first.data;
           realStatus = stepData['status']?.toString().toLowerCase() ?? realStatus;
@@ -3787,8 +3976,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         expectedQuantity: expectedQuantity,
         stepType: step.type,
         jobData: _jobData,
+        jobPlanId: _jobPlanId,
         machineId: machineId,
         nrcJobNo: nrcJobNo,
+        jobStepId: currentJobStepId,
         parentContext: context, // Pass parent context for nested dialogs
         onComplete: (formData) async {
 
@@ -3843,7 +4034,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           print('Work started for ${step.title}');
           
           // Clear all caches immediately and refresh
-          _apiService.clearAllJobCaches(widget.jobNumber!);
+          _apiService.clearAllJobCaches(widget.jobNumber!, jobPlanId: _jobPlanId);
           _clearAllCaches();
           await _refreshAllStepData();
         },
@@ -3865,7 +4056,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           }
           
           // Clear all caches immediately and refresh
-          _apiService.clearAllJobCaches(widget.jobNumber!);
+          _apiService.clearAllJobCaches(widget.jobNumber!, jobPlanId: _jobPlanId);
           _clearAllCaches();
           await _refreshAllStepData();
         },
@@ -3881,7 +4072,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           });
           
           // Clear all caches immediately and refresh
-          _apiService.clearAllJobCaches(widget.jobNumber!);
+          _apiService.clearAllJobCaches(widget.jobNumber!, jobPlanId: _jobPlanId);
           _clearAllCaches();
           await _refreshAllStepData();
         },
@@ -3897,7 +4088,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           });
           
           // Clear all caches immediately and refresh
-          _apiService.clearAllJobCaches(widget.jobNumber!);
+          _apiService.clearAllJobCaches(widget.jobNumber!, jobPlanId: _jobPlanId);
           _clearAllCaches();
           await _refreshAllStepData();
         },
@@ -3925,11 +4116,16 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
     // 🚀 REVOLUTIONARY: Fetch REAL status from backend - check both JobStep and PaperStore
     String realStatus = 'pending'; // Default fallback
+    Map<String, dynamic>? jobStepDetails;
     try {
       print('🚀 Fetching real status from backend...');
       
       // First check JobStep status - this is the authoritative status
-      final jobStepDetails = await _apiService.getJobPlanningStepDetails(widget.jobNumber!, stepNo);
+      jobStepDetails = await _apiService.getJobPlanningStepDetails(
+        widget.jobNumber!,
+        stepNo,
+        jobPlanId: _jobPlanId,
+      );
       if (jobStepDetails != null) {
         final jobStepStatus = jobStepDetails['status']?.toString().toLowerCase();
         print('🚀 JobStep status: $jobStepStatus');
@@ -3938,7 +4134,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           realStatus = 'stop'; // Use JobStep status if stopped
         } else {
           // Only check PaperStore status if JobStep is not stopped
-          final stepDetailsList = await _apiService.getPaperStoreStepByJobWithEditability(widget.jobNumber!);
+          final stepDetailsList = await _apiService.getPaperStoreStepByJobWithEditability(
+            widget.jobNumber!,
+            jobPlanId: _jobPlanId,
+          );
           if (stepDetailsList.isNotEmpty) {
             final stepData = stepDetailsList.first.data;
             realStatus = stepData['status']?.toString().toLowerCase() ?? 'pending';
@@ -3951,6 +4150,12 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     } catch (e) {
       print('❌ Error fetching real status: $e');
     }
+
+    final dynamic rawJobStepId =
+        jobStepDetails?['id'] ?? _stepDetailsCache[stepNo]?['id'];
+    final int? currentJobStepId = rawJobStepId is int
+        ? rawJobStepId
+        : int.tryParse(rawJobStepId?.toString() ?? '');
 
     showDialog(
       context: context,
@@ -3967,6 +4172,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         expectedQuantity: expectedQuantity,
         stepType: step.type,
         jobData: _jobData,
+        jobPlanId: _jobPlanId,
+        jobStepId: currentJobStepId,
         parentContext: context, // Pass parent context for nested dialogs
         onComplete: (formData) async {
           // Handle PaperStore completion
@@ -3984,7 +4191,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           });
         
         // Clear all caches immediately and refresh
-        _apiService.clearAllJobCaches(widget.jobNumber!);
+        _apiService.clearAllJobCaches(widget.jobNumber!, jobPlanId: _jobPlanId);
         _clearAllCaches();
         await _refreshAllStepData();
       },
@@ -4000,7 +4207,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           });
           
         // Clear all caches immediately and refresh
-        _apiService.clearAllJobCaches(widget.jobNumber!);
+        _apiService.clearAllJobCaches(widget.jobNumber!, jobPlanId: _jobPlanId);
         _clearAllCaches();
         await _refreshAllStepData();
       },
@@ -4018,11 +4225,21 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       );
 
       final stepNo = StepDataManager.getStepNumber(StepType.paperStore);
+      final dynamic rawJobStepId = _stepDetailsCache[stepNo]?['id'];
+      final int? currentJobStepId = rawJobStepId is int ? rawJobStepId : int.tryParse(rawJobStepId?.toString() ?? '');
 
       // Only submit form data - don't change status (it's already 'stop' from Stop Work)
       // Extract completion remarks from form data if available
       final completeRemark = formData['Complete Remark'] ?? formData['completeRemark'];
-      await _apiService.putStepDetails(StepType.paperStore, widget.jobNumber!, formData, stepNo, completeRemark: completeRemark);
+      await _apiService.putStepDetails(
+        StepType.paperStore,
+        widget.jobNumber!,
+        formData,
+        stepNo,
+        completeRemark: completeRemark,
+        jobPlanId: _jobPlanId,
+        jobStepId: currentJobStepId,
+      );
 
       if (mounted && Navigator.canPop(context)) {
         Navigator.pop(context);
@@ -4055,9 +4272,14 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       DialogManager.showSuccessMessage(context, 'Paper Store work completed successfully!');
       
       // Clear all caches and refresh
-      _apiService.clearAllJobCaches(widget.jobNumber!);
+      _apiService.clearAllJobCaches(widget.jobNumber!, jobPlanId: _jobPlanId);
       _clearAllCaches();
       await _refreshAllStepData();
+
+      // Close the WorkActionForm dialog itself
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
     } catch (e) {
       if (mounted) Navigator.pop(context);
       DialogManager.showErrorMessage(context, 'Failed to complete Paper Store work: ${e.toString()}');
@@ -4078,6 +4300,8 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       );
 
       final stepNo = StepDataManager.getStepNumber(step.type);
+      final dynamic rawJobStepId = _stepDetailsCache[stepNo]?['id'];
+      final int? currentJobStepId = rawJobStepId is int ? rawJobStepId : int.tryParse(rawJobStepId?.toString() ?? '');
 
       // ✅ CRITICAL: For machine-based steps, DO NOT call putStepDetails!
       // The completeWorkOnMachine API already:
@@ -4092,7 +4316,14 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           step.type == StepType.dispatch) {
         // For non-machine steps, putStepDetails already includes status='stop' and all form data
         // No need to call updateJobPlanningStepComplete separately - it would cause duplicate API calls
-        await _apiService.putStepDetails(step.type, widget.jobNumber!, formData, stepNo);
+        await _apiService.putStepDetails(
+          step.type,
+          widget.jobNumber!,
+          formData,
+          stepNo,
+          jobPlanId: _jobPlanId,
+          jobStepId: currentJobStepId,
+        );
         print('Successfully updated JobStep and step table for non-machine step');
       } else {
         print('ℹ️ Machine-based step - Individual step table and JobStep status update handled by backend (completeWorkOnMachine API)');
@@ -4137,7 +4368,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       DialogManager.showSuccessMessage(context, '${step.title} work data submitted successfully!');
 
       // Clear all caches immediately to force fresh data
-      _apiService.clearAllJobCaches(widget.jobNumber!);
+      _apiService.clearAllJobCaches(widget.jobNumber!, jobPlanId: _jobPlanId);
       _clearAllCaches();
 
       // Immediately update the UI state
@@ -4269,7 +4500,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       await _fetchJobDetails();
       
       // Fetch fresh planning steps
-      final planningData = await _apiService.getJobPlanningStepsByNrcJobNo(widget.jobNumber!);
+      final planningData = await _apiService.getJobPlanningStepsByNrcJobNo(
+        widget.jobNumber!,
+        jobPlanId: _jobPlanId,
+      );
       print('🔄 [RefreshAllStepData] Fetched planning data: ${planningData != null ? 'success' : 'failed'}');
       
       // Process all steps with fresh data
@@ -4511,7 +4745,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           break;
         case StepType.paperStore:
           print('DEBUG: Fetching paper store details for job: ${widget.jobNumber}');
-          stepDetails = await _apiService.getPaperStoreStepByJob(widget.jobNumber!);
+          stepDetails = await _apiService.getPaperStoreStepByJob(
+            widget.jobNumber!,
+            jobPlanId: _jobPlanId,
+          );
           print('DEBUG: Paper store details response: $stepDetails');
           break;
         default:
@@ -4541,7 +4778,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           // Fetch step information that includes user and completedBy fields
           try {
             final stepNo = StepDataManager.getStepNumber(step.type);
-            final jobPlanningData = await _apiService.getJobPlanningStepsByNrcJobNo(widget.jobNumber!);
+            final jobPlanningData = await _apiService.getJobPlanningStepsByNrcJobNo(
+              widget.jobNumber!,
+              jobPlanId: _jobPlanId,
+            );
             
             // Try both possible data structures since the API returns the job planning data directly
             List? steps;
@@ -5150,7 +5390,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       if (selectedPlanning != null && selectedPlanning['steps'] is List) {
         jobPlanningData = {'steps': selectedPlanning['steps']};
       } else {
-        jobPlanningData = await _apiService.getJobPlanningStepsByNrcJobNo(widget.jobNumber!);
+        jobPlanningData = await _apiService.getJobPlanningStepsByNrcJobNo(
+          widget.jobNumber!,
+          jobPlanId: _jobPlanId,
+        );
       }
       
       if (mounted) Navigator.pop(context); // Close loading dialog
@@ -5301,7 +5544,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         builder: (context) => JobTimelineUI.buildLoadingDialog('Loading previous step details...'),
       );
 
-      final jobPlanningData = await _apiService.getJobPlanningStepsByNrcJobNo(widget.jobNumber!);
+      final jobPlanningData = await _apiService.getJobPlanningStepsByNrcJobNo(
+        widget.jobNumber!,
+        jobPlanId: _jobPlanId,
+      );
       
       if (mounted) Navigator.pop(context); // Close loading dialog
       
@@ -5393,7 +5639,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         return;
       }
 
-      final jobPlanningData = await _apiService.getJobPlanningStepsByNrcJobNo(widget.jobNumber!);
+      final jobPlanningData = await _apiService.getJobPlanningStepsByNrcJobNo(
+        widget.jobNumber!,
+        jobPlanId: _jobPlanId,
+      );
       
       print('DEBUG: Raw jobPlanningData response: $jobPlanningData');
       
@@ -6048,7 +6297,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     
     try {
       // 1. Fetch fresh data from backend
-      final freshPlanningData = await _apiService.getJobPlanningStepsByNrcJobNo(widget.jobNumber!);
+      final freshPlanningData = await _apiService.getJobPlanningStepsByNrcJobNo(
+        widget.jobNumber!,
+        jobPlanId: _jobPlanId,
+      );
       if (freshPlanningData == null) {
         print('❌ [StateSync] Failed to fetch fresh planning data');
         return;
@@ -6283,7 +6535,11 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
   Future<List<Map<String, dynamic>>> _fetchMachineStatuses(String jobNumber, int stepNo) async {
     try {
       // Call the getAvailableMachines API to get machine statuses
-      final response = await _apiService.getAvailableMachines(jobNumber, stepNo);
+      final response = await _apiService.getAvailableMachines(
+        jobNumber,
+        stepNo,
+        jobPlanId: _jobPlanId,
+      );
       
       if (response != null && response['machines'] != null) {
         final machines = response['machines'] as List;

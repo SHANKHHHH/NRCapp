@@ -11,9 +11,11 @@ class RevolutionaryStepStatusManager {
   
   /// 🎯 Get the REAL status from backend with bulletproof caching (PAPERSTORE, QUALITY, DISPATCH ONLY!)
   static Future<StepStatus> getRealStepStatus(
-    String jobNumber, 
-    StepType stepType, 
-    JobApiService apiService
+    String jobNumber,
+    StepType stepType,
+    JobApiService apiService, {
+    int? jobPlanId,
+  }
   ) async {
     // 🎯 ONLY handle PaperStore, Quality, and Dispatch steps
     if (stepType != StepType.paperStore && stepType != StepType.qc && stepType != StepType.dispatch) {
@@ -21,17 +23,19 @@ class RevolutionaryStepStatusManager {
       return StepStatus.pending;
     }
     try {
-      final cacheKey = '${jobNumber}_${stepType.name}';
+      final cacheScope = '${jobNumber}_${jobPlanId ?? 'all'}';
+      final cacheKey = '${cacheScope}_${stepType.name}';
       final now = DateTime.now();
       
       // Check if we have recent cache (within 30 seconds)
-      if (_statusCache.containsKey(jobNumber) && 
-          _statusCache[jobNumber]!.containsKey(stepType) &&
+      final scopedCache = _statusCache[cacheScope];
+      if (scopedCache != null &&
+          scopedCache.containsKey(stepType) &&
           _lastUpdateTime.containsKey(cacheKey)) {
         final lastUpdate = _lastUpdateTime[cacheKey]!;
         if (now.difference(lastUpdate).inSeconds < 30) {
-          print('🚀 Using cached status for $stepType: ${_statusCache[jobNumber]![stepType]}');
-          return _statusCache[jobNumber]![stepType]!;
+          print('🚀 Using cached status for $stepType: ${scopedCache[stepType]}');
+          return scopedCache[stepType]!;
         }
       }
       
@@ -41,7 +45,11 @@ class RevolutionaryStepStatusManager {
       final stepNo = _getStepNumber(stepType);
       
       // Fetch from backend
-      final stepDetails = await apiService.getStepDetailsWithEditability(jobNumber, stepType);
+      final stepDetails = await apiService.getStepDetailsWithEditability(
+        jobNumber,
+        stepType,
+        jobPlanId: jobPlanId,
+      );
       
       if (stepDetails != null && stepDetails.isNotEmpty) {
         final stepData = stepDetails[0].data;
@@ -51,8 +59,8 @@ class RevolutionaryStepStatusManager {
         final status = _convertStringToStepStatus(statusString);
         
         // Cache the result
-        _statusCache[jobNumber] ??= {};
-        _statusCache[jobNumber]![stepType] = status;
+        _statusCache[cacheScope] ??= {};
+        _statusCache[cacheScope]![stepType] = status;
         _lastUpdateTime[cacheKey] = now;
         
         print('🚀 REAL status for $stepType: $status (from backend)');
@@ -60,8 +68,8 @@ class RevolutionaryStepStatusManager {
       }
       
       // Default to pending if no data
-      _statusCache[jobNumber] ??= {};
-      _statusCache[jobNumber]![stepType] = StepStatus.pending;
+      _statusCache[cacheScope] ??= {};
+      _statusCache[cacheScope]![stepType] = StepStatus.pending;
       _lastUpdateTime[cacheKey] = now;
       
       return StepStatus.pending;
@@ -73,23 +81,26 @@ class RevolutionaryStepStatusManager {
   }
   
   /// 🎯 Update status in cache (for immediate UI updates)
-  static void updateStatusCache(String jobNumber, StepType stepType, StepStatus status) {
-    _statusCache[jobNumber] ??= {};
-    _statusCache[jobNumber]![stepType] = status;
-    _lastUpdateTime['${jobNumber}_${stepType.name}'] = DateTime.now();
+  static void updateStatusCache(String jobNumber, StepType stepType, StepStatus status, {int? jobPlanId}) {
+    final cacheScope = '${jobNumber}_${jobPlanId ?? 'all'}';
+    _statusCache[cacheScope] ??= {};
+    _statusCache[cacheScope]![stepType] = status;
+    _lastUpdateTime['${cacheScope}_${stepType.name}'] = DateTime.now();
     print('🚀 Updated cache for $stepType: $status');
   }
   
   /// 🎯 Clear cache for a job (when refreshing)
-  static void clearCache(String jobNumber) {
-    _statusCache.remove(jobNumber);
-    _lastUpdateTime.removeWhere((key, value) => key.startsWith('${jobNumber}_'));
-    print('🚀 Cleared cache for job: $jobNumber');
+  static void clearCache(String jobNumber, {int? jobPlanId}) {
+    final scopePrefix = '${jobNumber}_${jobPlanId ?? ''}';
+    _statusCache.removeWhere((key, _) => key.startsWith(scopePrefix));
+    _lastUpdateTime.removeWhere((key, value) => key.startsWith('${scopePrefix}_'));
+    print('🚀 Cleared cache for job: $jobNumber${jobPlanId != null ? ' (plan $jobPlanId)' : ''}');
   }
   
   /// 🎯 Get cached status (for immediate UI updates)
-  static StepStatus? getCachedStatus(String jobNumber, StepType stepType) {
-    return _statusCache[jobNumber]?[stepType];
+  static StepStatus? getCachedStatus(String jobNumber, StepType stepType, {int? jobPlanId}) {
+    final cacheScope = '${jobNumber}_${jobPlanId ?? 'all'}';
+    return _statusCache[cacheScope]?[stepType];
   }
   
   /// 🎯 Convert string status to StepStatus enum

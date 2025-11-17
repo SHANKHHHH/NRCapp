@@ -16,6 +16,7 @@ class RevolutionaryStepTapHandler {
     required JobApiService apiService,
     required VoidCallback onRefresh,
     required bool isActive,
+    int? jobPlanId,
   }) async {
     // 🎯 ONLY handle PaperStore, Quality, and Dispatch steps
     if (step.type != StepType.paperStore && step.type != StepType.qc && step.type != StepType.dispatch) {
@@ -28,9 +29,10 @@ class RevolutionaryStepTapHandler {
     try {
       // Get the REAL status from backend
       final realStatus = await RevolutionaryStepStatusManager.getRealStepStatus(
-        jobNumber, 
-        step.type, 
-        apiService
+        jobNumber,
+        step.type,
+        apiService,
+        jobPlanId: jobPlanId,
       );
       
       print('🚀 REAL STATUS: $realStatus');
