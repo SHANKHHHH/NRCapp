@@ -15,7 +15,7 @@ class AppStrings {
   // Set to true for production backend, false for localhost
   // To switch to localhost: Change this to false and run your local backend
   // To switch to production: Change this to true (current setting)
-  static const bool useProductionBackend =false;  // Changed to localhost for testing
+  static const bool useProductionBackend =true;  // Changed to localhost for testing
   
   // Active base URL based on configuration
   static String get baseUrl => useProductionBackend ? productionUrl : localhostUrl;
