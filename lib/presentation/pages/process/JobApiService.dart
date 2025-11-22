@@ -753,6 +753,8 @@ class JobApiService {
         requestBody['dispatchDate'] = formData['Dispatch Date'] ?? formData['dispatchDate'];
         requestBody['balanceQty'] = formData['Balance Qty'] ?? formData['balanceQty'];
         requestBody['remarks'] = formData['Remarks'] ?? formData['remarks'];
+        // Add finished goods quantity (mandatory, can be 0)
+        requestBody['finishedGoodsQty'] = formData['finishedGoodsQty'] ?? formData['Finished Goods Qty'] ?? '0';
         // Machine, operator, date, shift, and QC fields are auto-populated, not user input
       } else {
         // Default mapping for unknown steps
@@ -1180,6 +1182,42 @@ class JobApiService {
   }
 
   /// Major hold work on machine
+  /// Major hold entire job (simple - no machine/step required)
+  Future<Map<String, dynamic>?> majorHoldJob(
+    String jobNumber, {
+    String? majorHoldReason,
+  }) async {
+    try {
+      final result = await _jobApi.majorHoldJob(
+        jobNumber,
+        majorHoldReason: majorHoldReason,
+      );
+      // Clear cache to ensure fresh data on next fetch
+      _clearCacheForJob(jobNumber);
+      return result;
+    } catch (e) {
+      print('Error major holding job: $e');
+      return null;
+    }
+  }
+
+  /// Major hold specific job plan (simple - no machine/step required)
+  Future<Map<String, dynamic>?> majorHoldJobPlan(
+    int jobPlanId, {
+    String? majorHoldReason,
+  }) async {
+    try {
+      final result = await _jobApi.majorHoldJobPlan(
+        jobPlanId,
+        majorHoldReason: majorHoldReason,
+      );
+      return result;
+    } catch (e) {
+      print('Error major holding job plan: $e');
+      return null;
+    }
+  }
+
   Future<Map<String, dynamic>?> majorHoldWorkOnMachine(
     String jobNumber,
     int stepNo,
@@ -1204,6 +1242,23 @@ class JobApiService {
       return result;
     } catch (e) {
       print('Error major holding work on machine: $e');
+      return null;
+    }
+  }
+
+  /// Resume major hold for a specific job plan
+  Future<Map<String, dynamic>?> resumeMajorHoldJobPlan(
+    int jobPlanId, {
+    String? resumeRemark,
+  }) async {
+    try {
+      final result = await _jobApi.resumeMajorHoldJobPlan(
+        jobPlanId,
+        resumeRemark: resumeRemark,
+      );
+      return result;
+    } catch (e) {
+      print('Error resuming major hold for job plan: $e');
       return null;
     }
   }
@@ -1482,6 +1537,16 @@ class JobApiService {
     }
   }
 
+  /// Get available finished goods quantity for a job
+  Future<int?> getAvailableFinishedGoodsQty(String jobNumber) async {
+    try {
+      return await _jobApi.getAvailableFinishedGoodsQty(jobNumber);
+    } catch (e) {
+      print('Error getting available finished goods quantity: $e');
+      return 0;
+    }
+  }
+
   /// Get available quantity from previous step for cascading validation
   /// Supports multiple machines by summing OK quantities across all machine records
   Future<int?> getPreviousStepAvailableQuantity(String jobNumber, StepType currentStep, {int? jobPlanId}) async {
@@ -1560,6 +1625,8 @@ class JobApiService {
           // Sum OK quantities across all machines for this step
           for (var stepDetail in stepDetails) {
             final stepData = stepDetail.data;
+            print('🔍 [Qty] Processing step data: $stepData');
+            print('🔍 [Qty] Step data keys: ${stepData.keys.toList()}');
             
             // Try different field names for OK quantity
             final okQuantityCandidates = [
@@ -1573,18 +1640,38 @@ class JobApiService {
               stepData['OK Quantity'],
               stepData['Quantity OK'],
               stepData['okQty'],
+              stepData['passQuantity'], // For QC step
             ];
 
+            bool foundQuantity = false;
             for (final candidate in okQuantityCandidates) {
               if (candidate != null) {
-                final qty = int.tryParse(candidate.toString());
-                if (qty != null && qty > 0) {
+                print('🔍 [Qty] Trying candidate: $candidate (type: ${candidate.runtimeType})');
+                // Handle both int and string types
+                int? qty;
+                if (candidate is int) {
+                  qty = candidate;
+                } else if (candidate is num) {
+                  qty = candidate.toInt();
+                } else {
+                  qty = int.tryParse(candidate.toString());
+                }
+                
+                if (qty != null && qty >= 0) { // Changed from > 0 to >= 0 to allow 0
                   totalOkQuantity += qty;
                   recordsProcessed++;
+                  foundQuantity = true;
                   print('  ✅ Machine record ${recordsProcessed}: OK Qty = $qty (Total so far: $totalOkQuantity)');
                   break;
                 }
               }
+            }
+            
+            // If no quantity found, log for debugging
+            if (!foundQuantity) {
+              print('⚠️ [Qty] No quantity found in step data. Available keys: ${stepData.keys.toList()}');
+              print('⚠️ [Qty] quantity field value: ${stepData['quantity']}');
+              print('⚠️ [Qty] quantityOK field value: ${stepData['quantityOK']}');
             }
           }
           

@@ -1011,6 +1011,30 @@ class JobApi {
     return _getWithAuth('/paper-store/by-job/$jobNumber');
   }
 
+  /// Get available finished goods quantity for a job
+  Future<int?> getAvailableFinishedGoodsQty(String nrcJobNo) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    try {
+      final response = await dio.get(
+        '${AppStrings.baseUrl}/finish-quantity/available/$nrcJobNo',
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            if (token != null) 'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      if (response.data != null && response.data['success'] == true) {
+        return response.data['availableQty'] as int?;
+      }
+      return 0;
+    } catch (e) {
+      print('[getAvailableFinishedGoodsQty] Error: $e');
+      return 0;
+    }
+  }
+
   Future<Map<String, dynamic>?> putPrintingDetails(Map<String, dynamic> body,String jobNumber) async {
     // Clear cache after update
     _cachedPrintingDetails.remove(jobNumber);
@@ -1503,7 +1527,61 @@ class JobApi {
 
   // ==================== ALL STEP HOLD/RESUME ====================
   
-  /// Major hold work on machine
+  /// Major hold entire job (simple - no machine/step required)
+  Future<Map<String, dynamic>> majorHoldJob(
+    String jobNrcJobNo, {
+    String? majorHoldReason,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    print('[majorHoldJob] Token: $token');
+    print('[majorHoldJob] jobNrcJobNo: $jobNrcJobNo, majorHoldReason: $majorHoldReason');
+    
+    final response = await dio.post(
+      '/job-step-machines/$jobNrcJobNo/major-hold',
+      data: {
+        'majorHoldRemark': majorHoldReason,
+      },
+      options: Options(
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ),
+    );
+    
+    print('[majorHoldJob] Response: ${response.data}');
+    return response.data;
+  }
+
+  /// Major hold specific job plan (simple - no machine/step required)
+  Future<Map<String, dynamic>> majorHoldJobPlan(
+    int jobPlanId, {
+    String? majorHoldReason,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    print('[majorHoldJobPlan] Token: $token');
+    print('[majorHoldJobPlan] jobPlanId: $jobPlanId, majorHoldReason: $majorHoldReason');
+    
+    final response = await dio.post(
+      '/job-step-machines/job-plan/$jobPlanId/major-hold',
+      data: {
+        'majorHoldRemark': majorHoldReason,
+      },
+      options: Options(
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ),
+    );
+    
+    print('[majorHoldJobPlan] Response: ${response.data}');
+    return response.data;
+  }
+
+  /// Major hold work on machine (kept for backward compatibility)
   Future<Map<String, dynamic>> majorHoldWorkOnMachine(
     String jobNrcJobNo,
     int stepNo,
@@ -1540,6 +1618,33 @@ class JobApi {
     );
     
     print('[majorHoldWorkOnMachine] Response: ${response.data}');
+    return response.data;
+  }
+
+  /// Resume major hold for a specific job plan
+  Future<Map<String, dynamic>> resumeMajorHoldJobPlan(
+    int jobPlanId, {
+    String? resumeRemark,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    print('[resumeMajorHoldJobPlan] Token: $token');
+    print('[resumeMajorHoldJobPlan] jobPlanId: $jobPlanId, resumeRemark: $resumeRemark');
+    
+    final response = await dio.post(
+      '/job-step-machines/job-plan/$jobPlanId/resume-major-hold',
+      data: {
+        'resumeRemark': resumeRemark,
+      },
+      options: Options(
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ),
+    );
+    
+    print('[resumeMajorHoldJobPlan] Response: ${response.data}');
     return response.data;
   }
 

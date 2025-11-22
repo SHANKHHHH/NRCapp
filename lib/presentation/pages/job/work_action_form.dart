@@ -83,6 +83,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
   // Dispatch cumulative tracking
   int? _jobTotalQuantity; // Total PO quantity for the job
   int? _totalDispatchedQty; // Total quantity already dispatched
+  int? _finishedGoodsQty; // Finished goods quantity from job planning
   
   // Track if stop button was just pressed
   bool _stopButtonJustPressed = false;
@@ -932,27 +933,44 @@ class _WorkActionFormState extends State<WorkActionForm> {
     if (remarks != null) {
       setState(() => _status = 'major_hold');
       
-      // If this is machine-specific work, call the machine API
-      if (widget.machineId != null && widget.nrcJobNo != null && widget.stepNo != null && widget.apiService != null) {
+      // Use simplified major hold - prefer jobPlanId, then job number, else fallback
+      if (widget.apiService != null) {
         try {
-          final formData = _collectFormData();
-          final result = await widget.apiService!.majorHoldWorkOnMachine(
-            widget.nrcJobNo!,
-            widget.stepNo!,
-            widget.machineId!,
-            formData: formData,
-            majorHoldReason: remarks,
-            jobPlanId: widget.jobPlanId,
-          );
-          
+          Map<String, dynamic>? result;
+
+          if (widget.jobPlanId != null) {
+            result = await widget.apiService!.majorHoldJobPlan(
+              widget.jobPlanId!,
+              majorHoldReason: remarks,
+            );
+          } else if (widget.nrcJobNo != null) {
+            result = await widget.apiService!.majorHoldJob(
+              widget.nrcJobNo!,
+              majorHoldReason: remarks,
+            );
+          } else if (widget.machineId != null && widget.stepNo != null && widget.nrcJobNo != null) {
+            final formData = _collectFormData();
+            result = await widget.apiService!.majorHoldWorkOnMachine(
+              widget.nrcJobNo!,
+              widget.stepNo!,
+              widget.machineId!,
+              formData: formData,
+              majorHoldReason: remarks,
+              jobPlanId: widget.jobPlanId,
+            );
+          } else if (widget.onMajorHold != null) {
+            widget.onMajorHold?.call(remarks);
+            return;
+          }
+
           if (result != null) {
-            print('✅ Work major held on machine: ${widget.machineId} - data will auto-refresh');
+            print('✅ Major hold applied successfully - data will auto-refresh');
           } else {
-            print('Failed to major hold work on machine');
+            print('Failed to major hold (no result returned)');
             setState(() => _status = 'start'); // Revert status on failure
           }
         } catch (e) {
-          print('Error major holding work on machine: $e');
+          print('Error applying major hold: $e');
           setState(() => _status = 'start'); // Revert status on error
           
           // Show user-friendly error message
@@ -960,9 +978,6 @@ class _WorkActionFormState extends State<WorkActionForm> {
             _showWorkflowError(e, 'major hold');
           }
         }
-      } else {
-        // Fallback: Call the original callback for non-machine work
-        widget.onMajorHold?.call(remarks);
       }
     }
   }
@@ -1360,6 +1375,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
     int? totalDispatchedQty;
     dynamic dispatchHistory;
     int? jobTotalQuantity;
+    int? qcQuantityForDispatch; // QC quantity for dispatch
     
     // Get job data if not already available (needed for Flap Pasting noUps calculation)
     Map<String, dynamic>? jobDataForDialog = widget.jobData;
@@ -1372,7 +1388,7 @@ class _WorkActionFormState extends State<WorkActionForm> {
       try {
         print('🔍 [PO Fetch] Fetching job data for ${widget.stepType} step');
         
-        // For Dispatch, get dispatch tracking data
+        // For Dispatch, get dispatch tracking data and QC quantity
         if (widget.stepType == StepType.dispatch) {
           final dispatchDetailsResponse = await widget.apiService!.getStepDetailsWithEditability(
             widget.jobNumber!,
@@ -1385,6 +1401,14 @@ class _WorkActionFormState extends State<WorkActionForm> {
             totalDispatchedQty = dispatchData['totalDispatchedQty'] ?? 0;
             dispatchHistory = dispatchData['dispatchHistory'];
           }
+          
+          // Get QC quantity (from previous step)
+          qcQuantityForDispatch = await widget.apiService!.getPreviousStepAvailableQuantity(
+            widget.jobNumber!,
+            StepType.dispatch,
+            jobPlanId: widget.jobPlanId,
+          );
+          print('🔍 [Dispatch] QC Quantity: $qcQuantityForDispatch');
         }
         
         // Get purchase orders to calculate total quantity (for both PaperStore and Dispatch)
@@ -1426,6 +1450,35 @@ class _WorkActionFormState extends State<WorkActionForm> {
                 
                 if (jobPlanningData != null && jobPlanningData is Map) {
                   final purchaseOrderId = jobPlanningData['purchaseOrderId'];
+                  
+                  // For Dispatch, get actual available finished goods from FinishQuantity table
+                  // This shows the real-time available quantity after consumption
+                  if (widget.stepType == StepType.dispatch) {
+                    try {
+                      final availableFinishedGoods = await widget.apiService!.getAvailableFinishedGoodsQty(widget.jobNumber!);
+                      _finishedGoodsQty = availableFinishedGoods ?? 0;
+                      print('✅ [PO Fetch] Available Finished Goods (from FinishQuantity): $_finishedGoodsQty');
+                    } catch (e) {
+                      print('⚠️ [PO Fetch] Error fetching available finished goods, using job planning value: $e');
+                      // Fallback to job planning value if API fails
+                      final finishedGoodsQtyFromPlanning = jobPlanningData['finishedGoodsQty'];
+                      _finishedGoodsQty = finishedGoodsQtyFromPlanning != null
+                          ? (finishedGoodsQtyFromPlanning is int 
+                              ? finishedGoodsQtyFromPlanning 
+                              : int.tryParse(finishedGoodsQtyFromPlanning.toString()) ?? 0)
+                          : 0;
+                    }
+                  } else {
+                    // For other steps (PaperStore), use job planning value
+                    final finishedGoodsQtyFromPlanning = jobPlanningData['finishedGoodsQty'];
+                    _finishedGoodsQty = finishedGoodsQtyFromPlanning != null
+                        ? (finishedGoodsQtyFromPlanning is int 
+                            ? finishedGoodsQtyFromPlanning 
+                            : int.tryParse(finishedGoodsQtyFromPlanning.toString()) ?? 0)
+                        : 0;
+                    print('✅ [PO Fetch] Finished Goods Qty (from JobPlanning): $_finishedGoodsQty');
+                  }
+                  
                   print('🔍 [PO Fetch] purchaseOrderId from job planning: $purchaseOrderId');
                   
                   if (purchaseOrderId != null) {
@@ -1456,6 +1509,11 @@ class _WorkActionFormState extends State<WorkActionForm> {
                 print('⚠️ [PO Fetch] Error fetching job planning: $e');
                 print('⚠️ [PO Fetch] Stack trace: $stackTrace');
               }
+            }
+            
+            // Initialize finished goods to 0 if not set
+            if (_finishedGoodsQty == null) {
+              _finishedGoodsQty = 0;
             }
             
             // If not found, use sum of all POs
@@ -1493,6 +1551,8 @@ class _WorkActionFormState extends State<WorkActionForm> {
         dispatchHistory: dispatchHistory,
         jobTotalQuantity: jobTotalQuantity,
         jobData: jobDataForDialog ?? widget.jobData, // Use fetched jobData if available, otherwise fallback to widget.jobData
+        finishedGoodsQty: _finishedGoodsQty,
+        qcQuantity: widget.stepType == StepType.dispatch ? (qcQuantityForDispatch ?? _availableQuantity) : null, // QC quantity for dispatch
       ),
     );
 
@@ -1635,6 +1695,12 @@ class _WorkActionFormState extends State<WorkActionForm> {
           formData['quantity'] = formData['noOfBoxes'] = formData['No of Boxes']!;
         } else if (formData['OK Quantity'] != null) {
           formData['quantity'] = formData['noOfBoxes'] = formData['No of Boxes'] = formData['OK Quantity']!;
+        }
+        // Add finished goods quantity (mandatory, can be 0) - get from formData if available
+        if (formData['finishedGoodsQty'] == null && formData['Finished Goods Qty'] == null) {
+          // If not in formData, default to 0
+          formData['finishedGoodsQty'] = '0';
+          formData['Finished Goods Qty'] = '0';
         }
         // Map 'Complete Remark' to 'remarks' and 'Remarks' for Dispatch backend
         if (formData['Complete Remark'] != null && formData['Complete Remark']!.isNotEmpty) {
@@ -2706,8 +2772,10 @@ class CompletionFormDialog extends StatefulWidget {
   final dynamic dispatchHistory; // For Dispatch - array of previous dispatches
   final int? jobTotalQuantity; // For Dispatch - total job quantity
   final Map<String, dynamic>? jobData; // Job data for validation (e.g., noUps for FlapPasting)
+  final int? finishedGoodsQty; // Finished goods quantity from job planning
+  final int? qcQuantity; // QC quantity (from previous step)
 
-  const CompletionFormDialog({
+  CompletionFormDialog({
     super.key,
     this.availableQuantity,
     this.stepType,
@@ -2715,6 +2783,8 @@ class CompletionFormDialog extends StatefulWidget {
     this.dispatchHistory,
     this.jobTotalQuantity,
     this.jobData,
+    this.finishedGoodsQty,
+    this.qcQuantity,
   });
 
   @override
@@ -2728,7 +2798,26 @@ class _CompletionFormDialogState extends State<CompletionFormDialog> {
   final _rejectQuantityController = TextEditingController(); // For QC: Reject Quantity
   final _rejectReasonController = TextEditingController(); // For QC: Reason for Rejection
   final _completeRemarkController = TextEditingController();
+  final TextEditingController _finishedGoodsController = TextEditingController(); // For Dispatch: Finished Goods
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize finished goods quantity field to empty (user must enter manually)
+    _finishedGoodsController.text = '0';
+  }
+
+  @override
+  void dispose() {
+    _finishedGoodsController.dispose();
+    _okQuantityController.dispose();
+    _passQuantityController.dispose();
+    _rejectQuantityController.dispose();
+    _rejectReasonController.dispose();
+    _completeRemarkController.dispose();
+    super.dispose();
+  }
 
   // Get adjusted available quantity for Flap Pasting (multiplies by No. of Ups)
   int? get _adjustedAvailableQuantity {
@@ -2825,16 +2914,6 @@ class _CompletionFormDialogState extends State<CompletionFormDialog> {
   }
 
   @override
-  void dispose() {
-    _okQuantityController.dispose();
-    _passQuantityController.dispose();
-    _rejectQuantityController.dispose();
-    _rejectReasonController.dispose();
-    _completeRemarkController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.white,
@@ -2888,6 +2967,10 @@ class _CompletionFormDialogState extends State<CompletionFormDialog> {
                         _buildDispatchProgressRow('Already Dispatched', widget.totalDispatchedQty!, Colors.green),
                         const SizedBox(height: 8),
                         _buildDispatchProgressRow('Remaining', widget.jobTotalQuantity! - widget.totalDispatchedQty!, Colors.orange),
+                        const SizedBox(height: 8),
+                        _buildDispatchProgressRow('QC Quantity', widget.qcQuantity ?? 0, Colors.teal),
+                        const SizedBox(height: 8),
+                        _buildDispatchProgressRow('Finished Goods', widget.finishedGoodsQty ?? 0, Colors.purple),
                         const SizedBox(height: 12),
                         LinearProgressIndicator(
                           value: widget.totalDispatchedQty! / widget.jobTotalQuantity!,
@@ -2910,8 +2993,8 @@ class _CompletionFormDialogState extends State<CompletionFormDialog> {
                     ],
                   ),
                 ),
-            ],
-            const SizedBox(height: 16),
+              ],
+              const SizedBox(height: 16),
             
             // PO Quantity Display (for PaperStore only)
             if (widget.stepType == StepType.paperStore) ...[
@@ -2934,6 +3017,32 @@ class _CompletionFormDialogState extends State<CompletionFormDialog> {
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.blue[700],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Finished Goods Display (for PaperStore only) - always show, 0 if not available
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.inventory_2, color: Colors.green[700], size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Finished Goods: ${widget.finishedGoodsQty ?? 0}',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.green[700],
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -3167,11 +3276,27 @@ class _CompletionFormDialogState extends State<CompletionFormDialog> {
                       }
                     }
                   }
-                  // For Dispatch, validate against remaining quantity
-                  else if (widget.stepType == StepType.dispatch && widget.jobTotalQuantity != null && widget.totalDispatchedQty != null) {
-                    final remaining = widget.jobTotalQuantity! - widget.totalDispatchedQty!;
-                    if (quantity > remaining) {
-                      return 'Cannot dispatch more than remaining quantity ($remaining)';
+                  // For Dispatch, validate against QC quantity and remaining PO quantity
+                  // Finished goods usage is included in the dispatch quantity the user enters
+                  else if (widget.stepType == StepType.dispatch) {
+                    int? maxDispatchable;
+                    String? errorMessage;
+                    
+                    if (widget.qcQuantity != null && widget.jobTotalQuantity != null && widget.totalDispatchedQty != null) {
+                      final remaining = widget.jobTotalQuantity! - widget.totalDispatchedQty!;
+                      maxDispatchable = widget.qcQuantity! + remaining;
+                      errorMessage = 'Cannot dispatch more than ${maxDispatchable} (QC: ${widget.qcQuantity} + remaining PO: $remaining)';
+                    } else if (widget.qcQuantity != null) {
+                      maxDispatchable = widget.qcQuantity!;
+                      errorMessage = 'Cannot dispatch more than QC quantity (${widget.qcQuantity})';
+                    } else if (widget.jobTotalQuantity != null && widget.totalDispatchedQty != null) {
+                      final remaining = widget.jobTotalQuantity! - widget.totalDispatchedQty!;
+                      maxDispatchable = remaining;
+                      errorMessage = 'Cannot dispatch more than remaining PO quantity ($remaining)';
+                    }
+                    
+                    if (maxDispatchable != null && quantity > maxDispatchable) {
+                      return errorMessage ?? 'Dispatch quantity exceeds maximum allowed';
                     }
                   } else if (widget.availableQuantity != null) {
                     // For Flap Pasting, use adjusted quantity; for others, use raw availableQuantity
@@ -3193,6 +3318,35 @@ class _CompletionFormDialogState extends State<CompletionFormDialog> {
                 },
               ),
               const SizedBox(height: 16),
+              
+              // Finished Goods Field (for Dispatch only)
+              if (widget.stepType == StepType.dispatch) ...[
+                TextFormField(
+                  controller: _finishedGoodsController,
+                  decoration: InputDecoration(
+                    labelText: 'Finished Goods Quantity *',
+                    hintText: 'Enter leftover quantity to store (0 if none)',
+                    border: const OutlineInputBorder(),
+                    helperText: 'Enter leftover finished goods quantity to store for future orders (e.g., if PO was 500 and produced 1000, enter 500). Enter 0 if no leftover.',
+                  ),
+                  keyboardType: TextInputType.number,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Finished goods quantity is required (enter 0 if no leftover)';
+                    }
+                    final qty = int.tryParse(value);
+                    if (qty == null) {
+                      return 'Please enter a valid number';
+                    }
+                    if (qty < 0) {
+                      return 'Quantity cannot be negative';
+                    }
+                    // No validation against available finished goods - this field is for STORING leftover, not using
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
             ],
             
             // Complete Remark Field
@@ -3254,6 +3408,10 @@ class _CompletionFormDialogState extends State<CompletionFormDialog> {
       } else if (widget.stepType == StepType.dispatch) {
         formData['No of Boxes'] = _okQuantityController.text;
         formData['quantity'] = _okQuantityController.text; // Also add quantity field for backend
+        // Add finished goods quantity (mandatory, can be 0)
+        final finishedGoodsQty = _finishedGoodsController.text.trim();
+        formData['finishedGoodsQty'] = finishedGoodsQty.isEmpty ? '0' : finishedGoodsQty;
+        formData['Finished Goods Qty'] = finishedGoodsQty.isEmpty ? '0' : finishedGoodsQty;
       } else if (widget.stepType == StepType.qc) {
         // QC-specific fields
         formData['Pass Quantity'] = _passQuantityController.text;
