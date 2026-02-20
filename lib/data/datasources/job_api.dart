@@ -404,18 +404,106 @@ class JobApi {
   Future<List<Map<String, dynamic>>> getAllUsers() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('accessToken');
-    final response = await dio.get(
-      '${AppStrings.baseUrl}/auth/users',
-      options: Options(
-        headers: {
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
-      ),
-    );
-    if (response.data['success'] == true && response.data['data'] is List) {
-      return List<Map<String, dynamic>>.from(response.data['data']);
+    
+    // Try /api/users first, fallback to /auth/users if it fails
+    try {
+      final response = await dio.get(
+        '${AppStrings.baseUrl}/api/users',
+        options: Options(
+          headers: {
+            if (token != null) 'Authorization': 'Bearer $token',
+          },
+          validateStatus: (status) => status! < 500, // Don't throw on 4xx errors
+        ),
+      );
+      if (response.statusCode == 200 && response.data['success'] == true && response.data['data'] is List) {
+        return List<Map<String, dynamic>>.from(response.data['data']);
+      }
+    } catch (e) {
+      // If /api/users fails, try /auth/users as fallback
+      print('⚠️ /api/users failed, trying /auth/users: $e');
     }
+    
+    // Try /auth/users as fallback
+    try {
+      final response = await dio.get(
+        '${AppStrings.baseUrl}/auth/users',
+        options: Options(
+          headers: {
+            if (token != null) 'Authorization': 'Bearer $token',
+          },
+          validateStatus: (status) => status! < 500, // Don't throw on 4xx errors
+        ),
+      );
+      if (response.statusCode == 200 && response.data['success'] == true && response.data['data'] is List) {
+        return List<Map<String, dynamic>>.from(response.data['data']);
+      } else if (response.statusCode == 403) {
+        print('⚠️ Access denied: User does not have permission to fetch users list');
+      }
+    } catch (e2) {
+      print('⚠️ /auth/users also failed: $e2');
+    }
+    
     return [];
+  }
+
+  Future<Map<String, dynamic>?> getUserById(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    
+    try {
+      final response = await dio.get(
+        '${AppStrings.baseUrl}/auth/users/$userId',
+        options: Options(
+          headers: {
+            if (token != null) 'Authorization': 'Bearer $token',
+          },
+          validateStatus: (status) => status! < 500,
+        ),
+      );
+      if (response.statusCode == 200 && response.data['success'] == true && response.data['data'] != null) {
+        return Map<String, dynamic>.from(response.data['data']);
+      }
+    } catch (e) {
+      print('⚠️ Error fetching user $userId: $e');
+    }
+    return null;
+  }
+
+  // 🎯 NEW: Production Head continuation endpoint
+  Future<Map<String, dynamic>> continueStepByProductionHead({
+    required String nrcJobNo,
+    required int stepNo,
+    int? jobPlanId,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken');
+    
+    try {
+      final response = await dio.post(
+        '${AppStrings.baseUrl}/job-planning/continue-step',
+        data: {
+          'nrcJobNo': nrcJobNo,
+          'stepNo': stepNo,
+          if (jobPlanId != null) 'jobPlanId': jobPlanId,
+        },
+        options: Options(
+          headers: {
+            if (token != null) 'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+      
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        return Map<String, dynamic>.from(response.data);
+      } else {
+        throw Exception(response.data['message'] ?? 'Failed to continue step');
+      }
+    } catch (e) {
+      print('❌ Error continuing step: $e');
+      rethrow;
+    }
   }
 
   Future<Response> updateUser(String id, Map<String, dynamic> body) async {

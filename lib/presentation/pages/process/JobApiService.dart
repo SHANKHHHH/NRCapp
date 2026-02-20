@@ -746,6 +746,14 @@ class JobApiService {
         requestBody['rejectedQty'] = formData['Reject Quantity'] ?? formData['rejectedQty'];
         requestBody['reasonForRejection'] = formData['Reason for Rejection'] ?? formData['reasonForRejection'];
         requestBody['remarks'] = formData['Remarks'] ?? formData['remarks'];
+        // Add individual rejection reason quantities
+        requestBody['rejectionReasonAQty'] = formData['Rejection Reason A Qty'] ?? formData['rejectionReasonAQty'] ?? '0';
+        requestBody['rejectionReasonBQty'] = formData['Rejection Reason B Qty'] ?? formData['rejectionReasonBQty'] ?? '0';
+        requestBody['rejectionReasonCQty'] = formData['Rejection Reason C Qty'] ?? formData['rejectionReasonCQty'] ?? '0';
+        requestBody['rejectionReasonDQty'] = formData['Rejection Reason D Qty'] ?? formData['rejectionReasonDQty'] ?? '0';
+        requestBody['rejectionReasonEQty'] = formData['Rejection Reason E Qty'] ?? formData['rejectionReasonEQty'] ?? '0';
+        requestBody['rejectionReasonFQty'] = formData['Rejection Reason F Qty'] ?? formData['rejectionReasonFQty'] ?? '0';
+        requestBody['rejectionReasonOthersQty'] = formData['Rejection Reason Others Qty'] ?? formData['rejectionReasonOthersQty'] ?? '0';
         // Machine, operator, date, shift, and QC fields are auto-populated, not user input
       } else if (stepName.toLowerCase().contains('dispatch')) {
         requestBody['noOfBoxes'] = formData['No of Boxes'] ?? formData['noOfBoxes'];
@@ -951,8 +959,24 @@ class JobApiService {
       "rejectedQty": int.tryParse(formData['Reject Quantity'] ?? '0') ?? 0,
       "reasonForRejection": formData['Reason for Rejection'].toString() ?? '',
       "remarks": formData['Remarks'] ?? formData['Complete Remark'] ?? formData['remarks'] ?? '',
+      // Add individual rejection reason quantities
+      "rejectionReasonAQty": formData['Rejection Reason A Qty'] ?? formData['rejectionReasonAQty'] ?? '0',
+      "rejectionReasonBQty": formData['Rejection Reason B Qty'] ?? formData['rejectionReasonBQty'] ?? '0',
+      "rejectionReasonCQty": formData['Rejection Reason C Qty'] ?? formData['rejectionReasonCQty'] ?? '0',
+      "rejectionReasonDQty": formData['Rejection Reason D Qty'] ?? formData['rejectionReasonDQty'] ?? '0',
+      "rejectionReasonEQty": formData['Rejection Reason E Qty'] ?? formData['rejectionReasonEQty'] ?? '0',
+      "rejectionReasonFQty": formData['Rejection Reason F Qty'] ?? formData['rejectionReasonFQty'] ?? '0',
+      "rejectionReasonOthersQty": formData['Rejection Reason Others Qty'] ?? formData['rejectionReasonOthersQty'] ?? '0',
     };
-    print(body);
+    print('🔍 [JobApiService] QC body with rejection reasons:');
+    print('  rejectionReasonAQty: ${body["rejectionReasonAQty"]}');
+    print('  rejectionReasonBQty: ${body["rejectionReasonBQty"]}');
+    print('  rejectionReasonCQty: ${body["rejectionReasonCQty"]}');
+    print('  rejectionReasonDQty: ${body["rejectionReasonDQty"]}');
+    print('  rejectionReasonEQty: ${body["rejectionReasonEQty"]}');
+    print('  rejectionReasonFQty: ${body["rejectionReasonFQty"]}');
+    print('  rejectionReasonOthersQty: ${body["rejectionReasonOthersQty"]}');
+    print('Full body: $body');
     await _jobApi.putQCDetails(body,jobNumber);
     invalidateJobCaches(jobNumber, stepNo: stepNo, stepType: StepType.qc);
   }
@@ -1794,6 +1818,16 @@ class JobApiService {
     } catch (e) {
       print('Error fetching all users: $e');
       return [];
+    }
+  }
+
+  /// Get individual user by ID for name lookup
+  Future<Map<String, dynamic>?> getUserById(String userId) async {
+    try {
+      return await _jobApi.getUserById(userId);
+    } catch (e) {
+      print('Error fetching user $userId: $e');
+      return null;
     }
   }
 

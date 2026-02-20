@@ -8,16 +8,21 @@ import '../../../data/models/purchase_order.dart';
 
 import 'package:dio/dio.dart';
 import '../../../data/datasources/job_api.dart';
+import '../process/JobApiService.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import '../job/ArtworkDisplayWidget.dart';
 
 class WorkDetailsScreen extends StatefulWidget {
   final String nrcJobNo;
+  final int? jobPlanId;
+  final int? purchaseOrderId;
 
   const WorkDetailsScreen({
     Key? key,
     required this.nrcJobNo,
+    this.jobPlanId,
+    this.purchaseOrderId,
   }) : super(key: key);
 
   @override
@@ -124,7 +129,18 @@ class _WorkDetailsScreenState extends State<WorkDetailsScreen> with TickerProvid
     try {
       final dio = Dio();
       final jobApi = JobApi(dio);
-      final planning = await jobApi.getJobPlanningByNrcJobNo(widget.nrcJobNo);
+
+      Map<String, dynamic>? planning;
+      // If a specific jobPlanId is provided, fetch planning for that plan
+      if (widget.jobPlanId != null) {
+        planning = await jobApi.getJobPlanningStepsByNrcJobNo(
+          widget.nrcJobNo,
+          jobPlanId: widget.jobPlanId,
+        );
+      } else {
+        planning = await jobApi.getJobPlanningByNrcJobNo(widget.nrcJobNo);
+      }
+
       setState(() {
         jobPlanning = planning;
         _isLoading = false;
@@ -145,13 +161,16 @@ class _WorkDetailsScreenState extends State<WorkDetailsScreen> with TickerProvid
       _jobError = null;
     });
     try {
+      // Use JobApiService to fetch job with comprehensive PO details
       final dio = Dio();
       final jobApi = JobApi(dio);
-      print(widget.nrcJobNo);
-      final job = await jobApi.getJobByNrcJobNo(widget.nrcJobNo);
-      print('jobDetails: ' + job.toString()); // Debug print
+      final jobApiService = JobApiService(jobApi);
+      print('[WorkDetailsScreen] Fetching job with PO details for ${widget.nrcJobNo}');
+      final jobWithPo = await jobApiService.fetchJobWithPODetails(widget.nrcJobNo);
+      print('[WorkDetailsScreen] jobWithPo: $jobWithPo');
+
       setState(() {
-        jobDetails = job;
+        jobDetails = jobWithPo;
         _jobLoading = false;
       });
     } catch (e) {
@@ -653,7 +672,10 @@ class _WorkDetailsScreenState extends State<WorkDetailsScreen> with TickerProvid
                   ),
                   const SizedBox(height: 12),
                   _buildInfoGrid([
-                    {'label': 'Job Plan ID', 'value': jobPlanning!['jobPlanId'].toString()},
+                    {
+                      'label': 'Job Plan',
+                      'value': (jobPlanning!['jobPlanCode'] ?? jobPlanning!['jobPlanId'] ?? '').toString(),
+                    },
                     {'label': 'NRC Job No', 'value': jobPlanning!['nrcJobNo'] ?? ''},
                     {'label': 'Job Demand', 'value': jobPlanning!['jobDemand'] ?? ''},
                     {'label': 'Created At', 'value': jobPlanning!['createdAt'] ?? ''},
@@ -740,17 +762,78 @@ class _WorkDetailsScreenState extends State<WorkDetailsScreen> with TickerProvid
             firstChild: const SizedBox.shrink(),
             secondChild: Container(
               margin: const EdgeInsets.only(top: 12),
-              child: _buildInfoGrid(
-                jobDetails!.entries.map((entry) => {
-                  'label': entry.key,
-                  'value': entry.value?.toString() ?? ''
-                }).toList(),
-              ),
+              child: _buildInfoGrid(_buildJobInfoItems()),
             ),
           ),
         ],
       ),
     );
+  }
+
+  /// Build a simple, formatted Job Details list similar to the web UI,
+  /// using the /jobs/{jobNo}/with-po-details response shape.
+  List<Map<String, String>> _buildJobInfoItems() {
+    if (jobDetails == null) return [];
+    final j = jobDetails!;
+
+    // Select the correct Purchase Order using purchaseOrderId from JobPlanning (passed in)
+    Map<String, dynamic>? selectedPO;
+    final purchaseOrders = j['purchaseOrders'];
+    if (purchaseOrders is List && purchaseOrders.isNotEmpty) {
+      // Try to match by purchaseOrderId from widget; fallback to first if not found
+      final planningPoId = widget.purchaseOrderId;
+      if (planningPoId != null) {
+        selectedPO = purchaseOrders.cast<Map<String, dynamic>?>().firstWhere(
+          (po) => po != null && po['id']?.toString() == planningPoId.toString(),
+          orElse: () => purchaseOrders.first is Map<String, dynamic>
+              ? purchaseOrders.first as Map<String, dynamic>
+              : null,
+        );
+      } else {
+        final po = purchaseOrders.first;
+        if (po is Map<String, dynamic>) {
+          selectedPO = po;
+        }
+      }
+    }
+
+    String _toStr(dynamic v) => v?.toString() ?? '';
+
+    return [
+      {
+        'label': 'Job Number',
+        'value': _toStr(j['nrcJobNo']),
+      },
+      {
+        'label': 'Customer',
+        'value': _toStr(j['customerName']),
+      },
+      {
+        'label': 'Delivery Date',
+        // Use PO date if available; otherwise fallback to artwork/other date
+        'value': _toStr(selectedPO?['poDate'] ?? j['shadeCardApprovalDate'] ?? j['artworkApprovedDate']),
+      },
+      {
+        'label': 'No. of Ups',
+        'value': _toStr(j['noUps']),
+      },
+      {
+        'label': 'Style',
+        'value': _toStr(j['styleItemSKU']),
+      },
+      {
+        'label': 'Dimensions',
+        'value': _toStr(j['boxDimensions']),
+      },
+      {
+        'label': 'Board Size',
+        'value': _toStr(j['boardSize']),
+      },
+      {
+        'label': 'Flute Type',
+        'value': _toStr(j['fluteType']),
+      },
+    ];
   }
 
   Widget _buildInfoGrid(List<Map<String, String>> items) {

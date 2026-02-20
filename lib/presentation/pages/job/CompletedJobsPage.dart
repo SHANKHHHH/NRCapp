@@ -881,7 +881,7 @@ class _CompletedJobsPageState extends State<CompletedJobsPage> {
                     children: [
                       _buildDetailedSection('Job Overview', [
                         'Job Number: ${job['nrcJobNo'] ?? 'N/A'}',
-                        'Job Plan ID: ${job['jobPlanId'] ?? 'N/A'}',
+                        'Job Plan: ${job['jobPlanCode'] ?? job['jobPlanId'] ?? 'N/A'}',
                         'Job Demand: ${(job['jobDemand'] ?? 'N/A').toString().toUpperCase()}',
                         'Final Status: ${(job['finalStatus'] ?? 'N/A').toString().toUpperCase()}',
                         'Total Duration: ${job['totalDuration'] ?? 0} minutes',

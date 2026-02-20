@@ -949,20 +949,20 @@ class _WorkActionFormState extends State<WorkActionForm> {
               majorHoldReason: remarks,
             );
           } else if (widget.machineId != null && widget.stepNo != null && widget.nrcJobNo != null) {
-            final formData = _collectFormData();
+          final formData = _collectFormData();
             result = await widget.apiService!.majorHoldWorkOnMachine(
-              widget.nrcJobNo!,
-              widget.stepNo!,
-              widget.machineId!,
-              formData: formData,
-              majorHoldReason: remarks,
-              jobPlanId: widget.jobPlanId,
-            );
+            widget.nrcJobNo!,
+            widget.stepNo!,
+            widget.machineId!,
+            formData: formData,
+            majorHoldReason: remarks,
+            jobPlanId: widget.jobPlanId,
+          );
           } else if (widget.onMajorHold != null) {
             widget.onMajorHold?.call(remarks);
             return;
           }
-
+          
           if (result != null) {
             print('✅ Major hold applied successfully - data will auto-refresh');
           } else {
@@ -2795,8 +2795,16 @@ class _CompletionFormDialogState extends State<CompletionFormDialog> {
   final _formKey = GlobalKey<FormState>();
   final _okQuantityController = TextEditingController();
   final _passQuantityController = TextEditingController(); // For QC: Pass Quantity
-  final _rejectQuantityController = TextEditingController(); // For QC: Reject Quantity
-  final _rejectReasonController = TextEditingController(); // For QC: Reason for Rejection
+  final _rejectQuantityController = TextEditingController(); // For QC: Reject Quantity (calculated total)
+  final _rejectReasonController = TextEditingController(); // For QC: Reason for Rejection (backward compatibility)
+  // Rejection reason quantity controllers
+  final _rejectionReasonAController = TextEditingController();
+  final _rejectionReasonBController = TextEditingController();
+  final _rejectionReasonCController = TextEditingController();
+  final _rejectionReasonDController = TextEditingController();
+  final _rejectionReasonEController = TextEditingController();
+  final _rejectionReasonFController = TextEditingController();
+  final _rejectionReasonOthersController = TextEditingController();
   final _completeRemarkController = TextEditingController();
   final TextEditingController _finishedGoodsController = TextEditingController(); // For Dispatch: Finished Goods
   bool _isLoading = false;
@@ -2806,6 +2814,35 @@ class _CompletionFormDialogState extends State<CompletionFormDialog> {
     super.initState();
     // Initialize finished goods quantity field to empty (user must enter manually)
     _finishedGoodsController.text = '0';
+    // Initialize rejection reason controllers to '0'
+    _rejectionReasonAController.text = '0';
+    _rejectionReasonBController.text = '0';
+    _rejectionReasonCController.text = '0';
+    _rejectionReasonDController.text = '0';
+    _rejectionReasonEController.text = '0';
+    _rejectionReasonFController.text = '0';
+    _rejectionReasonOthersController.text = '0';
+    
+    // Add listeners to auto-calculate total reject quantity
+    _rejectionReasonAController.addListener(_calculateTotalRejectQty);
+    _rejectionReasonBController.addListener(_calculateTotalRejectQty);
+    _rejectionReasonCController.addListener(_calculateTotalRejectQty);
+    _rejectionReasonDController.addListener(_calculateTotalRejectQty);
+    _rejectionReasonEController.addListener(_calculateTotalRejectQty);
+    _rejectionReasonFController.addListener(_calculateTotalRejectQty);
+    _rejectionReasonOthersController.addListener(_calculateTotalRejectQty);
+  }
+
+  void _calculateTotalRejectQty() {
+    final a = int.tryParse(_rejectionReasonAController.text) ?? 0;
+    final b = int.tryParse(_rejectionReasonBController.text) ?? 0;
+    final c = int.tryParse(_rejectionReasonCController.text) ?? 0;
+    final d = int.tryParse(_rejectionReasonDController.text) ?? 0;
+    final e = int.tryParse(_rejectionReasonEController.text) ?? 0;
+    final f = int.tryParse(_rejectionReasonFController.text) ?? 0;
+    final others = int.tryParse(_rejectionReasonOthersController.text) ?? 0;
+    final total = a + b + c + d + e + f + others;
+    _rejectQuantityController.text = total.toString();
   }
 
   @override
@@ -2815,6 +2852,13 @@ class _CompletionFormDialogState extends State<CompletionFormDialog> {
     _passQuantityController.dispose();
     _rejectQuantityController.dispose();
     _rejectReasonController.dispose();
+    _rejectionReasonAController.dispose();
+    _rejectionReasonBController.dispose();
+    _rejectionReasonCController.dispose();
+    _rejectionReasonDController.dispose();
+    _rejectionReasonEController.dispose();
+    _rejectionReasonFController.dispose();
+    _rejectionReasonOthersController.dispose();
     _completeRemarkController.dispose();
     super.dispose();
   }
@@ -2993,8 +3037,8 @@ class _CompletionFormDialogState extends State<CompletionFormDialog> {
                     ],
                   ),
                 ),
-              ],
-              const SizedBox(height: 16),
+            ],
+            const SizedBox(height: 16),
             
             // PO Quantity Display (for PaperStore only)
             if (widget.stepType == StepType.paperStore) ...[
@@ -3129,71 +3173,164 @@ class _CompletionFormDialogState extends State<CompletionFormDialog> {
               ),
               const SizedBox(height: 16),
               
+              // Rejection Reason Quantities Section
+              const Text(
+                'Rejection Reason Quantities',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Enter quantities for each rejection reason. Total will be calculated automatically.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              
+              // Rejection Reason A
               TextFormField(
-                controller: _rejectQuantityController,
-                decoration: InputDecoration(
-                  labelText: 'Reject Quantity *',
-                  hintText: widget.availableQuantity != null 
-                      ? 'Enter reject quantity (0-${widget.availableQuantity})'
-                      : 'Enter reject quantity',
-                  border: const OutlineInputBorder(),
-                  helperText: 'Enter quantity that failed quality check',
+                controller: _rejectionReasonAController,
+                decoration: const InputDecoration(
+                  labelText: 'Rejection Reason A Quantity',
+                  hintText: 'Enter quantity for reason A',
+                  border: OutlineInputBorder(),
                 ),
                 keyboardType: TextInputType.number,
                 validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter reject quantity';
-                  }
-                  
-                  final quantity = int.tryParse(value);
-                  if (quantity == null) {
-                    return 'Please enter a valid number';
-                  }
-                  
-                  if (quantity < 0) {
-                    return 'Reject quantity cannot be negative';
-                  }
-                  
-                  if (widget.availableQuantity != null && quantity > widget.availableQuantity!) {
-                    return 'Reject quantity cannot exceed available quantity (${widget.availableQuantity})';
-                  }
-                  
-                  // Check if Pass + Reject doesn't exceed available
-                  if (_passQuantityController.text.isNotEmpty) {
-                    final passQty = int.tryParse(_passQuantityController.text);
-                    if (passQty != null && passQty + quantity > widget.availableQuantity!) {
-                      return 'Pass + Reject quantity cannot exceed available quantity (${widget.availableQuantity})';
-                    }
-                  }
-                  
+                  final qty = int.tryParse(value ?? '0') ?? 0;
+                  if (qty < 0) return 'Quantity cannot be negative';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              
+              // Rejection Reason B
+              TextFormField(
+                controller: _rejectionReasonBController,
+                decoration: const InputDecoration(
+                  labelText: 'Rejection Reason B Quantity',
+                  hintText: 'Enter quantity for reason B',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  final qty = int.tryParse(value ?? '0') ?? 0;
+                  if (qty < 0) return 'Quantity cannot be negative';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              
+              // Rejection Reason C
+              TextFormField(
+                controller: _rejectionReasonCController,
+                decoration: const InputDecoration(
+                  labelText: 'Rejection Reason C Quantity',
+                  hintText: 'Enter quantity for reason C',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  final qty = int.tryParse(value ?? '0') ?? 0;
+                  if (qty < 0) return 'Quantity cannot be negative';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              
+              // Rejection Reason D
+              TextFormField(
+                controller: _rejectionReasonDController,
+                decoration: const InputDecoration(
+                  labelText: 'Rejection Reason D Quantity',
+                  hintText: 'Enter quantity for reason D',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  final qty = int.tryParse(value ?? '0') ?? 0;
+                  if (qty < 0) return 'Quantity cannot be negative';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              
+              // Rejection Reason E
+              TextFormField(
+                controller: _rejectionReasonEController,
+                decoration: const InputDecoration(
+                  labelText: 'Rejection Reason E Quantity',
+                  hintText: 'Enter quantity for reason E',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  final qty = int.tryParse(value ?? '0') ?? 0;
+                  if (qty < 0) return 'Quantity cannot be negative';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              
+              // Rejection Reason F
+              TextFormField(
+                controller: _rejectionReasonFController,
+                decoration: const InputDecoration(
+                  labelText: 'Rejection Reason F Quantity',
+                  hintText: 'Enter quantity for reason F',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  final qty = int.tryParse(value ?? '0') ?? 0;
+                  if (qty < 0) return 'Quantity cannot be negative';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              
+              // Rejection Reason Others
+              TextFormField(
+                controller: _rejectionReasonOthersController,
+                decoration: const InputDecoration(
+                  labelText: 'Rejection Reason Others Quantity',
+                  hintText: 'Enter quantity for other reasons',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  final qty = int.tryParse(value ?? '0') ?? 0;
+                  if (qty < 0) return 'Quantity cannot be negative';
                   return null;
                 },
               ),
               const SizedBox(height: 16),
               
+              // Total Reject Quantity (read-only, auto-calculated)
               TextFormField(
-                controller: _rejectReasonController,
+                controller: _rejectQuantityController,
                 decoration: InputDecoration(
-                  labelText: 'Reason for Rejection *',
-                  hintText: 'Enter reason for rejection',
+                  labelText: 'Total Reject Quantity (Auto-calculated)',
+                  hintText: 'Total will be calculated automatically',
                   border: const OutlineInputBorder(),
-                  helperText: 'Required if reject quantity > 0',
+                  filled: true,
+                  fillColor: Colors.grey[200],
+                  enabled: false,
                 ),
-                maxLines: 2,
+                keyboardType: TextInputType.number,
                 validator: (value) {
-                  if (value != null && value.isNotEmpty) {
-                    // If reason is provided, check if reject quantity > 0
-                    final rejectQty = int.tryParse(_rejectQuantityController.text);
-                    if (rejectQty == null || rejectQty == 0) {
-                      return 'No reject quantity to provide reason for';
-                    }
-                  } else {
-                    // If no reason, check if reject quantity > 0
-                    final rejectQty = int.tryParse(_rejectQuantityController.text);
-                    if (rejectQty != null && rejectQty > 0) {
-                      return 'Reason is required when reject quantity > 0';
+                  final totalQty = int.tryParse(value ?? '0') ?? 0;
+                  
+                  if (widget.availableQuantity != null && totalQty > widget.availableQuantity!) {
+                    return 'Total reject quantity cannot exceed available quantity (${widget.availableQuantity})';
+                  }
+                  
+                  // Check if Pass + Reject doesn't exceed available
+                  if (_passQuantityController.text.isNotEmpty) {
+                    final passQty = int.tryParse(_passQuantityController.text);
+                    if (passQty != null && passQty + totalQty > widget.availableQuantity!) {
+                      return 'Pass + Reject quantity cannot exceed available quantity (${widget.availableQuantity})';
                     }
                   }
+                  
                   return null;
                 },
               ),
@@ -3283,7 +3420,7 @@ class _CompletionFormDialogState extends State<CompletionFormDialog> {
                     String? errorMessage;
                     
                     if (widget.qcQuantity != null && widget.jobTotalQuantity != null && widget.totalDispatchedQty != null) {
-                      final remaining = widget.jobTotalQuantity! - widget.totalDispatchedQty!;
+                    final remaining = widget.jobTotalQuantity! - widget.totalDispatchedQty!;
                       maxDispatchable = widget.qcQuantity! + remaining;
                       errorMessage = 'Cannot dispatch more than ${maxDispatchable} (QC: ${widget.qcQuantity} + remaining PO: $remaining)';
                     } else if (widget.qcQuantity != null) {
@@ -3342,10 +3479,10 @@ class _CompletionFormDialogState extends State<CompletionFormDialog> {
                       return 'Quantity cannot be negative';
                     }
                     // No validation against available finished goods - this field is for STORING leftover, not using
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
               ],
             ],
             
@@ -3422,6 +3559,23 @@ class _CompletionFormDialogState extends State<CompletionFormDialog> {
         formData['rejectQuantity'] = _rejectQuantityController.text;
         formData['rejectedQty'] = _rejectQuantityController.text;
         formData['reasonForRejection'] = _rejectReasonController.text;
+        
+        // Add individual rejection reason quantities
+        formData['Rejection Reason A Qty'] = _rejectionReasonAController.text;
+        formData['Rejection Reason B Qty'] = _rejectionReasonBController.text;
+        formData['Rejection Reason C Qty'] = _rejectionReasonCController.text;
+        formData['Rejection Reason D Qty'] = _rejectionReasonDController.text;
+        formData['Rejection Reason E Qty'] = _rejectionReasonEController.text;
+        formData['Rejection Reason F Qty'] = _rejectionReasonFController.text;
+        formData['Rejection Reason Others Qty'] = _rejectionReasonOthersController.text;
+        // Also add with camelCase for backend
+        formData['rejectionReasonAQty'] = _rejectionReasonAController.text;
+        formData['rejectionReasonBQty'] = _rejectionReasonBController.text;
+        formData['rejectionReasonCQty'] = _rejectionReasonCController.text;
+        formData['rejectionReasonDQty'] = _rejectionReasonDController.text;
+        formData['rejectionReasonEQty'] = _rejectionReasonEController.text;
+        formData['rejectionReasonFQty'] = _rejectionReasonFController.text;
+        formData['rejectionReasonOthersQty'] = _rejectionReasonOthersController.text;
       } else {
         formData['OK Quantity'] = _okQuantityController.text;
       }

@@ -6,6 +6,8 @@ import '../../../constants/colors.dart';
 import '../../../constants/strings.dart';
 import '../../../data/datasources/job_api.dart';
 
+enum FilterType { daily, weekly, monthly }
+
 class UserDailyActivityPage extends StatefulWidget {
   const UserDailyActivityPage({super.key});
 
@@ -20,6 +22,7 @@ class _UserDailyActivityPageState extends State<UserDailyActivityPage> {
   String _userId = '';
   List<Map<String, dynamic>> _dailyActivities = [];
   DateTime _selectedDate = DateTime.now();
+  FilterType _selectedFilter = FilterType.daily;
 
   @override
   void initState() {
@@ -64,16 +67,67 @@ class _UserDailyActivityPageState extends State<UserDailyActivityPage> {
       print('📊 [ACTIVITY DEBUG] Total logs fetched: ${logs.length}');
       print('📅 [ACTIVITY DEBUG] Selected date: $_selectedDate');
       
-      // Filter logs for the selected date and relevant actions
-      final selectedDate = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
-      final nextDay = selectedDate.add(const Duration(days: 1));
+      // Filter logs based on selected filter type
+      DateTime startDate;
+      DateTime endDate;
+      final now = DateTime.now();
       
-      print('📅 [ACTIVITY DEBUG] Selected date normalized: $selectedDate');
+      switch (_selectedFilter) {
+        case FilterType.daily:
+          // Use selected date for daily filter (allows calendar picker to work)
+          startDate = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+          endDate = startDate.add(const Duration(days: 1));
+          break;
+        case FilterType.weekly:
+          // Always use current week (week containing today), not selected date
+          final weekStart = now.subtract(Duration(days: now.weekday - 1));
+          startDate = DateTime(weekStart.year, weekStart.month, weekStart.day);
+          // End date is 7 days later (exclusive, so it includes all of the 7th day)
+          endDate = startDate.add(const Duration(days: 7));
+          break;
+        case FilterType.monthly:
+          // Always use current month (month containing today), not selected date
+          startDate = DateTime(now.year, now.month, 1);
+          endDate = DateTime(now.year, now.month + 1, 1);
+          break;
+      }
+      
+      print('📅 [ACTIVITY DEBUG] Filter: $_selectedFilter, Start: $startDate, End: $endDate');
       
       final filteredLogs = logs.where((log) {
         try {
-          // Try createdAt first, then updatedAt as fallback (for synthetic logs from JobStepMachine)
-          String? dateString = log['createdAt']?.toString();
+          // For completed actions, try to get the completion date from details JSON or root level
+          String? dateString;
+          final action = (log['action'] ?? '').toString().toLowerCase();
+          final isCompletedAction = action.contains('completed');
+          
+          // For completed actions, try to get the completion date
+          if (isCompletedAction) {
+            // First check root level for completedAt (for completed jobs and step completions)
+            dateString = log['completedAt']?.toString();
+            
+            // If not found, try to extract endDate or completedAt from details JSON
+            if (dateString == null || dateString.isEmpty) {
+              try {
+                final detailsStr = log['details']?.toString();
+                if (detailsStr != null && detailsStr.isNotEmpty) {
+                  final detailsJson = jsonDecode(detailsStr);
+                  if (detailsJson is Map) {
+                    dateString = detailsJson['completedAt']?.toString() ??
+                                detailsJson['endDate']?.toString() ??
+                                detailsJson['completionDate']?.toString();
+                  }
+                }
+              } catch (e) {
+                // If parsing fails, fall back to createdAt
+              }
+            }
+          }
+          
+          // Fallback to createdAt or updatedAt if no completion date found
+          if (dateString == null || dateString.isEmpty) {
+            dateString = log['createdAt']?.toString();
+          }
           if (dateString == null || dateString.isEmpty) {
             dateString = log['updatedAt']?.toString();
           }
@@ -83,11 +137,14 @@ class _UserDailyActivityPageState extends State<UserDailyActivityPage> {
           }
           
           final logDate = DateTime.parse(dateString).toLocal();
-          final logDay = DateTime(logDate.year, logDate.month, logDate.day);
+          // Normalize to start of day for accurate comparison
+          final logDateNormalized = DateTime(logDate.year, logDate.month, logDate.day);
+          final startDateNormalized = DateTime(startDate.year, startDate.month, startDate.day);
+          final endDateNormalized = DateTime(endDate.year, endDate.month, endDate.day);
           
-          // Check if log is from selected date
-          if (logDay.isAtSameMomentAs(selectedDate)) {
-            final action = (log['action'] ?? '').toString().toLowerCase();
+          // Check if log is within the date range (inclusive start, exclusive end)
+          if (logDateNormalized.isAtSameMomentAs(startDateNormalized) || 
+              (logDateNormalized.isAfter(startDateNormalized) && logDateNormalized.isBefore(endDateNormalized))) {
             final details = (log['details'] ?? '').toString().toLowerCase();
             final nrcJobNo = (log['nrcJobNo'] ?? '').toString();
             
@@ -112,7 +169,10 @@ class _UserDailyActivityPageState extends State<UserDailyActivityPage> {
           } else {
             // Debug: show why log doesn't match
             if ((log['action'] ?? '').toString().toLowerCase().contains('completed')) {
-              print('❌ [ACTIVITY DEBUG] Completed log but wrong date: action=${log['action']}, logDate=$logDay, selectedDate=$selectedDate, dateString=$dateString');
+              print('❌ [ACTIVITY DEBUG] Completed log but wrong date: action=${log['action']}, logDate=$logDate, logDateNormalized=$logDateNormalized, startDate=$startDate, startDateNormalized=$startDateNormalized, endDate=$endDate, endDateNormalized=$endDateNormalized, dateString=$dateString');
+              print('   - isAtSameMomentAs: ${logDateNormalized.isAtSameMomentAs(startDateNormalized)}');
+              print('   - isAfter: ${logDateNormalized.isAfter(startDateNormalized)}');
+              print('   - isBefore: ${logDateNormalized.isBefore(endDateNormalized)}');
             }
           }
           return false;
@@ -332,6 +392,75 @@ class _UserDailyActivityPageState extends State<UserDailyActivityPage> {
     }
   }
 
+  Widget _buildFilterChips() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _buildFilterChip('Today', FilterType.daily),
+            const SizedBox(width: 12),
+            _buildFilterChip('This Week', FilterType.weekly),
+            const SizedBox(width: 12),
+            _buildFilterChip('This Month', FilterType.monthly),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String label, FilterType filterType) {
+    final isSelected = _selectedFilter == filterType;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedFilter = filterType;
+        });
+        _fetchDailyActivities();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.maincolor : Colors.white,
+          borderRadius: BorderRadius.circular(25),
+          border: Border.all(
+            color: isSelected ? AppColors.maincolor : AppColors.maincolor.withOpacity(0.4),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: isSelected 
+                  ? AppColors.maincolor.withOpacity(0.3)
+                  : Colors.grey.withOpacity(0.2),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : AppColors.maincolor,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+            fontSize: 14,
+          ),
+        ),
+      ),
+    );
+  }
+
   String _formatTime(String iso) {
     try {
       final dt = DateTime.parse(iso).toLocal();
@@ -457,7 +586,11 @@ class _UserDailyActivityPageState extends State<UserDailyActivityPage> {
             
             // Actions list
             Text(
-              'Actions Today:',
+              _selectedFilter == FilterType.daily
+                  ? 'Actions Today:'
+                  : _selectedFilter == FilterType.weekly
+                  ? 'Actions This Week:'
+                  : 'Actions This Month:',
               style: TextStyle(
                 fontWeight: FontWeight.w600,
                 color: Colors.grey[700],
@@ -488,13 +621,6 @@ class _UserDailyActivityPageState extends State<UserDailyActivityPage> {
                         fontWeight: FontWeight.w500,
                         fontSize: 14,
                       ),
-                    ),
-                  ),
-                  Text(
-                    _formatTime(action['time'] ?? ''),
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 12,
                     ),
                   ),
                 ],
@@ -544,12 +670,20 @@ class _UserDailyActivityPageState extends State<UserDailyActivityPage> {
             Icon(Icons.work_outline, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
-              'No Activity Today',
+              _selectedFilter == FilterType.daily
+                  ? 'No Activity Today'
+                  : _selectedFilter == FilterType.weekly
+                  ? 'No Activity This Week'
+                  : 'No Activity This Month',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.grey[800]),
             ),
             const SizedBox(height: 8),
             Text(
-              'No job activities recorded for ${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
+              _selectedFilter == FilterType.daily
+                  ? 'No job activities recorded for ${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}'
+                  : _selectedFilter == FilterType.weekly
+                  ? 'No job activities recorded for this week'
+                  : 'No job activities recorded for this month',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey[600]),
             ),
@@ -593,7 +727,11 @@ class _UserDailyActivityPageState extends State<UserDailyActivityPage> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
           ? _buildErrorState()
-          : _dailyActivities.isEmpty
+          : Column(
+              children: [
+                _buildFilterChips(),
+                Expanded(
+                  child: _dailyActivities.isEmpty
           ? _buildEmptyState()
           : RefreshIndicator(
               onRefresh: _fetchDailyActivities,
@@ -605,6 +743,9 @@ class _UserDailyActivityPageState extends State<UserDailyActivityPage> {
                   return _buildActivityCard(_dailyActivities[index]);
                 },
               ),
+                        ),
+                ),
+              ],
             ),
     );
   }

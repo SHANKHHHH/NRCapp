@@ -7,7 +7,7 @@ import '../../../constants/colors.dart';
 import '../../../constants/strings.dart';
 import '../../../data/datasources/job_api.dart';
 
-enum FilterType { daily, weekly, custom }
+enum FilterType { daily, weekly, monthly, custom }
 
 class UserOwnActivityPage extends StatefulWidget {
   const UserOwnActivityPage({super.key});
@@ -112,6 +112,18 @@ class _UserOwnActivityPageState extends State<UserOwnActivityPage> {
         }).toList();
         break;
 
+      case FilterType.monthly:
+        final monthStart = DateTime(now.year, now.month, 1);
+        filtered = _logs.where((log) {
+          try {
+            final logDate = DateTime.parse(log['createdAt'] ?? '').toLocal();
+            return logDate.isAfter(monthStart.subtract(const Duration(seconds: 1)));
+          } catch (e) {
+            return false;
+          }
+        }).toList();
+        break;
+
       case FilterType.custom:
         if (_customStartDate != null && _customEndDate != null) {
           final startDay = DateTime(_customStartDate!.year, _customStartDate!.month, _customStartDate!.day);
@@ -169,24 +181,31 @@ class _UserOwnActivityPageState extends State<UserOwnActivityPage> {
 
   Widget _buildFilterChips() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _buildFilterChip('Today', FilterType.daily),
-                  const SizedBox(width: 8),
-                  _buildFilterChip('This Week', FilterType.weekly),
-                  const SizedBox(width: 8),
-                  _buildCustomFilterChip(),
-                ],
-              ),
-            ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 4,
+            offset: const Offset(0, 2),
           ),
         ],
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _buildFilterChip('Today', FilterType.daily),
+            const SizedBox(width: 12),
+            _buildFilterChip('This Week', FilterType.weekly),
+            const SizedBox(width: 12),
+            _buildFilterChip('This Month', FilterType.monthly),
+            const SizedBox(width: 12),
+            _buildCustomFilterChip(),
+          ],
+        ),
       ),
     );
   }
@@ -201,28 +220,30 @@ class _UserOwnActivityPageState extends State<UserOwnActivityPage> {
         _applyFilter();
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         decoration: BoxDecoration(
           color: isSelected ? AppColors.maincolor : Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(25),
           border: Border.all(
-            color: isSelected ? AppColors.maincolor : AppColors.maincolor.withOpacity(0.3),
-            width: 1,
+            color: isSelected ? AppColors.maincolor : AppColors.maincolor.withOpacity(0.4),
+            width: 1.5,
           ),
-          boxShadow: isSelected ? [
+          boxShadow: [
             BoxShadow(
-              color: AppColors.maincolor.withOpacity(0.3),
+              color: isSelected 
+                  ? AppColors.maincolor.withOpacity(0.3)
+                  : Colors.grey.withOpacity(0.2),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
-          ] : null,
+          ],
         ),
         child: Text(
           label,
           style: TextStyle(
             color: isSelected ? Colors.white : AppColors.maincolor,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-            fontSize: 13,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+            fontSize: 14,
           ),
         ),
       ),
@@ -243,28 +264,30 @@ class _UserOwnActivityPageState extends State<UserOwnActivityPage> {
         await _selectCustomDateRange();
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         decoration: BoxDecoration(
           color: isSelected ? AppColors.maincolor : Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(25),
           border: Border.all(
-            color: isSelected ? AppColors.maincolor : AppColors.maincolor.withOpacity(0.3),
-            width: 1,
+            color: isSelected ? AppColors.maincolor : AppColors.maincolor.withOpacity(0.4),
+            width: 1.5,
           ),
-          boxShadow: isSelected ? [
+          boxShadow: [
             BoxShadow(
-              color: AppColors.maincolor.withOpacity(0.3),
+              color: isSelected 
+                  ? AppColors.maincolor.withOpacity(0.3)
+                  : Colors.grey.withOpacity(0.2),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
-          ] : null,
+          ],
         ),
         child: Text(
           label,
           style: TextStyle(
             color: isSelected ? Colors.white : AppColors.maincolor,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-            fontSize: 13,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+            fontSize: 14,
           ),
         ),
       ),
@@ -278,6 +301,8 @@ class _UserOwnActivityPageState extends State<UserOwnActivityPage> {
         return '$count activities today';
       case FilterType.weekly:
         return '$count activities this week';
+      case FilterType.monthly:
+        return '$count activities this month';
       case FilterType.custom:
         if (_customStartDate != null && _customEndDate != null) {
           return '$count activities in selected range';
@@ -396,14 +421,6 @@ class _UserOwnActivityPageState extends State<UserOwnActivityPage> {
                           color: Colors.grey[800],
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _timeAgo(createdAt),
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 12,
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -454,7 +471,7 @@ class _UserOwnActivityPageState extends State<UserOwnActivityPage> {
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  'Plan ID: $jobPlanId',
+                  'Plan: $jobPlanId',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
@@ -537,6 +554,8 @@ class _UserOwnActivityPageState extends State<UserOwnActivityPage> {
                   ? 'No Activity Today'
                   : _selectedFilter == FilterType.weekly
                   ? 'No Activity This Week'
+                  : _selectedFilter == FilterType.monthly
+                  ? 'No Activity This Month'
                   : 'No Activity Found',
               style: TextStyle(
                 fontSize: 18,
@@ -550,6 +569,8 @@ class _UserOwnActivityPageState extends State<UserOwnActivityPage> {
                   ? 'No activities recorded for today'
                   : _selectedFilter == FilterType.weekly
                   ? 'No activities recorded for this week'
+                  : _selectedFilter == FilterType.monthly
+                  ? 'No activities recorded for this month'
                   : 'No activities found for the selected period',
               textAlign: TextAlign.center,
               style: TextStyle(

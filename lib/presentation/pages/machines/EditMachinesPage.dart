@@ -251,7 +251,7 @@ class _EditMachinesPageState extends State<EditMachinesPage> {
                                           ),
                                           const SizedBox(height: 4),
                                           Text('Demand: ${jobPlanning['jobDemand'] ?? 'N/A'}'),
-                                          Text('Job Plan ID: ${jobPlanning['jobPlanId'] ?? 'N/A'}'),
+                                          Text('Job Plan: ${jobPlanning['jobPlanCode'] ?? jobPlanning['jobPlanId'] ?? 'N/A'}'),
                                         ],
                                       ),
                                     ),

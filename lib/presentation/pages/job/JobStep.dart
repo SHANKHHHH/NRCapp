@@ -29,12 +29,14 @@ class JobTimelinePage extends StatefulWidget {
   final String? jobNumber;
   final List<dynamic>? assignedSteps;
   final int? jobPlanId;
+  final String? filterByMachineId; // Machine context from WorkScreen
 
   const JobTimelinePage({
     super.key,
     this.jobNumber,
     this.assignedSteps,
     this.jobPlanId,
+    this.filterByMachineId,
   });
 
   @override
@@ -239,27 +241,35 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     print('DEBUG: Checking machine assignment for ${step.title}');
     
     if (_isMachineRequiredStep(step.type)) {
-      // For machine-required steps, check if machines are assigned
+      // For machine-required steps, use machine from context or get from step details
       final stepNo = StepDataManager.getStepNumber(step.type);
       final stepDetails = _stepDetailsCache[stepNo];
       
-      if (stepDetails != null && stepDetails['machineDetails'] != null) {
+      // Use machine from context (filterByMachineId) if available
+      String? machineId = widget.filterByMachineId;
+      
+      // If no machine from context, try to get from step details
+      if (machineId == null && stepDetails != null && stepDetails['machineDetails'] != null) {
         final machineDetails = stepDetails['machineDetails'];
         if (machineDetails is List && machineDetails.isNotEmpty) {
-          // Machines are assigned, show smart machine selection
-          _showSmartMachineSelection(step);
-        } else {
-          // No machines assigned
-          DialogManager.showErrorMessage(
-            context,
-            'No machines assigned for ${step.title}. Please contact your administrator.'
-          );
+          final firstMachine = machineDetails[0];
+          if (firstMachine is Map<String, dynamic>) {
+            machineId = firstMachine['id']?.toString() ?? 
+                        firstMachine['machineId']?.toString() ??
+                        (firstMachine['machine'] as Map<String, dynamic>?)?['id']?.toString();
+          }
         }
+      }
+      
+      if (machineId != null && machineId.isNotEmpty) {
+        // Use the machine directly - no selection dialog needed
+        print('DEBUG: Using machine $machineId for ${step.title}');
+        _showWorkFormWithMachine(step, machineId);
       } else {
-        // No step details available
+        // No machine available
         DialogManager.showErrorMessage(
           context,
-          'Step details not available for ${step.title}. Please try again.'
+          'No machine available for ${step.title}. Please contact your administrator.'
         );
       }
     } else {
@@ -2032,65 +2042,110 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     });
 
     try {
+      // 1) Fetch base job details (as before) so Job Information fields work normally
       final details = await _apiService.fetchJobDetails(widget.jobNumber ?? '');
-      print("This is the details I want");
-      print(details);
+      print('🔍 [JobStep] Base job details: $details');
+
+      Map<String, dynamic>? enrichedJobData;
+
+      if (details != null && details.isNotEmpty) {
+        final firstJob = details[0];
+        enrichedJobData = {
+          'id': firstJob.id,
+          'nrcJobNo': firstJob.nrcJobNo,
+          'styleItemSKU': firstJob.styleItemSKU,
+          'customerName': firstJob.customerName,
+          'fluteType': firstJob.fluteType,
+          'status': firstJob.status,
+          'latestRate': firstJob.latestRate,
+          'preRate': firstJob.preRate,
+          'length': firstJob.length,
+          'width': firstJob.width,
+          'height': firstJob.height,
+          'boxDimensions': firstJob.boxDimensions,
+          'diePunchCode': firstJob.diePunchCode,
+          'boardCategory': firstJob.boardCategory,
+          'noOfColor': firstJob.noOfColor,
+          'processColors': firstJob.processColors,
+          'specialColor1': firstJob.specialColor1,
+          'specialColor2': firstJob.specialColor2,
+          'specialColor3': firstJob.specialColor3,
+          'specialColor4': firstJob.specialColor4,
+          'overPrintFinishing': firstJob.overPrintFinishing,
+          'topFaceGSM': firstJob.topFaceGSM,
+          'flutingGSM': firstJob.flutingGSM,
+          'bottomLinerGSM': firstJob.bottomLinerGSM,
+          'decalBoardX': firstJob.decalBoardX,
+          'lengthBoardY': firstJob.lengthBoardY,
+          'boardSize': firstJob.boardSize,
+          'noUps': firstJob.noUps,
+          'artworkReceivedDate': firstJob.artworkReceivedDate,
+          'artworkApprovalDate': firstJob.artworkApprovalDate,
+          'shadeCardApprovalDate': firstJob.shadeCardApprovalDate,
+          'srNo': firstJob.srNo,
+          'jobDemand': firstJob.jobDemand,
+          'imageURL': firstJob.imageURL,
+          'createdAt': firstJob.createdAt,
+          'updatedAt': firstJob.updatedAt,
+          'userId': firstJob.userId,
+          'machineId': firstJob.machineId,
+          'isMachineDetailsFilled': firstJob.isMachineDetailsFilled,
+          'hasPurchaseOrders': firstJob.hasPurchaseOrders,
+        };
+      }
+
+      // 2) Enrich with correct PO quantity using:
+      //    jobPlanId -> JobPlanning.purchaseOrderId -> PurchaseOrder.totalPOQuantity
+      try {
+        int? planningPoId;
+
+        // 2a) Get purchaseOrderId from JobPlanning table using _jobPlanId
+        if (_jobPlanId != null) {
+          final allPlannings = await _apiService.getAllJobPlannings();
+          final planning = allPlannings.firstWhere(
+            (p) =>
+                p['jobPlanId'] == _jobPlanId ||
+                p['jobPlanId']?.toString() == _jobPlanId.toString(),
+            orElse: () => <String, dynamic>{},
+          );
+          if (planning.isNotEmpty) {
+            planningPoId = planning['purchaseOrderId'] as int?;
+          }
+        }
+
+        // 2b) From job + PO details, pick the PurchaseOrder with that id and read totalPOQuantity
+        if (planningPoId != null) {
+          final jobWithPo =
+              await _apiService.fetchJobWithPODetails(widget.jobNumber ?? '');
+          print('🔍 [JobStep] jobWithPo for PO quantity: $jobWithPo');
+
+          if (jobWithPo != null && jobWithPo is Map<String, dynamic>) {
+            final purchaseOrders = jobWithPo['purchaseOrders'];
+            if (purchaseOrders is List && purchaseOrders.isNotEmpty) {
+              final selectedPO = purchaseOrders
+                  .cast<Map<String, dynamic>?>()
+                  .firstWhere(
+                    (po) =>
+                        po != null &&
+                        po['id']?.toString() == planningPoId.toString(),
+                    orElse: () => null,
+                  );
+
+              if (selectedPO != null) {
+                enrichedJobData ??= {};
+                enrichedJobData['totalPOQuantity'] =
+                    selectedPO['totalPOQuantity'];
+              }
+            }
+          }
+        }
+      } catch (poError) {
+        print('⚠️ [JobStep] Failed to enrich PO quantity: $poError');
+      }
+
       setState(() {
         jobDetails = details;
-        // Initialize _jobData from job details
-        if (details != null && details.isNotEmpty) {
-          // details is List<Job>, so get the first Job and convert to Map
-          final firstJob = details[0];
-          _jobData = {
-            'id': firstJob.id,
-            'nrcJobNo': firstJob.nrcJobNo,
-            'styleItemSKU': firstJob.styleItemSKU,
-            'customerName': firstJob.customerName,
-            'fluteType': firstJob.fluteType,
-            'status': firstJob.status,
-            'latestRate': firstJob.latestRate,
-            'preRate': firstJob.preRate,
-            'length': firstJob.length,
-            'width': firstJob.width,
-            'height': firstJob.height,
-            'boxDimensions': firstJob.boxDimensions,
-            'diePunchCode': firstJob.diePunchCode,
-            'boardCategory': firstJob.boardCategory,
-            'noOfColor': firstJob.noOfColor,
-            'processColors': firstJob.processColors,
-            'specialColor1': firstJob.specialColor1,
-            'specialColor2': firstJob.specialColor2,
-            'specialColor3': firstJob.specialColor3,
-            'specialColor4': firstJob.specialColor4,
-            'overPrintFinishing': firstJob.overPrintFinishing,
-            'topFaceGSM': firstJob.topFaceGSM,
-            'flutingGSM': firstJob.flutingGSM,
-            'bottomLinerGSM': firstJob.bottomLinerGSM,
-            'decalBoardX': firstJob.decalBoardX,
-            'lengthBoardY': firstJob.lengthBoardY,
-            'boardSize': firstJob.boardSize,
-            'noUps': firstJob.noUps,
-            'artworkReceivedDate': firstJob.artworkReceivedDate,
-            'artworkApprovalDate': firstJob.artworkApprovalDate,
-            'shadeCardApprovalDate': firstJob.shadeCardApprovalDate,
-            'srNo': firstJob.srNo,
-            'jobDemand': firstJob.jobDemand,
-            'imageURL': firstJob.imageURL,
-            'createdAt': firstJob.createdAt,
-            'updatedAt': firstJob.updatedAt,
-            'userId': firstJob.userId,
-            'machineId': firstJob.machineId,
-            'isMachineDetailsFilled': firstJob.isMachineDetailsFilled,
-            'hasPurchaseOrders': firstJob.hasPurchaseOrders,
-            // Add purchase order data if available
-            if (firstJob.purchaseOrders != null && firstJob.purchaseOrders!.isNotEmpty)
-              'totalPOQuantity': firstJob.purchaseOrders![0].totalPOQuantity,
-          };
-          print('🔍 [JobStep] _jobData populated: ${_jobData?.keys.toList()}');
-          print('🔍 [JobStep] _jobData values: ${_jobData?.values.toList()}');
-        } else {
-          print('🔍 [JobStep] No job details found or empty');
-        }
+        _jobData = enrichedJobData;
         _jobLoading = false;
       });
     } catch (e) {
@@ -2135,11 +2190,31 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       // Check machine assignment before allowing start
       _checkMachineAssignmentAndStart(step);
     } else if (step.status == StepStatus.started || step.status == StepStatus.inProgress) {
-      print('DEBUG: Step ${step.title} is already started - checking for machine selection');
+      print('DEBUG: Step ${step.title} is already started - using machine from context');
       // Check if this step requires machines
       if (_isMachineRequiredStep(step.type)) {
-        // For machine-required steps, check ALL accessible plannings for this step
-        _showSmartMachineSelection(step);
+        // Use machine from context or get from step details
+        final stepNo = StepDataManager.getStepNumber(step.type);
+        final stepDetails = _stepDetailsCache[stepNo];
+        String? machineId = widget.filterByMachineId;
+        
+        if (machineId == null && stepDetails != null && stepDetails['machineDetails'] != null) {
+          final machineDetails = stepDetails['machineDetails'];
+          if (machineDetails is List && machineDetails.isNotEmpty) {
+            final firstMachine = machineDetails[0];
+            if (firstMachine is Map<String, dynamic>) {
+              machineId = firstMachine['id']?.toString() ?? 
+                          firstMachine['machineId']?.toString() ??
+                          (firstMachine['machine'] as Map<String, dynamic>?)?['id']?.toString();
+            }
+          }
+        }
+        
+        if (machineId != null && machineId.isNotEmpty) {
+          _showWorkFormWithMachine(step, machineId);
+        } else {
+          DialogManager.showErrorMessage(context, 'No machine available for ${step.title}');
+        }
       } else {
         // For non-machine steps (PaperStore, Quality, Dispatch), show work form directly
         print('DEBUG: Step ${step.title} does not require machines, showing work form directly');
@@ -2149,8 +2224,28 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       print('DEBUG: Step ${step.title} is on hold - showing work form to resume');
       // For hold status, show work form to allow resume
       if (_isMachineRequiredStep(step.type)) {
-        // For machine-required steps, show machine selection
-        _showSmartMachineSelection(step);
+        // Use machine from context or get from step details
+        final stepNo = StepDataManager.getStepNumber(step.type);
+        final stepDetails = _stepDetailsCache[stepNo];
+        String? machineId = widget.filterByMachineId;
+        
+        if (machineId == null && stepDetails != null && stepDetails['machineDetails'] != null) {
+          final machineDetails = stepDetails['machineDetails'];
+          if (machineDetails is List && machineDetails.isNotEmpty) {
+            final firstMachine = machineDetails[0];
+            if (firstMachine is Map<String, dynamic>) {
+              machineId = firstMachine['id']?.toString() ?? 
+                          firstMachine['machineId']?.toString() ??
+                          (firstMachine['machine'] as Map<String, dynamic>?)?['id']?.toString();
+            }
+          }
+        }
+        
+        if (machineId != null && machineId.isNotEmpty) {
+          _showWorkFormWithMachine(step, machineId);
+        } else {
+          DialogManager.showErrorMessage(context, 'No machine available for ${step.title}');
+        }
       } else {
         // For non-machine steps (PaperStore, Quality, Dispatch), show work form directly
         print('DEBUG: Step ${step.title} is on hold, showing work form to resume');
@@ -2168,7 +2263,15 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     }
   }
 
-  /// 🚀 REVOLUTIONARY: Smart Machine Selection with ALL Accessible Plannings
+  // REMOVED: _showSmartMachineSelection - No longer needed, using machine from context directly
+  
+  // REMOVED: _showRevolutionaryMachineSelectionDialog - No longer needed, using machine from context directly
+  
+  // REMOVED: _showNoMachinesAvailableDialog - No longer needed
+  
+  // REMOVED: _showMachineSelectionDialog - No longer needed, using machine from context directly
+  
+  /* REMOVED UNUSED FUNCTIONS - Using machine from context directly instead of selection dialogs
   Future<void> _showSmartMachineSelection(StepData step) async {
     try {
       print('🚀 SMART MACHINE SELECTION: Analyzing all accessible plannings for ${step.title}');
@@ -2910,6 +3013,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
       DialogManager.showErrorMessage(context, 'Failed to load machines: ${e.toString()}');
     }
   }
+  */
 
   Future<void> _startUrgentJobWork(StepData step) async {
     final stepNo = StepDataManager.getStepNumber(step.type);
@@ -3134,28 +3238,29 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                     Text('Job Number: ${widget.jobNumber}'),
                     Text('Customer: $customerName'),
                     Text('Delivery Date: $deliveryDate'),
-                    if (jobDetails != null) ...[
-                      Builder(
-                        builder: (context) {
-                          final jobData = jobDetails is List ? (jobDetails as List)[0] : jobDetails;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (jobData?.noUps != null)
-                                Text('No. of Ups: ${jobData.noUps}'),
-                              if (jobData?.styleItemSKU != null)
-                                Text('Style: ${jobData.styleItemSKU}'),
-                              if (jobData?.boxDimensions != null)
-                                Text('Dimensions: ${jobData.boxDimensions}'),
-                              if (jobData?.boardSize != null)
-                                Text('Board Size: ${jobData.boardSize}'),
-                              if (jobData?.fluteType != null)
-                                Text('Flute Type: ${jobData.fluteType}'),
-                            ],
-                          );
-                        },
-                      ),
-                    ],
+                    Builder(
+                      builder: (context) {
+                        final jobData = _jobData;
+                        final poQuantity =
+                            _jobData?['totalPOQuantity']?.toString() ?? 'N/A';
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (jobData?['noUps'] != null)
+                              Text('No. of Ups: ${jobData?['noUps']}'),
+                            if (jobData?['styleItemSKU'] != null)
+                              Text('Style: ${jobData?['styleItemSKU']}'),
+                            if (jobData?['boxDimensions'] != null)
+                              Text('Dimensions: ${jobData?['boxDimensions']}'),
+                            if (jobData?['boardSize'] != null)
+                              Text('Board Size: ${jobData?['boardSize']}'),
+                            if (jobData?['fluteType'] != null)
+                              Text('Flute Type: ${jobData?['fluteType']}'),
+                            Text('PO Quantity: $poQuantity'),
+                          ],
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),
@@ -3404,13 +3509,27 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
     final stepNo = StepDataManager.getStepNumber(step.type);
     final stepDetails = _stepDetailsCache[stepNo];
     
+    // Use machine from context or get from step details
+    String? machineId = widget.filterByMachineId;
+    
     if (stepDetails != null && stepDetails['machineDetails'] != null) {
       final machineDetails = stepDetails['machineDetails'];
       if (machineDetails is List && machineDetails.isNotEmpty) {
-        // This step has machines, show machine selection dialog
-        print('DEBUG: Step ${step.title} has machines, showing machine selection dialog');
-        await _showMachineSelectionDialog(step);
+        // If no machine from context, use first machine from step details
+        if (machineId == null) {
+          final firstMachine = machineDetails[0];
+          if (firstMachine is Map<String, dynamic>) {
+            machineId = firstMachine['id']?.toString() ?? 
+                        firstMachine['machineId']?.toString() ??
+                        (firstMachine['machine'] as Map<String, dynamic>?)?['id']?.toString();
+          }
+        }
+        
+        if (machineId != null && machineId.isNotEmpty) {
+          print('DEBUG: Step ${step.title} has machines, using machine $machineId');
+          _showWorkFormWithMachine(step, machineId);
         return;
+        }
       }
     }
     
@@ -4654,7 +4773,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
           if (po is Map) {
             jobDetailsMap['PO ID'] = po['id']?.toString() ?? 'N/A';
             jobDetailsMap['PO Number'] = po['poNumber']?.toString() ?? 'N/A';
-            jobDetailsMap['Total PO Quantity'] = po['totalPOQuantity']?.toString() ?? 'N/A';
             jobDetailsMap['Unit'] = po['unit']?.toString() ?? 'N/A';
             jobDetailsMap['PO Status'] = po['status']?.toString() ?? 'N/A';
             jobDetailsMap['PO Created At'] = po['createdAt']?.toString() ?? 'N/A';
@@ -4666,7 +4784,6 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         if (purchaseOrder != null && purchaseOrder is Map) {
           jobDetailsMap['Single PO ID'] = purchaseOrder['id']?.toString() ?? 'N/A';
           jobDetailsMap['Single PO Number'] = purchaseOrder['poNumber']?.toString() ?? 'N/A';
-          jobDetailsMap['Single PO Quantity'] = purchaseOrder['totalPOQuantity']?.toString() ?? 'N/A';
           jobDetailsMap['Single PO Unit'] = purchaseOrder['unit']?.toString() ?? 'N/A';
           jobDetailsMap['Single PO Status'] = purchaseOrder['status']?.toString() ?? 'N/A';
         }
@@ -5048,18 +5165,44 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
 
   /// Helper function to convert user IDs to user names
   Future<String> _getUserNameFromId(String? userId) async {
-    if (userId == null || userId.isEmpty) return userId ?? '';
+    if (userId == null || userId.isEmpty || userId == 'N/A' || userId == 'Not started' || userId == 'Not completed' || userId == 'Started (user not assigned)' || userId == 'Completed (user not assigned)') {
+      return userId ?? '';
+    }
+    
+    // Check cache first
+    if (_cachedUsers.containsKey(userId)) {
+      return _cachedUsers[userId]!;
+    }
     
     try {
-      // Check if we have cached users, if not fetch them
+      // Try to fetch all users first (if we have permission)
       if (_cachedUsers.isEmpty) {
         final users = await _apiService.getAllUsers();
         print('DEBUG: Fetched ${users.length} users from API');
+        if (users.isNotEmpty) {
         for (var user in users) {
-          print('DEBUG: User from API - ID: "${user['id']}", Name: "${user['name']}"');
+            final uid = user['id']?.toString() ?? '';
+            final userName = user['name']?.toString() ?? uid;
+            print('DEBUG: User from API - ID: "$uid", Name: "$userName"');
+            _cachedUsers[uid] = userName;
         }
-        _cachedUsers = { for (var user in users) user['id']?.toString() ?? '': user['name']?.toString() ?? user['id']?.toString() ?? '' };
         print('DEBUG: Cached users map: $_cachedUsers');
+        }
+      }
+      
+      // If still not in cache, try fetching individual user
+      if (!_cachedUsers.containsKey(userId)) {
+        try {
+          final userInfo = await _apiService.getUserById(userId);
+          if (userInfo != null && userInfo['name'] != null) {
+            final userName = userInfo['name']?.toString() ?? userId;
+            _cachedUsers[userId] = userName;
+            print('DEBUG: Fetched individual user - ID: "$userId", Name: "$userName"');
+            return userName;
+          }
+        } catch (e) {
+          print('DEBUG: Could not fetch individual user $userId: $e');
+        }
       }
       
       // Return the user name if found, otherwise return the original ID
@@ -5455,6 +5598,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         completedBy = 'N/A';
       }
 
+      // Convert user IDs to names
+      final startedByName = await _getUserNameFromId(startedBy);
+      final completedByName = await _getUserNameFromId(completedBy);
+
       // Show the dialog
       if (mounted) {
         showDialog(
@@ -5496,7 +5643,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                             Icon(Icons.person_add, size: 18, color: Colors.blue[700]),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: Text('Started By: $startedBy'),
+                              child: Text('Started By: $startedByName'),
                             ),
                           ],
                         ),
@@ -5506,7 +5653,7 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
                             Icon(Icons.check_circle, size: 18, color: Colors.green[700]),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: Text('Completed By: $completedBy'),
+                              child: Text('Completed By: $completedByName'),
                             ),
                           ],
                         ),
@@ -5580,6 +5727,10 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
         completedBy = 'N/A';
       }
 
+      // Convert user IDs to names
+      final startedByName = await _getUserNameFromId(startedBy);
+      final completedByName = await _getUserNameFromId(completedBy);
+
       // Show the dialog
       if (mounted) {
         showDialog(
@@ -5592,9 +5743,9 @@ class _JobTimelinePageState extends State<JobTimelinePage> {
               children: [
                 Text('Previous Step: $previousStepTitle', style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                Text('Started By: $startedBy'),
+                Text('Started By: $startedByName'),
                 const SizedBox(height: 4),
-                Text('Completed By: $completedBy'),
+                Text('Completed By: $completedByName'),
               ],
             ),
             actions: [

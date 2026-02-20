@@ -282,9 +282,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   shouldIncludeStep = true;
                 } else if (_userRoles.any((role) => role.toLowerCase() == 'flutelaminator') && stepName == 'FluteLaminateBoardConversion') {
                   shouldIncludeStep = true;
-                } else if (_userRoles.any((role) => role.toLowerCase() == 'puncher') && stepName == 'Punching') {
+                } else if ((_userRoles.any((role) => role.toLowerCase() == 'puncher') || 
+                            _userRoles.any((role) => role.toLowerCase() == 'punching_operator')) && 
+                           stepName == 'Punching') {
                   shouldIncludeStep = true;
-                } else if (_userRoles.any((role) => role.toLowerCase() == 'flap') && stepName == 'SideFlapPasting') {
+                } else if ((_userRoles.any((role) => role.toLowerCase() == 'flap') || 
+                            _userRoles.any((role) => role.toLowerCase() == 'pasting_operator')) && 
+                           stepName == 'SideFlapPasting') {
                   shouldIncludeStep = true;
                 }
                 
@@ -349,6 +353,10 @@ class _HomeScreenState extends State<HomeScreen> {
         
         print('🔍 [HomeScreen] Processing planning $planningId (job $nrcJobNo)');
         
+        // Check if this is an urgent job
+        final jobDemand = planning['jobDemand']?.toString().toLowerCase() ?? '';
+        final isUrgentJob = jobDemand == 'high';
+        
         if (planning['steps'] is List) {
           final steps = planning['steps'] as List;
           for (final step in steps) {
@@ -370,17 +378,29 @@ class _HomeScreenState extends State<HomeScreen> {
                 shouldIncludeStep = true;
               }
             } else {
-              // For machine access roles (printer, corrugator, etc.) - ONLY count steps that match their role
-              if (_userRoles.any((role) => role.toLowerCase() == 'printer') && stepName == 'PrintingDetails') {
+              // For machine access roles (printer, corrugator, etc.)
+              // For urgent jobs: check ALL steps (show on all machines)
+              // For regular jobs: ONLY count steps that match their role
+              if (isUrgentJob) {
+                // Urgent jobs show on all machines - check all steps
                 shouldIncludeStep = true;
-              } else if (_userRoles.any((role) => role.toLowerCase() == 'corrugator') && stepName == 'Corrugation') {
-                shouldIncludeStep = true;
-              } else if (_userRoles.any((role) => role.toLowerCase() == 'flutelaminator') && stepName == 'FluteLaminateBoardConversion') {
-                shouldIncludeStep = true;
-              } else if (_userRoles.any((role) => role.toLowerCase() == 'punching_operator') && stepName == 'Punching') {
-                shouldIncludeStep = true;
-              } else if (_userRoles.any((role) => role.toLowerCase() == 'pasting_operator') && stepName == 'SideFlapPasting') {
-                shouldIncludeStep = true;
+              } else {
+                // Regular jobs: only check role-matched steps
+                if (_userRoles.any((role) => role.toLowerCase() == 'printer') && stepName == 'PrintingDetails') {
+                  shouldIncludeStep = true;
+                } else if (_userRoles.any((role) => role.toLowerCase() == 'corrugator') && stepName == 'Corrugation') {
+                  shouldIncludeStep = true;
+                } else if (_userRoles.any((role) => role.toLowerCase() == 'flutelaminator') && stepName == 'FluteLaminateBoardConversion') {
+                  shouldIncludeStep = true;
+                } else if ((_userRoles.any((role) => role.toLowerCase() == 'puncher') || 
+                            _userRoles.any((role) => role.toLowerCase() == 'punching_operator')) && 
+                           stepName == 'Punching') {
+                  shouldIncludeStep = true;
+                } else if ((_userRoles.any((role) => role.toLowerCase() == 'flap') || 
+                            _userRoles.any((role) => role.toLowerCase() == 'pasting_operator')) && 
+                           stepName == 'SideFlapPasting') {
+                  shouldIncludeStep = true;
+                }
               }
             }
             
@@ -411,52 +431,124 @@ class _HomeScreenState extends State<HomeScreen> {
                   }
                 } else if (hasMachines) {
                   // Machine-based step - apply same filtering as WorkScreen
-                  // Hide if step is completed
+                  // Hide if step is completed (works for both regular and urgent jobs)
                   if (isCompleted) {
-                    print('🔍 [HomeScreen] Completed step ${stepName} for planning $planningId, skipping');
+                    print('🔍 [HomeScreen] Completed step ${stepName} for planning $planningId (urgent: $isUrgentJob), skipping');
                     continue;
                   }
                   
                   // Check if previous step is ready (for machine steps)
-                  bool previousStepReady = true;
-                  final stepIndex = steps.indexOf(step);
-                  if (stepIndex > 0) {
-                    final previousStep = steps[stepIndex - 1];
-                    if (previousStep is Map<String, dynamic>) {
-                      final prevStatus = previousStep['status']?.toString().toLowerCase() ?? '';
-                      final prevNameLower = previousStep['stepName']?.toString().toLowerCase() ?? '';
-                      
-                      // Check if previous step is completed
-                      if (prevNameLower.contains('paperstore')) {
-                        previousStepReady = prevStatus == 'accept';
-                      } else if (prevStatus == 'stop' || prevStatus == 'stopped' || prevStatus == 'completed' || prevStatus == 'accept') {
-                        previousStepReady = true;
-                      } else {
-                        previousStepReady = false;
+                  // For urgent jobs: bypass previous step check (show on all machines)
+                  // For regular jobs: check if previous step is ready
+                  bool previousStepReady = false;
+                  if (isUrgentJob) {
+                    // Urgent jobs bypass previous step check
+                    previousStepReady = true;
+                  } else {
+                    final stepIndex = steps.indexOf(step);
+                    if (stepIndex > 0) {
+                      final previousStep = steps[stepIndex - 1];
+                      if (previousStep is Map<String, dynamic>) {
+                        final prevStatus = previousStep['status']?.toString().toLowerCase() ?? '';
+                        final prevNameLower = previousStep['stepName']?.toString().toLowerCase() ?? '';
+                        
+                        // Check if previous step is completed
+                        if (prevNameLower.contains('paperstore')) {
+                          previousStepReady = prevStatus == 'accept';
+                        } else if (prevStatus == 'stop' || prevStatus == 'stopped' || prevStatus == 'completed' || prevStatus == 'accept') {
+                          previousStepReady = true;
+                        } else {
+                          // Check if previous step is at 'start' or beyond (not 'planned' or empty/null)
+                          final allowedStatuses = {'start', 'started', 'in_progress'};
+                          previousStepReady = allowedStatuses.contains(prevStatus);
+                        }
+                        
+                        // Also check if current step is active (start/in_progress) - if yes, allow even if previous not ready
+                        final currentStepActive = stepStatus == 'start' || stepStatus == 'in_progress';
+                        if (currentStepActive) {
+                          previousStepReady = true;
+                        }
                       }
-                      
-                      // Also check if current step is active (start/in_progress) - if yes, allow even if previous not ready
-                      final currentStepActive = stepStatus == 'start' || stepStatus == 'in_progress';
-                      if (currentStepActive) {
-                        previousStepReady = true;
-                      }
+                    } else {
+                      previousStepReady = true; // First step has no previous step
                     }
                   }
                   
                   // Only count machines if previous step is ready OR current step is active
                   if (previousStepReady) {
                     final machineDetails = step['machineDetails'] as List;
-                    for (final machineDetail in machineDetails) {
-                      if (machineDetail is Map<String, dynamic>) {
-                        final stepMachineId = machineDetail['id']?.toString();
-                        if (stepMachineId != null) {
-                          machinesUsedInThisPlanning.add(stepMachineId);
-                          print('🔍 [HomeScreen] Added machine $stepMachineId for planning $planningId (step $stepName)');
+
+                    // If machineDetails is empty or "Not Assigned", treat this planning as using ALL accessible machines
+                    if (machineDetails.isEmpty ||
+                        (machineDetails.length == 1 &&
+                            machineDetails.first is Map<String, dynamic> &&
+                            (((machineDetails.first as Map<String, dynamic>)['machineCode']?.toString() == 'null' ||
+                                    (machineDetails.first as Map<String, dynamic>)['machineCode']?.toString() == '' ||
+                                    (machineDetails.first as Map<String, dynamic>)['machineCode']?.toString()?.toLowerCase() == 'not assigned') &&
+                                (((machineDetails.first as Map<String, dynamic>)['machineType']?.toString() == 'null' ||
+                                    (machineDetails.first as Map<String, dynamic>)['machineType']?.toString() == '' ||
+                                    (machineDetails.first as Map<String, dynamic>)['machineType']?.toString()?.toLowerCase() == 'not assigned'))))) {
+                      for (final m in accessibleMachines) {
+                        final id = m['id']?.toString();
+                        if (id != null && id.isNotEmpty) {
+                          machinesUsedInThisPlanning.add(id);
+                          print('🔍 [HomeScreen] Added ALL-machines mapping for planning $planningId (step $stepName) -> machine $id (${m['machineCode']})');
+                        }
+                      }
+                    } else {
+                      for (final machineDetail in machineDetails) {
+                        if (machineDetail is Map<String, dynamic>) {
+                          // Match WorkScreen logic: check multiple locations for machine ID
+                          final machineIdInDetail = machineDetail['id']?.toString();
+                          final machineIdField = machineDetail['machineId']?.toString();
+                          final nestedMachineId = (machineDetail['machine'] as Map<String, dynamic>?)?['id']?.toString();
+                          final nestedMachineCode = (machineDetail['machine'] as Map<String, dynamic>?)?['machineCode']?.toString();
+                          final machineCode = machineDetail['machineCode']?.toString();
+
+                          // Try to find machine ID from any of these locations
+                          String? stepMachineId = machineIdInDetail ?? machineIdField ?? nestedMachineId;
+
+                          // If no ID found but we have machineCode, try to match by machineCode
+                          if (stepMachineId == null && (nestedMachineCode != null || machineCode != null)) {
+                            final codeToMatch = nestedMachineCode ?? machineCode;
+                            // Try to find matching machine in accessibleMachines by machineCode
+                            final matchingMachine = accessibleMachines.firstWhere(
+                              (m) => m['machineCode']?.toString() == codeToMatch,
+                              orElse: () => <String, dynamic>{},
+                            );
+                            if (matchingMachine.isNotEmpty) {
+                              stepMachineId = matchingMachine['id']?.toString();
+                            }
+                          }
+
+                          if (stepMachineId != null && stepMachineId.isNotEmpty) {
+                            machinesUsedInThisPlanning.add(stepMachineId);
+                            final machineCodeForLog = nestedMachineCode ?? machineCode ?? 'unknown';
+                            print('🔍 [HomeScreen] Added machine $stepMachineId ($machineCodeForLog) (from: ${machineIdInDetail != null ? 'id' : machineIdField != null ? 'machineId' : nestedMachineId != null ? 'machine.id' : 'machineCode'}) for planning $planningId (step $stepName)');
+                            if (stepName == 'Punching') {
+                              print('🔍 [Punching Counter] Planning $planningId (job $nrcJobNo) - Added punching machine $stepMachineId ($machineCodeForLog), isUrgentJob: $isUrgentJob, previousStepReady: $previousStepReady');
+                            } else if (stepName == 'SideFlapPasting') {
+                              print('🔍 [Pasting Counter] Planning $planningId (job $nrcJobNo) - Added pasting machine $stepMachineId ($machineCodeForLog), isUrgentJob: $isUrgentJob, previousStepReady: $previousStepReady');
+                            }
+                          } else {
+                            final machineCodeForLog = nestedMachineCode ?? machineCode ?? 'unknown';
+                            print('🔍 [HomeScreen] ⚠️ Could not extract machine ID from machineDetail for planning $planningId (step $stepName). machineCode: $machineCodeForLog, machineDetail keys: ${machineDetail.keys.toList()}');
+                            if (stepName == 'Punching') {
+                              print('🔍 [Punching Counter] ⚠️ Planning $planningId (job $nrcJobNo) - Could not extract machine ID. machineCode: $machineCodeForLog, machineDetail: $machineDetail');
+                            } else if (stepName == 'SideFlapPasting') {
+                              print('🔍 [Pasting Counter] ⚠️ Planning $planningId (job $nrcJobNo) - Could not extract machine ID. machineCode: $machineCodeForLog, machineDetail: $machineDetail');
+                            }
+                          }
                         }
                       }
                     }
                   } else {
                     print('🔍 [HomeScreen] Previous step not ready for planning $planningId (step $stepName), skipping machine count');
+                    if (stepName == 'Punching') {
+                      print('🔍 [Punching Counter] Planning $planningId (job $nrcJobNo) - Previous step not ready, skipping. isUrgentJob: $isUrgentJob');
+                    } else if (stepName == 'SideFlapPasting') {
+                      print('🔍 [Pasting Counter] Planning $planningId (job $nrcJobNo) - Previous step not ready, skipping. isUrgentJob: $isUrgentJob');
+                    }
                   }
                 }
               }
@@ -488,7 +580,21 @@ class _HomeScreenState extends State<HomeScreen> {
           // Each planning card is counted separately - don't group by nrcJobNo
           if (shouldCountThisMachine) {
             machineJobCounts[machineId] = (machineJobCounts[machineId] ?? 0) + 1;
-            print('🔍 [HomeScreen Counter] Counting planning $planningId (job $nrcJobNo) for machine $machineId - count now: ${machineJobCounts[machineId]}');
+            // Find machine info for logging
+            final machineInfo = accessibleMachines.firstWhere(
+              (m) => m['id']?.toString() == machineId,
+              orElse: () => <String, dynamic>{},
+            );
+            final machineCode = machineInfo['machineCode']?.toString() ?? 'unknown';
+            print('🔍 [HomeScreen Counter] Counting planning $planningId (job $nrcJobNo) for machine $machineId ($machineCode) - count now: ${machineJobCounts[machineId]}');
+          } else {
+            // Find machine info for logging
+            final machineInfo = accessibleMachines.firstWhere(
+              (m) => m['id']?.toString() == machineId,
+              orElse: () => <String, dynamic>{},
+            );
+            final machineCode = machineInfo['machineCode']?.toString() ?? 'unknown';
+            print('🔍 [HomeScreen Counter] ⚠️ NOT counting planning $planningId (job $nrcJobNo) for machine $machineId ($machineCode) - user does not have access');
           }
         }
       }
@@ -497,8 +603,13 @@ class _HomeScreenState extends State<HomeScreen> {
       // This applies to all role types
       for (final machine in accessibleMachines) {
         final machineId = machine['id']?.toString();
+        final machineCode = machine['machineCode']?.toString() ?? 'unknown';
+        final machineType = machine['machineType']?.toString() ?? 'unknown';
         if (machineId != null && !machineJobCounts.containsKey(machineId)) {
           machineJobCounts[machineId] = 0;
+          print('🔍 [HomeScreen Counter] Machine $machineId ($machineCode, $machineType) has 0 jobs assigned');
+        } else if (machineId != null) {
+          print('🔍 [HomeScreen Counter] Final count for machine $machineId ($machineCode, $machineType): ${machineJobCounts[machineId]} jobs');
         }
       }
       
@@ -972,10 +1083,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ],
-            if (_userRoles.isNotEmpty && _hasDashboardCards()) ...[
-              _buildDashboardDropdown(),
-              const SizedBox(height: 28),
-            ],
             _buildMachineCards(),
           ],
         ),
@@ -1004,74 +1111,6 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Expanded(
                 child: GestureDetector(
-                  onTap: () => context.push('/planning-dashboard'),
-                  child: _buildDepartmentCard(
-                    'Planning',
-                    'Get comprehensive overview of planning activities',
-                    Icons.analytics_outlined,
-                    Colors.blue,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => context.push('/printing-dashboard'),
-                  child: _buildDepartmentCard(
-                    'Printing Manager',
-                    'Manage printing operations and schedules',
-                    Icons.print_outlined,
-                    Colors.indigo,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => context.push('/production-dashboard'),
-                  child: _buildDepartmentCard(
-                    'Production Head',
-                    'Monitor production metrics and performance',
-                    Icons.factory_outlined,
-                    Colors.cyan,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => context.push('/dispatch-dashboard'),
-                  child: _buildDepartmentCard(
-                    'Dispatch Executive',
-                    'Manage dispatch operations and logistics',
-                    Icons.local_shipping_outlined,
-                    Colors.blue,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => context.push('/qc-dashboard'),
-                  child: _buildDepartmentCard(
-                    'QC Manager',
-                    'Quality control and assurance management',
-                    Icons.verified_outlined,
-                    Colors.cyan,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: GestureDetector(
                   onTap: () => context.push('/flying-squad-dashboard'),
                   child: _buildDepartmentCard(
                     'Flying Squad',
@@ -1090,43 +1129,8 @@ class _HomeScreenState extends State<HomeScreen> {
     // Non-admin roles: show cards for all user roles
     List<Widget> departmentCards = [];
     
-    // Define role to card mapping
+    // Define role to card mapping - only flyingsquad
     final roleCardMap = {
-      'planner': {
-        'title': 'Planning',
-        'description': 'Get comprehensive overview of planning activities',
-        'icon': Icons.analytics_outlined,
-        'color': Colors.blue,
-        'onTap': () => context.push('/planning-dashboard'),
-      },
-      'printer': {
-        'title': 'Printing Manager',
-        'description': 'Manage printing operations and schedules',
-        'icon': Icons.print_outlined,
-        'color': Colors.indigo,
-        'onTap': () => context.push('/printing-dashboard'),
-      },
-      'production_head': {
-        'title': 'Production Head',
-        'description': 'Monitor production metrics and performance',
-        'icon': Icons.factory_outlined,
-        'color': Colors.cyan,
-        'onTap': () => context.push('/production-dashboard'),
-      },
-      'dispatch_executive': {
-        'title': 'Dispatch Executive',
-        'description': 'Manage dispatch operations and logistics',
-        'icon': Icons.local_shipping_outlined,
-        'color': Colors.blue,
-        'onTap': () => context.push('/dispatch-dashboard'),
-      },
-      'qc_manager': {
-        'title': 'QC Manager',
-        'description': 'Quality control and assurance management',
-        'icon': Icons.verified_outlined,
-        'color': Colors.cyan,
-        'onTap': () => context.push('/qc-dashboard'),
-      },
       'qc_manager_flying': {
         'title': 'QC Checks',
         'description': 'Perform QC checks on all job steps',
@@ -1193,14 +1197,6 @@ class _HomeScreenState extends State<HomeScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (showHeader) ...[
-          const Text(
-            'Department Overview',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
           const SizedBox(height: 16),
         ],
         ...cardRows,
@@ -1245,14 +1241,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: const Icon(Icons.dashboard_rounded, color: AppColors.maincolor, size: 20),
               ),
               const SizedBox(width: 12),
-              const Text(
-                'Dashboard',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
             ],
           ),
           children: [
@@ -1481,70 +1469,113 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(children: rows);
   }
 
-  // Calculate machine job count using WorkScreen filtering logic (for counter only)
+  // Count how many plannings (cards) would be visible in WorkScreen for this machine.
+  // Keep it simple: same as WorkScreen machine filter + completed-step filter, no extra logic.
   int _calculateMachineJobCount(String? machineId) {
     if (machineId == null || _jobPlannings == null || _jobPlannings!.isEmpty) {
-      return _machineJobCounts[machineId] ?? 0; // Fallback to original count
+      return 0;
     }
-    
+
     int count = 0;
+    final userRoles = UserRoleManager().userRoles;
     for (final planning in _jobPlannings!) {
-      if (planning['steps'] is! List) continue;
-      final steps = planning['steps'] as List;
-      
+      final steps = planning['steps'];
+      if (steps is! List) continue;
+
+      // Simple rule: if this planning uses the machine in any NON-completed step,
+      // count it once. This matches the cards the user sees in WorkScreen.
+      bool usesMachineAndVisible = false;
+
       for (int stepIndex = 0; stepIndex < steps.length; stepIndex++) {
         final step = steps[stepIndex];
         if (step is! Map<String, dynamic>) continue;
-        
+
         final stepStatus = step['status']?.toString().toLowerCase();
+        final stepNameLower = step['stepName']?.toString().toLowerCase() ?? '';
+
+        // Only consider machine steps that this role actually handles (same as WorkScreen)
+        bool roleHandlesStep = false;
+        if (stepNameLower.contains('printing')) {
+          roleHandlesStep = userRoles.any((r) => r.toLowerCase().contains('print'));
+        } else if (stepNameLower.contains('corrug')) {
+          roleHandlesStep = userRoles.any((r) => r.toLowerCase().contains('corrug'));
+        } else if (stepNameLower.contains('flute')) {
+          roleHandlesStep = userRoles.any((r) {
+            final rl = r.toLowerCase();
+            return rl.contains('flute') || rl.contains('lamination') || rl.contains('laminator');
+          });
+        } else if (stepNameLower.contains('punch')) {
+          roleHandlesStep = userRoles.any((r) {
+            final rl = r.toLowerCase();
+            return rl.contains('punch') || rl.contains('diecut') || rl.contains('die-cut') || rl.contains('die cutting');
+          });
+        } else if (stepNameLower.contains('die cutting') || stepNameLower.contains('diecutting')) {
+          roleHandlesStep = userRoles.any((r) {
+            final rl = r.toLowerCase();
+            return rl.contains('die') || rl.contains('diecut') || rl.contains('die-cut');
+          });
+        } else if (stepNameLower.contains('flap') || stepNameLower.contains('pasting')) {
+          roleHandlesStep = userRoles.any((r) {
+            final rl = r.toLowerCase();
+            return rl.contains('flap') || rl.contains('pasting');
+          });
+        }
+
+        if (!roleHandlesStep) continue;
         final machineDetails = step['machineDetails'] as List<dynamic>?;
-        final hasMachines = _hasMachineAssignment(machineDetails);
-        
-        if (hasMachines) {
-          // Check if this step uses the specified machine
-          bool usesThisMachine = false;
-          if (machineDetails != null) {
-            for (final md in machineDetails) {
-              if (md is Map<String, dynamic>) {
-                final stepMachineId = md['id']?.toString();
-                if (stepMachineId == machineId) {
-                  usesThisMachine = true;
-                  break;
-                }
+        // Treat empty or "Not Assigned" machineDetails as ALL machines
+        bool usesThisMachine = false;
+        if (machineDetails == null || (machineDetails.isEmpty && stepStatus == 'planned')) {
+          usesThisMachine = true;
+        } else {
+          for (final md in machineDetails) {
+            if (md is Map<String, dynamic>) {
+              final idInDetail = md['id']?.toString();
+              final machineIdField = md['machineId']?.toString();
+              final nestedMachineId = (md['machine'] as Map<String, dynamic>?)?['id']?.toString();
+              final machineCode = md['machineCode']?.toString();
+              final machineType = md['machineType']?.toString();
+
+              // For PLANNED steps we treat them as available on ALL machines,
+              // regardless of any machineCode/type saved in planning.
+              // After the step is started, exclusivity is driven by updated machineDetails.
+              final isNotAssigned = stepStatus == 'planned';
+
+              if (isNotAssigned) {
+                usesThisMachine = true;
+                break;
               }
-            }
-          }
-          
-          if (usesThisMachine) {
-            // Check if step is completed (matching WorkScreen logic)
-            final isCompleted = stepStatus == 'stop' || stepStatus == 'stopped' || stepStatus == 'completed' || stepStatus == 'accept';
-            if (isCompleted) continue;
-            
-            // Check if previous step is ready (matching WorkScreen logic)
-            bool previousStepReady = true;
-            if (stepIndex > 0 && steps[stepIndex - 1] is Map<String, dynamic>) {
-              final previousStep = steps[stepIndex - 1] as Map<String, dynamic>;
-              final prevStatus = previousStep['status']?.toString().toLowerCase() ?? '';
-              if (prevStatus == 'planned') {
-                previousStepReady = false;
-              } else if (prevStatus == 'stop' || prevStatus == 'stopped' || prevStatus == 'completed' || prevStatus == 'accept') {
-                previousStepReady = true;
+
+              if (idInDetail == machineId ||
+                  machineIdField == machineId ||
+                  nestedMachineId == machineId) {
+                usesThisMachine = true;
+                break;
               }
-            }
-            
-            // Also allow if current step is active
-            final isActive = stepStatus == 'start' || stepStatus == 'in_progress';
-            if (isActive) previousStepReady = true;
-            
-            if (previousStepReady) {
-              count++;
-              break; // Count this job only once per machine
             }
           }
         }
+
+        if (!usesThisMachine) continue;
+
+        // Completed steps are not visible in WorkScreen
+        final isCompleted = stepStatus == 'stop' ||
+            stepStatus == 'stopped' ||
+            stepStatus == 'completed' ||
+            stepStatus == 'accept';
+        if (isCompleted) continue;
+
+        // No previous-step logic for counter: if it's an active, non-completed step
+        // using this machine, then this planning is visible on this machine.
+        usesMachineAndVisible = true;
+        break;
+      }
+
+      if (usesMachineAndVisible) {
+        count++;
       }
     }
-    
+
     return count;
   }
 
@@ -1552,8 +1583,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final machineId = machine['id']?.toString();
     final machineName = machine['machineCode'] ?? machine['description'] ?? 'Unknown Machine';
     final machineType = machine['machineType'] ?? machine['type'] ?? '';
-    // Simply use the count from _machineJobCounts (already calculated in _fetchMachinesAndJobs)
-    final jobCount = _machineJobCounts[machineId] ?? 0;
+    // Counter: number of cards that would be visible inside WorkScreen for this machine
+    final jobCount = _calculateMachineJobCount(machineId);
     
     // Determine card color based on job count
     Color cardColor;
@@ -1842,6 +1873,10 @@ class _HomeScreenState extends State<HomeScreen> {
           final steps = planning['steps'] as List;
           bool shouldCount = false;
           
+          // Check if this is an urgent job (high demand)
+          final jobDemand = planning['jobDemand']?.toString().toLowerCase();
+          final isUrgentJob = jobDemand == 'high';
+          
           for (int stepIndex = 0; stepIndex < steps.length; stepIndex++) {
             final step = steps[stepIndex];
             if (step is! Map<String, dynamic>) continue;
@@ -1872,22 +1907,27 @@ class _HomeScreenState extends State<HomeScreen> {
                 // Hide if Quality is completed
                 if (stepStatus == 'accept' || stepStatus == 'stop' || stepStatus == 'stopped' || stepStatus == 'completed') {
                   shouldCount = false;
+                  print('🔍 [QC Counter] Job ${planning['nrcJobNo']} (plan ${planning['jobPlanId']}) - QC completed, NOT counting (urgent: $isUrgentJob)');
                   break;
                 }
                 
-                // Only show if previous step is ready
+                // Only show if previous step is ready (at 'start' or beyond) - applies to both urgent and regular jobs
                 if (stepIndex > 0 && steps[stepIndex - 1] is Map<String, dynamic>) {
                   final previousStep = steps[stepIndex - 1] as Map<String, dynamic>;
                   final prevStatus = previousStep['status']?.toString().toLowerCase() ?? '';
-                  // Previous step should be at least started (not 'planned')
-                  if (prevStatus == 'planned') {
+                  // Previous step should be at 'start', 'stop', or beyond (not 'planned' or empty/null)
+                  // Match WorkScreen logic: allowed statuses are 'start', 'started', 'in_progress', 'stop', 'stopped', 'completed', 'accept'
+                  final allowedStatuses = {'start', 'started', 'in_progress', 'stop', 'stopped', 'completed', 'accept'};
+                  if (!allowedStatuses.contains(prevStatus)) {
                     shouldCount = false;
+                    print('🔍 [QC Counter] Job ${planning['nrcJobNo']} (plan ${planning['jobPlanId']}) - Previous step not ready (status: $prevStatus), NOT counting (urgent: $isUrgentJob)');
                     break;
                   }
                 }
                 
                 // Quality is visible
                 shouldCount = true;
+                print('🔍 [QC Counter] Job ${planning['nrcJobNo']} (plan ${planning['jobPlanId']}) - QC visible, counting (urgent: $isUrgentJob)');
                 break;
               }
             }
@@ -1895,12 +1935,20 @@ class _HomeScreenState extends State<HomeScreen> {
           
           if (shouldCount) {
             qualityJobCount++;
+          } else {
+            print('🔍 [QC Counter] Job ${planning['nrcJobNo']} (plan ${planning['jobPlanId']}) - NOT counting (shouldCount=false, urgent: $isUrgentJob)');
           }
         }
+        print('🔍 [QC Counter] Total QC jobs counted: $qualityJobCount');
+      } else {
+        print('🔍 [QC Counter] User is not Quality role and not bypass role, skipping count');
       }
+    } else {
+      print('🔍 [QC Counter] No job plannings available');
     }
     
     final totalJobs = (isQualityRole || isBypassRole) ? qualityJobCount : _totalJobPlanningsCount;
+    print('🔍 [QC Counter] Final totalJobs: $totalJobs');
     
     return GestureDetector(
       onTap: () => _navigateToQualityWork(),
@@ -2022,6 +2070,10 @@ class _HomeScreenState extends State<HomeScreen> {
           final steps = planning['steps'] as List;
           bool shouldCount = false;
           
+          // Check if this is an urgent job (high demand)
+          final jobDemand = planning['jobDemand']?.toString().toLowerCase();
+          final isUrgentJob = jobDemand == 'high';
+          
           for (int stepIndex = 0; stepIndex < steps.length; stepIndex++) {
             final step = steps[stepIndex];
             if (step is! Map<String, dynamic>) continue;
@@ -2055,20 +2107,23 @@ class _HomeScreenState extends State<HomeScreen> {
                   break;
                 }
                 
-                // Only show if previous step (Quality) is ready
+                // Only show if previous step (Quality) is ready (at 'start' or beyond) - applies to both urgent and regular jobs
                 if (stepIndex > 0 && steps[stepIndex - 1] is Map<String, dynamic>) {
                   final previousStep = steps[stepIndex - 1] as Map<String, dynamic>;
                   final prevStatus = previousStep['status']?.toString().toLowerCase() ?? '';
-                  // Previous step should be at least started (not 'planned')
-                  if (prevStatus == 'planned') {
+                  // Previous step should be at 'start', 'stop', or beyond (not 'planned' or empty/null)
+                  // Match WorkScreen logic: allowed statuses are 'start', 'started', 'in_progress', 'stop', 'stopped', 'completed', 'accept'
+                  final allowedStatuses = {'start', 'started', 'in_progress', 'stop', 'stopped', 'completed', 'accept'};
+                  if (!allowedStatuses.contains(prevStatus)) {
                     shouldCount = false;
+                    print('🔍 [Dispatch Counter] Job ${planning['nrcJobNo']} (plan ${planning['jobPlanId']}) - Previous step not ready (status: $prevStatus), NOT counting (urgent: $isUrgentJob)');
                     break;
                   }
                 }
                 
                 // Dispatch is visible
                 shouldCount = true;
-                print('🔍 [Dispatch Counter] Job ${planning['nrcJobNo']} (plan ${planning['jobPlanId']}) - Dispatch visible, counting');
+                print('🔍 [Dispatch Counter] Job ${planning['nrcJobNo']} (plan ${planning['jobPlanId']}) - Dispatch visible, counting (urgent: $isUrgentJob)');
                 break;
               }
             }
